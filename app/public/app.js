@@ -86,8 +86,19 @@ function priority(patient) {
   return { label: "Em dia", className: "regular" };
 }
 
+const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
+
+function isNetworkError(error) {
+  return error instanceof TypeError;
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  let response;
+  try {
+    response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  } catch (error) {
+    throw isNetworkError(error) ? new Error(NETWORK_ERROR_MESSAGE) : error;
+  }
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || "Não foi possível concluir a operação.");
   return body;
@@ -153,8 +164,36 @@ function openObservationEdit(observationId) {
   $("#observationEditText").focus();
 }
 
+function confirmAction(message, { title = "Confirmar ação", confirmLabel = "Confirmar" } = {}) {
+  return new Promise(resolve => {
+    const dialog = $("#genericConfirmDialog");
+    const okButton = $("#genericConfirmOk");
+    const cancelButton = $("#genericConfirmCancel");
+    $("#genericConfirmTitle").textContent = title;
+    $("#genericConfirmMessage").textContent = message;
+    okButton.textContent = confirmLabel;
+    let decided = false;
+    const finish = result => {
+      if (decided) return;
+      decided = true;
+      okButton.removeEventListener("click", onOk);
+      cancelButton.removeEventListener("click", onCancel);
+      dialog.removeEventListener("close", onClose);
+      resolve(result);
+    };
+    const onOk = () => { finish(true); dialog.close(); };
+    const onCancel = () => { finish(false); dialog.close(); };
+    const onClose = () => finish(false);
+    okButton.addEventListener("click", onOk);
+    cancelButton.addEventListener("click", onCancel);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+  });
+}
+
 async function deleteObservation(observationId) {
-  if (!state.selected?.id || !window.confirm("Excluir esta observação do histórico? Esta ação não pode ser desfeita.")) return;
+  if (!state.selected?.id) return;
+  if (!(await confirmAction("Excluir esta observação do histórico? Esta ação não pode ser desfeita.", { title: "Excluir observação?", confirmLabel: "Excluir" }))) return;
   try {
     const updated = await api(`/api/patients/${state.selected.id}/observations/${observationId}`, { method: "DELETE" });
     state.selected = updated;
@@ -180,7 +219,8 @@ function renderPatientJourney(items = []) {
     $('#journeyEditReason').focus();
   }));
   $$('[data-delete-journey]', list).forEach(button => button.addEventListener('click', async () => {
-    if (!state.selected?.id || !window.confirm('Excluir este encaminhamento da jornada? O registro continuará preservado na auditoria.')) return;
+    if (!state.selected?.id) return;
+    if (!(await confirmAction('Excluir este encaminhamento da jornada? O registro continuará preservado na auditoria.', { title: 'Excluir encaminhamento?', confirmLabel: 'Excluir' }))) return;
     try {
       const updated = await api(`/api/patients/${state.selected.id}/journey/${button.dataset.deleteJourney}`, { method: 'DELETE' });
       state.selected = updated;
@@ -1294,7 +1334,12 @@ $("#reopenPatient")?.addEventListener("click", async () => {
 });
 
 async function initializeApp() {
-  const response = await fetch('/api/auth/status');
+  let response;
+  try {
+    response = await fetch('/api/auth/status');
+  } catch (error) {
+    throw isNetworkError(error) ? new Error(NETWORK_ERROR_MESSAGE) : error;
+  }
   const auth = await response.json();
   if (!auth.authenticated) { location.replace('/login'); return; }
   if (auth.user.role === 'crc') { location.replace('/central-crc'); return; }

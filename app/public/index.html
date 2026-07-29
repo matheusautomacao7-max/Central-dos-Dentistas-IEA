@@ -440,6 +440,16 @@
     </form>
   </dialog>
 
+  <dialog class="release-dialog" id="genericConfirmDialog" aria-labelledby="genericConfirmTitle">
+    <span class="eyebrow">Confirmação</span>
+    <h2 id="genericConfirmTitle">Confirmar ação?</h2>
+    <p id="genericConfirmMessage"></p>
+    <div class="release-dialog-actions">
+      <button class="secondary-button" id="genericConfirmCancel" type="button">Cancelar</button>
+      <button class="delete-confirm-button" id="genericConfirmOk" type="button">Confirmar</button>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/update-notice.js"></script>
   <script src="/app.js"></script>

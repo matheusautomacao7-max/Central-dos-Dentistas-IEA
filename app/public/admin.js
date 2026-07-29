@@ -8,8 +8,16 @@ const currency = (cents = 0) => new Intl.NumberFormat("pt-BR", {style: "currency
 const accessRoleLabels = {professional: "Dentista", asb: "ASB", crc: "CRC", admin: "Admin Geral", owner: "Proprietária"};
 const accessRoleLabel = role => accessRoleLabels[role] || "Não definido";
 
+const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
+const isNetworkError = error => error instanceof TypeError;
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...options});
+  let response;
+  try {
+    response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...options});
+  } catch (error) {
+    throw isNetworkError(error) ? new Error(NETWORK_ERROR_MESSAGE) : error;
+  }
   const raw = await response.text();
   let data = {};
   try { data = raw ? JSON.parse(raw) : {}; } catch (_) { throw new Error(response.ok ? "Resposta inválida do servidor." : `Servidor indisponível (${response.status}).`); }
@@ -424,11 +432,19 @@ $("#confirmScheduledPatients").addEventListener("click", async () => {
 $("#refreshAudit").addEventListener("click", loadAudit);
 
 async function initializeAdmin() {
-  const response = await fetch('/api/auth/status');
+  let response;
+  try {
+    response = await fetch('/api/auth/status');
+  } catch (error) {
+    throw isNetworkError(error) ? new Error(NETWORK_ERROR_MESSAGE) : error;
+  }
   const auth = await response.json();
   if (!auth.authenticated) { location.replace('/login'); return; }
   if (!auth.user.two_factor_enabled && !auth.user.two_factor_exempt) { location.replace('/two-factor-setup'); return; }
   if (!auth.user.can_admin_portal) { location.replace('/'); return; }
+  const displayName = auth.user.name || "Administração";
+  $("#adminProfileName").textContent = displayName;
+  $("#adminProfileAvatar").textContent = displayName.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
   updateAccessRoleHelp();
   updateDate(); setInterval(updateDate, 60_000); await loadAdmin();
 }

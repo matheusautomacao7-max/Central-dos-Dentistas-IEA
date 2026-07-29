@@ -5,8 +5,16 @@ const formatDate = value => value ? `${value.slice(8, 10)}/${value.slice(5, 7)}/
 const initials = name => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map(item => item[0]).join("").toUpperCase();
 const state = { search:"", status:"", next_schedule:"", attention:"", month:"", professional:"", crc_stage:"", patient:null };
 
+const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
+const isNetworkError = error => error instanceof TypeError;
+
 async function api(path, options = {}) {
-  const response = await fetch(path, { headers:{"Content-Type":"application/json"}, ...options });
+  let response;
+  try {
+    response = await fetch(path, { headers:{"Content-Type":"application/json"}, ...options });
+  } catch (error) {
+    throw isNetworkError(error) ? new Error(NETWORK_ERROR_MESSAGE) : error;
+  }
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || "Não foi possível concluir a operação.");
   return body;

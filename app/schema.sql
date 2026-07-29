@@ -661,6 +661,11 @@ CREATE INDEX IF NOT EXISTS idx_crm_conversations_status ON crm_conversations(sta
 CREATE INDEX IF NOT EXISTS idx_crm_messages_conversation ON crm_messages(conversation_id, message_at, id);
 CREATE INDEX IF NOT EXISTS idx_crm_webhook_events_received ON crm_webhook_events(received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_crm_automation_events_received ON crm_automation_events(received_at DESC);
+-- Suporta as subconsultas por conversa em get_crm_conversations (jornada
+-- compartilhada e último evento de automação), que antes faziam varredura
+-- completa das tabelas a cada uma das até 500 linhas retornadas.
+CREATE INDEX IF NOT EXISTS idx_crm_conversations_contact_id ON crm_conversations(contact_id);
+CREATE INDEX IF NOT EXISTS idx_crm_automation_events_conversation ON crm_automation_events(conversation_id, id);
 
 CREATE TABLE IF NOT EXISTS crm_n8n_workflow_settings (
     workflow_id TEXT PRIMARY KEY,

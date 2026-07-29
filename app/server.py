@@ -5010,6 +5010,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         else:
             conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND (cv.assigned_user_id=? OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL))")
             params.append(self.authenticated_user["id"])
+        # A visão "operational" (funil/pipeline) só usa id, name, channel,
+        # pipeline_stage, assigned_to e tag_names no front-end (ver loadPipeline
+        # em crm-whatsapp.html) — as 5 subconsultas correlacionadas abaixo
+        # rodavam para cada uma das até 500 linhas mesmo assim, multiplicando
+        # o custo da tela mais lenta do CRM sem nenhum ganho visível. Elas só
+        # são executadas fora dessa visão, onde o valor é realmente exibido.
+        skip_heavy_fields = view == "operational"
+        journey_count_sql = "0" if skip_heavy_fields else "(SELECT COUNT(*) FROM crm_conversations sibling WHERE sibling.contact_id=cv.contact_id)"
+        campaign_name_sql = "cv.automation_flow" if skip_heavy_fields else """COALESCE((SELECT NULLIF(ae.campaign_id,'') FROM crm_automation_events ae
+                                 WHERE ae.conversation_id=cv.id AND NULLIF(ae.campaign_id,'') IS NOT NULL
+                                 ORDER BY ae.id DESC LIMIT 1),cv.automation_flow)"""
+        automation_last_event_sql = "NULL" if skip_heavy_fields else "(SELECT ae.event_type FROM crm_automation_events ae WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1)"
+        automation_last_event_at_sql = "NULL" if skip_heavy_fields else "(SELECT ae.received_at FROM crm_automation_events ae WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1)"
+        snippet_sql = "''" if skip_heavy_fields else "COALESCE((SELECT m.body FROM crm_messages m WHERE m.conversation_id=cv.id ORDER BY datetime(m.message_at) DESC,m.id DESC LIMIT 1),'')"
         with connect() as db:
             self.crm_activate_due_returns(db)
             total = db.execute(f"""SELECT COUNT(*) FROM crm_conversations cv
@@ -5026,20 +5040,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                        ROUND(MAX(0,(julianday('now','localtime')-julianday(COALESCE(cv.queue_entered_at,cv.created_at)))*1440),1) AS waiting_minutes,
                        CASE WHEN cv.queue_entered_at IS NOT NULL AND cv.assigned_user_id IS NULL
                                   AND (julianday('now','localtime')-julianday(cv.queue_entered_at))*1440>ch.sla_minutes THEN 1 ELSE 0 END AS sla_overdue,
-                       (SELECT COUNT(*) FROM crm_conversations sibling WHERE sibling.contact_id=cv.contact_id) AS journey_count,
+                       {journey_count_sql} AS journey_count,
                        u.name AS assigned_to, COALESCE(u.service_sector,'CRC') AS assigned_sector,
                        CASE WHEN u.id IS NULL THEN NULL ELSE u.name || ' · ' || COALESCE(NULLIF(u.service_sector,''),'CRC') END AS assigned_label,
                        resolver.name AS resolved_by,
-                       COALESCE((SELECT NULLIF(ae.campaign_id,'') FROM crm_automation_events ae
-                                 WHERE ae.conversation_id=cv.id AND NULLIF(ae.campaign_id,'') IS NOT NULL
-                                 ORDER BY ae.id DESC LIMIT 1),cv.automation_flow) AS campaign_name,
-                       (SELECT ae.event_type FROM crm_automation_events ae
-                                 WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1) AS automation_last_event,
-                       (SELECT ae.received_at FROM crm_automation_events ae
-                                 WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1) AS automation_last_event_at,
+                       {campaign_name_sql} AS campaign_name,
+                       {automation_last_event_sql} AS automation_last_event,
+                       {automation_last_event_at_sql} AS automation_last_event_at,
                        COALESCE((SELECT GROUP_CONCAT(t.name, '||') FROM crm_conversation_tags ctt
                                  JOIN crm_tags t ON t.id=ctt.tag_id WHERE ctt.conversation_id=cv.id),'') AS tag_names,
-                       COALESCE((SELECT m.body FROM crm_messages m WHERE m.conversation_id=cv.id ORDER BY datetime(m.message_at) DESC,m.id DESC LIMIT 1),'') AS snippet
+                       {snippet_sql} AS snippet
                 FROM crm_conversations cv JOIN crm_contacts ct ON ct.id=cv.contact_id JOIN crm_channels ch ON ch.id=cv.channel_id
                 LEFT JOIN users u ON u.id=cv.assigned_user_id
                 LEFT JOIN users resolver ON resolver.id=cv.resolved_by_user_id WHERE {' AND '.join(conditions)}
