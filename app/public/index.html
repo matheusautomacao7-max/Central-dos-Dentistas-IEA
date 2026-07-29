@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Acompanhamento de pacientes do Instituto Eduardo Ayub">
+  <title>Instituto Eduardo Ayub | Carteira de Pacientes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/png" href="/assets/favicon-iea.png">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegação principal">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true"><img src="/assets/logo-iea-transparent.png" alt=""></div>
+        <div class="brand-copy"><strong>Instituto</strong><span>Eduardo Ayub</span></div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" id="dashboardNav" type="button" aria-current="page">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v9h13v-9M9.5 19v-5h5v5"/></svg></span><span>Visão geral</span>
+        </button>
+        <button class="nav-item" id="proceduresNav" type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg></span><span>Procedimentos</span>
+        </button>
+        <button class="nav-item" id="dailyLogNav" type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 4.5h14a1 1 0 0 1 1 1v14H4v-14a1 1 0 0 1 1-1ZM8 2v5M16 2v5M4 9h16M8 13l2 2 5-5"/></svg></span><span>Verificados</span>
+        </button>
+        <button class="nav-item" id="journeyNav" type="button">
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 12h5m6 0h5M9 7l5 5-5 5M15 7l-5 5 5 5"/></svg></span><span>Jornada do paciente</span><small id="journeyCount" hidden>0</small>
+        </button>
+        <button class="nav-item" type="button" disabled>
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 4.5h14a1 1 0 0 1 1 1v14H4v-14a1 1 0 0 1 1-1ZM8 2v5M16 2v5M4 9h16"/></svg></span><span>Agenda</span><small>em breve</small>
+        </button>
+        <button class="nav-item" type="button" disabled>
+          <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 19V9M12 19V4M19 19v-7M3 19h18"/></svg></span><span>Indicadores</span><small>em breve</small>
+        </button>
+      </nav>
+
+      <div class="profile-mini">
+        <div class="avatar profile-avatar"><img id="profilePhoto" src="/assets/dra-dulce.jpeg" alt="Foto da Dra. Dulce"><span id="profileInitials">DD</span></div>
+        <div class="profile-details"><strong>Consultório 3</strong><span>Ortodontia</span></div>
+        <div class="profile-menu"><button id="profileMenuButton" aria-label="Opções do perfil" aria-expanded="false" type="button">•••</button><div class="profile-menu-popover" id="profileMenuPopover" hidden><button id="logoutButton" type="button">Sair do sistema</button></div></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="Abrir menu">☰</button>
+        <div>
+          <span class="eyebrow" id="currentDate">—</span>
+          <h1 id="pageTitle">Bom dia, Dra. Dulce.</h1>
+        </div>
+        <div class="top-actions">
+          <div class="asb-portfolio-context" id="asbPortfolioContext" hidden>
+            <span>Carteira ativa</span>
+            <strong id="asbPortfolioName">—</strong>
+          </div>
+          <button class="primary-button" id="newPatientButton" type="button"><span>＋</span>Novo paciente</button>
+        </div>
+      </header>
+
+      <div id="dashboardView">
+      <section class="metrics" aria-label="Resumo da carteira">
+        <button class="metric-card active" data-attention="contact" type="button">
+          <span class="metric-icon urgent"><svg viewBox="0 0 24 24"><path d="M6 18 18 6M10 6h8v8"/></svg></span>
+          <span class="metric-content"><span>Precisam de contato</span><strong id="metricContact">—</strong><small>Há 60 dias ou mais</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+        <button class="metric-card" data-attention="unscheduled" type="button">
+          <span class="metric-icon calendar"><svg viewBox="0 0 24 24"><path d="M5 4.5h14a1 1 0 0 1 1 1v14H4v-14a1 1 0 0 1 1-1ZM8 2v5M16 2v5M4 9h16"/></svg></span>
+          <span class="metric-content"><span>Sem agendamento</span><strong id="metricUnscheduled">—</strong><small>Pacientes ativos</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+        <button class="metric-card" data-attention="treatment" type="button">
+          <span class="metric-icon treatment"><svg viewBox="0 0 24 24"><path d="M12 3c1.2 4.1 2.9 5.8 7 7-4.1 1.2-5.8 2.9-7 7-1.2-4.1-2.9-5.8-7-7 4.1-1.2 5.8-2.9 7-7Z"/></svg></span>
+          <span class="metric-content"><span>Tratamentos abertos</span><strong id="metricTreatment">—</strong><small>Em acompanhamento</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+        <button class="metric-card" data-attention="inactive" type="button">
+          <span class="metric-icon inactive"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></span>
+          <span class="metric-content"><span>Pacientes inativos</span><strong id="metricInactive">—</strong><small>Fora da carteira ativa</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+        <button class="metric-card financial" data-sort="value_desc" type="button">
+          <span class="metric-icon money"><svg viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 12h.01M16 12h.01M12 9.5c1.4 0 2.5 1.1 2.5 2.5s-1.1 2.5-2.5 2.5-2.5-1.1-2.5-2.5 1.1-2.5 2.5-2.5Z"/></svg></span>
+          <span class="metric-content"><span>Potencial em carteira</span><strong id="metricPotential">—</strong><small>Procedimentos não concluídos</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+        <button class="metric-card resolved" data-attention="resolved" type="button">
+          <span class="metric-icon resolved-icon"><svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg></span>
+          <span class="metric-content"><span>Verificados hoje</span><strong id="metricResolved">—</strong><small>Prontuários concluídos</small></span>
+          <span class="metric-arrow">→</span>
+        </button>
+      </section>
+
+      <section class="workspace-card">
+        <div class="section-heading">
+          <div><span class="eyebrow">Acompanhamento diário</span><h2>Carteira de pacientes</h2><p class="asb-portfolio-subtitle" id="asbPortfolioSubtitle" hidden></p></div>
+          <div class="result-summary"><span id="resultCount">—</span> pacientes encontrados</div>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="Buscar paciente ou procedimento" autocomplete="off">
+          </label>
+          <label class="select-field">
+            <span>Status</span>
+            <select id="statusFilter">
+              <option value="">Todos</option>
+              <option>Consulta</option>
+              <option>Controle</option>
+              <option>Tratamento</option>
+              <option>Inativo</option>
+              <option value="resolved">Verificados hoje</option>
+            </select>
+          </label>
+          <label class="select-field">
+            <span>Mês</span>
+            <select id="monthFilter"><option value="">Todos</option></select>
+          </label>
+          <label class="select-field">
+            <span>Próxima</span>
+            <select id="nextScheduleFilter">
+              <option value="">Qualquer data</option>
+              <option value="scheduled">Com agendamento</option>
+              <option value="unscheduled">Sem agendamento</option>
+              <option value="today">Hoje</option>
+              <option value="next_7">Próximos 7 dias</option>
+              <option value="next_30">Próximos 30 dias</option>
+              <option value="overdue">Agendamento vencido</option>
+            </select>
+          </label>
+          <label class="select-field">
+            <span>Ordem</span>
+            <select id="sortFilter">
+              <option value="last_visit_asc">Consulta mais antiga</option>
+              <option value="last_visit_desc">Consulta mais recente</option>
+              <option value="name_asc">Nome A–Z</option>
+              <option value="name_desc">Nome Z–A</option>
+              <option value="value_desc">Maior potencial</option>
+              <option value="value_asc">Menor potencial</option>
+              <option value="next_asc">Próximo agendamento</option>
+              <option value="next_desc">Agendamento mais distante</option>
+            </select>
+          </label>
+          <div class="columns-control">
+            <button class="columns-button" id="columnsButton" type="button" aria-expanded="false">Colunas</button>
+            <div class="columns-menu" id="columnsMenu" hidden>
+              <strong>Exibir na tabela</strong>
+              <label><input type="checkbox" data-column-toggle="last_visit" checked> Última consulta</label>
+              <label><input type="checkbox" data-column-toggle="days" checked> Dias sem retornar</label>
+              <label><input type="checkbox" data-column-toggle="next_appointment" checked> Próxima consulta</label>
+              <label><input type="checkbox" data-column-toggle="procedures" checked> Procedimentos</label>
+              <label><input type="checkbox" data-column-toggle="potential" checked> Potencial</label>
+              <label><input type="checkbox" data-column-toggle="status" checked> Status</label>
+              <label><input type="checkbox" data-column-toggle="actions" checked> Ações</label>
+            </div>
+          </div>
+          <button class="filter-button" id="clearFilters" type="button">Limpar filtros</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <colgroup><col class="col-patient"><col class="col-responsible" data-master-column="responsible" hidden><col class="col-last" data-column="last_visit"><col class="col-days" data-column="days"><col class="col-next" data-column="next_appointment"><col class="col-procedure" data-column="procedures"><col class="col-value" data-column="potential"><col class="col-status" data-column="status"><col class="col-actions" data-column="actions"></colgroup>
+            <thead><tr>
+              <th>Paciente</th><th data-master-column="responsible" hidden>Responsável</th><th data-column="last_visit">Última</th><th data-column="days">Tempo sem retornar</th><th data-column="next_appointment">Próxima</th><th data-column="procedures">Procedimentos</th><th data-column="potential">Potencial</th><th data-column="status">Status</th><th data-column="actions">Ações</th>
+            </tr></thead>
+            <tbody id="patientsTable">
+              <tr class="loading-row"><td colspan="8"><span class="loader"></span> Carregando carteira...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span id="pageInfo">—</span>
+          <div><button id="prevPage" type="button">←</button><button id="nextPage" type="button">→</button></div>
+        </div>
+      </section>
+      </div>
+
+      <section class="procedure-view" id="procedureView" hidden>
+        <div class="catalog-layout">
+          <form class="catalog-form" id="catalogForm">
+            <span class="eyebrow">Cadastro mestre</span>
+            <h2>Novo procedimento</h2>
+            <p>Cadastre uma vez e reutilize em todas as fichas.</p>
+            <label>Nome do procedimento<input id="catalogName" type="text" placeholder="Ex.: Implante unitário" required></label>
+            <label>Valor padrão (R$)<input id="catalogValue" type="text" inputmode="decimal" placeholder="0,00"></label>
+            <button class="primary-button" type="submit">＋ Adicionar ao catálogo</button>
+          </form>
+          <div class="catalog-table-card">
+            <div class="section-heading"><div><span class="eyebrow">Tabela de referência</span><h2>Procedimentos cadastrados</h2></div><span class="catalog-count" id="catalogCount">0 itens</span></div>
+            <div class="catalog-table-wrap">
+              <table class="catalog-table">
+                <thead><tr><th>Procedimento</th><th>Valor padrão</th><th>Situação</th><th></th></tr></thead>
+                <tbody id="catalogTable"><tr class="loading-row"><td colspan="4">Nenhum procedimento cadastrado.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="daily-log-view" id="dailyLogView" hidden>
+        <div class="daily-summary">
+          <div class="daily-stat"><span>Verificados hoje</span><strong id="dailyToday">0</strong><small>Zera automaticamente à meia-noite</small></div>
+          <div class="daily-stat"><span>Verificados ontem</span><strong id="dailyYesterday">0</strong><small>Comparativo do dia anterior</small></div>
+          <div class="daily-stat"><span>Últimos 7 dias</span><strong id="dailyWeek">0</strong><small>Total de acompanhamentos</small></div>
+        </div>
+        <div class="daily-table-card">
+          <div class="section-heading"><div><span class="eyebrow">Histórico de produtividade</span><h2>Verificados dos últimos 30 dias</h2></div><span class="daily-caption">Nomes exibidos diretamente por dia</span></div>
+          <div class="daily-table-wrap">
+            <table class="daily-table">
+              <thead><tr><th>Data</th><th>Dia</th><th>Verificados</th><th>Pacientes</th></tr></thead>
+              <tbody id="dailyLogTable"><tr class="loading-row"><td colspan="4">Nenhum paciente verificado ainda.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="journey-view" id="journeyView" hidden>
+        <div class="journey-view-heading"><div><span class="eyebrow">Acompanhamento compartilhado</span><h2>Jornada dos pacientes</h2><p>Pacientes encaminhados entre profissionais permanecem em um único prontuário.</p></div></div>
+        <div class="journey-list" id="journeyList"><p class="loading-row">Carregando jornadas...</p></div>
+      </section>
+
+      <section class="admin-view" id="adminView" hidden>
+        <div class="admin-hero">
+          <div><span class="eyebrow">Acesso da proprietária</span><h2>Central de comando</h2><p>Visão completa da clínica, equipe, estrutura e movimentações.</p></div>
+          <span class="owner-seal">Dra. Dulce · Controle total</span>
+        </div>
+
+        <div class="admin-metrics">
+          <div class="admin-metric"><span>Pacientes</span><strong id="adminPatients">—</strong><small>Em todas as carteiras</small></div>
+          <div class="admin-metric"><span>Profissionais</span><strong id="adminProfessionals">—</strong><small>Ativos na clínica</small></div>
+          <div class="admin-metric"><span>Acessos ativos</span><strong id="adminAccesses">—</strong><small>Usuários habilitados</small></div>
+          <div class="admin-metric"><span>Potencial total</span><strong id="adminPotential">—</strong><small>Procedimentos em aberto</small></div>
+        </div>
+
+        <nav class="admin-tabs" aria-label="Áreas administrativas">
+          <button class="active" type="button" data-admin-tab="overview">Visão geral</button>
+          <button type="button" data-admin-tab="professionals">Profissionais e acessos</button>
+          <button type="button" data-admin-tab="structure">Estrutura clínica</button>
+          <button type="button" data-admin-tab="imports">Importações</button>
+          <button type="button" data-admin-tab="audit">Auditoria</button>
+        </nav>
+
+        <div class="admin-panel" data-admin-panel="overview">
+          <div class="admin-overview-grid">
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Equipe</span><h3>Distribuição da clínica</h3></div><button type="button" data-open-admin-tab="professionals">Gerenciar</button></div><div class="admin-overview-list" id="adminTeamOverview"></div></article>
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Estrutura</span><h3>Consultórios e especialidades</h3></div><button type="button" data-open-admin-tab="structure">Gerenciar</button></div><div class="admin-structure-summary"><div><strong id="adminOfficeCount">0</strong><span>Consultórios</span></div><div><strong id="adminSpecialtyCount">0</strong><span>Especialidades</span></div><div><strong id="adminUnassigned">0</strong><span>Sem carteira</span></div></div><div class="admin-overview-list" id="adminOfficeOverview"></div></article>
+          </div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="professionals" hidden>
+          <div class="admin-split">
+            <form class="admin-form-card" id="adminProfessionalForm">
+              <input id="adminProfessionalId" type="hidden">
+              <span class="eyebrow">Equipe e segurança</span><h3 id="adminProfessionalFormTitle">Novo profissional</h3><p>Cadastre o profissional e prepare seu acesso individual.</p>
+              <label>Nome completo<input id="adminProfessionalName" type="text" required></label>
+              <label>E-mail de acesso<input id="adminProfessionalEmail" type="email" required></label>
+              <div class="form-grid two"><label>Nível de acesso<select id="adminAccessRole"><option value="professional">Dentista</option><option value="admin">Administração</option><option value="owner">Proprietária</option></select></label><label>Especialidade principal<select id="adminProfessionalSpecialty"><option value="">Selecione</option></select></label></div>
+              <div class="form-grid two"><label>Consultório<select id="adminProfessionalOffice"><option value="">Selecione</option></select></label><label class="admin-check"><input id="adminOfficeResponsible" type="checkbox"> Responsável pelo consultório</label></div>
+              <label class="admin-check" id="adminActiveLabel"><input id="adminProfessionalActive" type="checkbox" checked> Acesso ativo</label>
+              <div class="admin-form-actions"><button class="secondary-button" id="cancelProfessionalEdit" type="button" hidden>Cancelar</button><button class="primary-button" type="submit">Salvar profissional</button></div>
+            </form>
+            <div class="admin-table-card"><div class="admin-card-heading"><div><span class="eyebrow">Carteiras</span><h3>Profissionais e acessos</h3></div><span id="adminProfessionalCount">0 cadastrados</span></div><div class="admin-table-wrap"><table><thead><tr><th>Profissional</th><th>Especialidade</th><th>Consultório</th><th>Carteira</th><th>Acesso</th><th></th></tr></thead><tbody id="adminProfessionalsTable"></tbody></table></div></div>
+          </div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="structure" hidden>
+          <div class="admin-overview-grid">
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Cadastro mestre</span><h3>Especialidades</h3></div></div><form class="admin-inline-form" id="adminSpecialtyForm"><input id="adminSpecialtyName" type="text" placeholder="Ex.: Implantodontia" required><button class="primary-button" type="submit">＋ Adicionar</button></form><div class="admin-master-list" id="adminSpecialtiesList"></div></article>
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Estrutura física</span><h3>Consultórios</h3></div></div><form class="admin-inline-form" id="adminOfficeForm"><input id="adminOfficeName" type="text" placeholder="Ex.: Consultório 4" required><button class="primary-button" type="submit">＋ Adicionar</button></form><div class="admin-master-list" id="adminOfficesList"></div></article>
+          </div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="imports" hidden>
+          <div class="import-layout"><article class="admin-card import-guide"><span class="eyebrow">Entrada segura de dados</span><h3>Central de importações</h3><p>Importe pacientes por CSV ou JSON. Antes da confirmação, o sistema valida datas, status, responsáveis e duplicidades.</p><div class="import-steps"><span><b>1</b> Selecione o arquivo</span><span><b>2</b> Valide os registros</span><span><b>3</b> Confirme a importação</span></div><div class="import-columns"><strong>Colunas aceitas</strong><code>name, last_visit, status, phone, professional_email</code></div></article><article class="admin-card"><label class="import-drop" for="adminImportFile"><span>↑</span><strong>Selecionar arquivo</strong><small>CSV ou JSON · até 5.000 pacientes</small><input id="adminImportFile" type="file" accept=".csv,.json,application/json,text/csv" hidden></label><div class="import-file-info" id="adminImportFileInfo">Nenhum arquivo selecionado.</div><div class="import-preview" id="adminImportPreview"></div><div class="import-result" id="adminImportResult" hidden></div><div class="admin-form-actions"><button class="secondary-button" id="validateImport" type="button" disabled>Validar arquivo</button><button class="primary-button" id="confirmImport" type="button" disabled>Confirmar importação</button></div></article></div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="audit" hidden>
+          <div class="admin-table-card"><div class="admin-card-heading"><div><span class="eyebrow">Rastreabilidade</span><h3>Histórico de movimentações</h3></div><button id="refreshAudit" type="button">Atualizar</button></div><div class="admin-table-wrap"><table><thead><tr><th>Data e hora</th><th>Paciente</th><th>Evento</th><th>Descrição</th></tr></thead><tbody id="adminAuditTable"></tbody></table></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="patient-drawer" id="patientDrawer" aria-hidden="true" aria-label="Ficha do paciente">
+    <div class="drawer-header">
+      <div class="patient-avatar" id="drawerAvatar">—</div>
+      <div class="drawer-title"><span class="eyebrow" id="drawerEyebrow">Ficha do paciente</span><div class="drawer-name-row"><h2 id="drawerName">—</h2><button class="header-health-seal" id="headerHealthSeal" type="button" aria-label="Abrir alerta de saúde" hidden><img src="/assets/health-alert-seal-3d.png" alt="Alerta de saúde"></button></div><p id="drawerProfessional">Carteira da Dra. Dulce</p></div>
+      <div class="drawer-header-actions"><button class="close-button" id="closeDrawer" aria-label="Fechar ficha">×</button></div>
+    </div>
+
+    <form id="patientForm">
+      <input type="hidden" id="patientId">
+      <div class="locked-banner" id="lockedBanner" hidden><span>✓</span><div><strong>Paciente verificado</strong><small>Ficha bloqueada. Para liberar uma alteração, use Verificados e confirme sua senha.</small></div></div>
+      <div class="form-section identity-section" id="identityEditor" hidden>
+        <div class="form-grid two">
+          <label>Nome do paciente<input id="fieldName" type="text" required></label>
+          <label>Última consulta<input id="fieldLastVisit" type="date" required></label>
+        </div>
+      </div>
+      <div class="drawer-highlight">
+        <div><span>Última consulta</span><strong id="drawerLastVisit">—</strong></div>
+        <div><span>Tempo sem retornar</span><strong id="drawerDays">—</strong></div>
+        <div><span>Próxima consulta</span><strong id="drawerNextDisplay">—</strong></div>
+      </div>
+      <div class="patient-journey" id="patientJourney" hidden><span class="eyebrow">Jornada compartilhada</span><div id="patientJourneyList"></div></div>
+      <section class="journey-stage-editor" id="journeyStageEditor" hidden><span class="eyebrow">Minha etapa na jornada</span><h3 id="journeyStageTitle">Registrar minha evolução</h3><p id="journeyStageInfo">Este registro ficará identificado com seu nome e poderá ser visualizado pelos demais profissionais.</p><label>Etapa<select id="journeyStageStatus"><option>Em atendimento</option><option>Concluído</option></select></label><label>Minha evolução<textarea id="journeyStageNote" rows="4" placeholder="Registre sua avaliação, conduta e próximos passos..."></textarea></label><button class="primary-button" id="saveJourneyStage" type="button">Salvar minha etapa</button></section>
+
+      <div class="form-section">
+        <div class="form-section-title"><span>01</span><div><strong>Acompanhamento do Dentista</strong><small>Situação atual do paciente</small></div></div>
+        <div class="form-grid two">
+          <label>Status<select id="fieldStatus" required><option>Consulta</option><option>Controle</option><option>Tratamento</option><option>Inativo</option></select></label>
+          <label>Próxima consulta<input id="fieldNextAppointment" type="date"></label>
+          <label id="nextAppointmentTypeField" hidden>Classificação da próxima data<select id="fieldNextAppointmentType"><option value="Agendado">Agendado</option><option value="Programado">Programado</option></select></label>
+        </div>
+        <div class="next-action-field">
+          <span>Retorno</span>
+          <input id="fieldNextAction" type="hidden">
+          <details class="action-checklist" id="nextActionChecklist">
+            <summary id="nextActionSummary">Selecione uma ou mais ações</summary>
+            <div class="action-checklist-options" id="nextActionOptions"></div>
+          </details>
+          <small class="field-hint">Marque todos os retornos necessários para este paciente.</small>
+        </div>
+        <div class="observation-field"><label>Observação PC<textarea id="fieldObservation" rows="3" placeholder="Registre a observação deste retorno..."></textarea></label><small class="field-hint">A observação será incluída no histórico ao salvar e verificar o paciente.</small><div class="observation-history"><div class="observation-history-heading"><strong>Histórico de retornos</strong><button id="showAllObservations" type="button" hidden>Ver mais</button></div><div id="observationHistory"></div></div></div>
+        <div class="health-control">
+          <label>Alteração de saúde<select id="fieldHealthChange"><option value="0">Não</option><option value="1">Sim</option></select></label>
+        </div>
+        <label>Conexões<textarea id="fieldNotes" rows="3" placeholder="Registre conexões e contexto importante para o acompanhamento..."></textarea></label>
+        <div class="embedded-relationships">
+          <div class="form-section-title relationship-heading"><div><strong>Vínculos</strong><small>Familiares e pessoas relacionadas</small></div><button class="add-relationship" id="addRelationship" type="button">＋ Adicionar</button></div>
+          <div class="relationship-list" id="relationshipList"></div>
+          <datalist id="relationshipTypes"><option value="Mãe"><option value="Pai"><option value="Irmã"><option value="Irmão"><option value="Filha"><option value="Filho"><option value="Tia"><option value="Tio"><option value="Avó"><option value="Avô"><option value="Cônjuge"><option value="Responsável"></datalist>
+          <p class="empty-relationships" id="emptyRelationships">Nenhum vínculo adicionado.</p>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title procedure-heading"><span>02</span><div><strong>Procedimentos</strong><small>Oportunidades e valores desta carteira</small></div><button class="add-procedure" id="addProcedure" type="button">＋ Adicionar</button></div>
+        <div class="procedure-summary"><span>Potencial não concluído</span><strong id="procedureTotal">R$ 0,00</strong></div>
+        <div id="procedureList" class="procedure-list"></div>
+        <p class="empty-procedures" id="emptyProcedures">Nenhum procedimento adicionado.</p>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title"><span>03</span><div><strong>Contato e referência</strong><small>Dados para relacionamento</small></div></div>
+        <div class="form-grid two">
+          <label>Telefone<input id="fieldPhone" type="tel" placeholder="(65) 99999-9999"></label>
+          <label>Último contato<input id="fieldLastContact" type="date"></label>
+        </div>
+        <label>Referência<input id="fieldReference" type="text" placeholder="Como chegou ao Instituto"></label>
+      </div>
+
+      <div class="drawer-actions">
+        <button class="delete-patient-button" id="deletePatient" type="button">Excluir paciente</button>
+        <button class="secondary-button save-forward-button" id="saveAndForward" type="button">Salvar e encaminhar</button>
+        <button class="primary-button" id="savePatient" type="submit"><span>✓</span>Salvar e verificar</button>
+      </div>
+    </form>
+  </aside>
+
+  <dialog class="health-dialog" id="healthDialog" aria-labelledby="healthDialogTitle">
+    <div class="health-dialog-header">
+      <img src="/assets/health-alert-seal-3d.png" alt="">
+      <div><span class="eyebrow">Alerta clínico</span><h2 id="healthDialogTitle">Alteração de saúde</h2></div>
+      <button id="closeHealthDialog" type="button" aria-label="Fechar">×</button>
+    </div>
+    <div class="health-dialog-body">
+      <label>Condição ou alteração<textarea id="fieldHealthCondition" rows="3" placeholder="Ex.: hipertensão, alergia, diabetes, uso de anticoagulante..."></textarea></label>
+      <label>Cuidados para o atendimento<textarea id="fieldHealthCare" rows="4" placeholder="Registre orientações e cuidados importantes para a equipe..."></textarea></label>
+    </div>
+    <div class="health-dialog-actions"><button class="secondary-button" id="cancelHealthDialog" type="button">Cancelar</button><button class="primary-button" id="applyHealthDialog" type="button">Salvar alerta</button></div>
+  </dialog>
+
+  <dialog class="release-dialog" id="releaseDialog" aria-labelledby="releaseDialogTitle">
+    <form id="releaseForm">
+      <span class="eyebrow">Liberação protegida</span>
+      <h2 id="releaseDialogTitle">Liberar ficha para alteração</h2>
+      <p>Confirme sua senha para liberar este paciente. Apenas o dentista responsável pode autorizar essa alteração.</p>
+      <label>Senha do dentista<input id="releasePassword" type="password" autocomplete="current-password" required></label>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelRelease" type="button">Cancelar</button><button class="primary-button" type="submit">Liberar ficha</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="release-dialog delete-patient-dialog" id="deletePatientDialog" aria-labelledby="deletePatientDialogTitle">
+    <form id="deletePatientForm">
+      <span class="eyebrow">Exclusão protegida</span>
+      <h2 id="deletePatientDialogTitle">Excluir paciente?</h2>
+      <p>Você está excluindo <strong id="deletePatientName">este paciente</strong>. Esta ação remove o prontuário da carteira e não pode ser desfeita.</p>
+      <p class="delete-audit-notice">A exclusão ficará registrada na auditoria em nome de <strong id="deletePatientActor">quem está excluindo</strong>, com nível de acesso, data e horário.</p>
+      <label>Digite a sua senha de acesso<input id="deletePatientPassword" type="password" autocomplete="current-password" required></label>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelDeletePatient" type="button">Cancelar</button><button class="delete-confirm-button" type="submit">Excluir definitivamente</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="release-dialog forward-dialog" id="forwardDialog" aria-labelledby="forwardDialogTitle">
+    <form id="forwardForm">
+      <span class="eyebrow">Jornada compartilhada</span>
+      <h2 id="forwardDialogTitle">Encaminhar paciente</h2>
+      <p id="forwardDialogInfo">A profissional receberá o mesmo prontuário, com todo o histórico já registrado.</p>
+      <label>Encaminhar para <span class="optional-label">selecione um ou mais profissionais</span><input id="forwardProfessional" type="hidden" required><div class="forward-professional-list" id="forwardProfessionalList"></div></label>
+      <label>Motivo do encaminhamento <span class="optional-label">opcional</span><textarea id="forwardReason" rows="3" placeholder="Ex.: avaliação ortodôntica, continuidade do tratamento..."></textarea></label>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelForward" type="button">Cancelar</button><button class="primary-button" type="submit">Confirmar encaminhamento</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="release-dialog journey-edit-dialog" id="journeyEditDialog" aria-labelledby="journeyEditDialogTitle">
+    <form id="journeyEditForm">
+      <span class="eyebrow">Jornada compartilhada</span>
+      <h2 id="journeyEditDialogTitle">Editar encaminhamento</h2>
+      <p>Atualize o motivo ou a orientação enviada ao profissional.</p>
+      <label>Motivo do encaminhamento<textarea id="journeyEditReason" rows="4" placeholder="Descreva o motivo do encaminhamento..."></textarea></label>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelJourneyEdit" type="button">Cancelar</button><button class="primary-button" type="submit">Salvar alteração</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="release-dialog completion-dialog" id="completionDialog" aria-labelledby="completionDialogTitle">
+    <div>
+      <span class="eyebrow" id="completionDialogEyebrow">Confirmação</span>
+      <h2 id="completionDialogTitle">Finalizar anotações?</h2>
+      <p id="completionDialogInfo">Revise as anotações antes de concluir. Ao confirmar, a ficha será salva e o paciente ficará marcado como verificado.</p>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelCompletion" type="button">Continuar editando</button><button class="primary-button" id="confirmCompletion" type="button">Salvar e verificar</button></div>
+    </div>
+  </dialog>
+
+  <dialog class="release-dialog observation-edit-dialog" id="observationEditDialog" aria-labelledby="observationEditTitle">
+    <form id="observationEditForm">
+      <span class="eyebrow">Histórico de retornos</span>
+      <h2 id="observationEditTitle">Editar observação</h2>
+      <label>Observação<textarea id="observationEditText" rows="5" required></textarea></label>
+      <div class="release-dialog-actions"><button class="secondary-button" id="cancelObservationEdit" type="button">Cancelar</button><button class="primary-button" type="submit">Salvar observação</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/update-notice.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

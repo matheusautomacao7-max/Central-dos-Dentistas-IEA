@@ -1,0 +1,24 @@
+# Segredos e chaves
+.deploy/
+deploy_iea_ed25519*
+.deploy-askpass.cmd
+*.pem
+*_ed25519
+*_ed25519.pub
+known_hosts_179*
+
+# Dados de pacientes / PII
+app/data/
+outputs/
+importacoes/
+tmp/
+qa/
+*.xlsx
+*.csv
+
+# Python
+__pycache__/
+app/__pycache__/
+
+# Dependências (symlink para cache externo)
+node_modules/

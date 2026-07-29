@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Administração do Instituto Eduardo Ayub">
+  <title>Instituto Eduardo Ayub | Administração</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>.crm-feature-permissions{margin:14px 0;padding:14px;border:1px solid #dfe6ed;border-radius:12px;background:#f8fafc}.crm-feature-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.crm-feature-title label{display:flex;align-items:center;gap:7px;font-size:12px}.crm-feature-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.crm-feature-checks label{display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid #e2e8ee;border-radius:9px;background:#fff;font-size:12px;font-weight:700}.crm-feature-checks input,.crm-feature-title input{width:17px;height:17px;accent-color:#153654}.crm-feature-permissions>small{display:block;margin-top:9px;color:#718096;font-size:11px}</style>
+  <link rel="icon" type="image/png" href="/assets/favicon-iea.png">
+</head>
+<body>
+  <div class="app-shell admin-only-shell">
+    <aside class="sidebar" aria-label="Navegação administrativa">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true"><img src="/assets/logo-iea-transparent.png" alt=""></div>
+        <div class="brand-copy"><strong>Instituto</strong><span>Eduardo Ayub</span></div>
+      </div>
+
+      <nav class="nav-list admin-side-nav">
+        <button class="nav-item active" type="button" data-side-admin-tab="overview" aria-current="page"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v9h13v-9M9.5 19v-5h5v5"/></svg></span><span>Visão geral</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="professionals"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3 19c0-3 2-5 5-5s5 2 5 5M16 11h5M18.5 8.5v5"/></svg></span><span>Equipe e acessos</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="crm-access"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg></span><span>Permissões CRM</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="structure"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20V7l8-4 8 4v13M8 20v-5h8v5M8 9h2M14 9h2"/></svg></span><span>Estrutura clínica</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="imports"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg></span><span>Importações</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="integrations"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M8 12h8M12 8v8M4 7h3v10H4zM17 7h3v10h-3z"/></svg></span><span>APIs</span></button>
+        <button class="nav-item" type="button" data-side-admin-tab="audit"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg></span><span>Auditoria</span></button>
+      </nav>
+
+      <div class="profile-mini">
+        <div class="avatar">GI</div>
+        <div class="profile-details"><strong>Gestão IEA</strong><span class="profile-office">Ambiente administrativo</span></div>
+        <a class="admin-exit" href="/" aria-label="Sair do painel administrativo">Sair</a>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" id="adminMobileMenu" aria-label="Abrir menu">☰</button>
+        <div><span class="eyebrow" id="adminCurrentDate">—</span><h1>Administração da clínica</h1></div>
+        <div class="top-actions"><span class="separate-access-badge">Acesso administrativo</span></div>
+      </header>
+
+      <section class="admin-view" id="adminView">
+        <div class="admin-hero" id="adminOverviewHero">
+          <div><span class="eyebrow">Central administrativa</span><h2>Central de comando</h2><p>Visão completa da clínica, equipe, estrutura e movimentações.</p></div>
+        </div>
+
+        <div class="admin-metrics" id="adminOverviewMetrics">
+          <div class="admin-metric"><span>Pacientes</span><strong id="adminPatients">—</strong><small>Em todas as carteiras</small></div>
+          <div class="admin-metric"><span>Profissionais</span><strong id="adminProfessionals">—</strong><small>Ativos na clínica</small></div>
+          <div class="admin-metric"><span>Acessos ativos</span><strong id="adminAccesses">—</strong><small>Usuários habilitados</small></div>
+          <div class="admin-metric"><span>Potencial total</span><strong id="adminPotential">—</strong><small>Procedimentos em aberto</small></div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="overview">
+          <div class="admin-overview-grid">
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Equipe</span><h3>Distribuição da clínica</h3></div><button type="button" data-open-admin-tab="professionals">Gerenciar</button></div><div class="admin-overview-list" id="adminTeamOverview"></div></article>
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Estrutura</span><h3>Consultórios e especialidades</h3></div><button type="button" data-open-admin-tab="structure">Gerenciar</button></div><div class="admin-structure-summary"><div><strong id="adminOfficeCount">0</strong><span>Consultórios</span></div><div><strong id="adminSpecialtyCount">0</strong><span>Especialidades</span></div><div><strong id="adminUnassigned">0</strong><span>Sem carteira</span></div></div><div class="admin-overview-list" id="adminOfficeOverview"></div></article>
+          </div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="professionals" hidden>
+          <div class="admin-split">
+            <form class="admin-form-card" id="adminProfessionalForm">
+              <input id="adminProfessionalId" type="hidden">
+              <span class="eyebrow">Equipe e segurança</span><h3 id="adminProfessionalFormTitle">Novo profissional</h3><p>Cadastre o profissional e prepare seu acesso individual.</p>
+               <label>Nome completo<input id="adminProfessionalName" type="text" required></label>
+               <label class="admin-photo-field">Foto do profissional <input id="adminProfessionalPhoto" type="file" accept="image/jpeg,image/png,image/webp"><small>JPG, PNG ou WEBP · até 2 MB</small><img id="adminProfessionalPhotoPreview" alt="Prévia da foto" hidden></label>
+               <label>E-mail de acesso<div class="admin-email-field"><input id="adminProfessionalEmail" type="text" inputmode="email" autocomplete="off" placeholder="nome.sobrenome" required><span>@instituto.local</span></div><small>Digite somente o nome antes do @.</small></label>
+              <label>Senha temporária<input id="adminTemporaryPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Mínimo de 10 caracteres"></label>
+              <label>Função<input id="adminProfessionalRole" type="text" placeholder="Ex.: Dentista, CRC ou Administrativo"></label>
+              <div class="form-grid two"><label>Nível de acesso<select id="adminAccessRole"><option value="professional">Dentista</option><option value="asb">ASB</option><option value="crc">CRC</option><option value="admin">Admin Geral</option><option value="owner">Proprietária</option></select><small class="access-role-help" id="accessRoleHelp"></small></label><label>Especialidade principal<select id="adminProfessionalSpecialty"><option value="">Selecione</option></select></label></div>
+              <label id="adminServiceSectorField" hidden>Identificação no atendimento<select id="adminServiceSector"><option value="CRC">CRC</option><option value="Recepção">Recepção</option></select><small>Aparecerá ao lado do nome do atendente nas conversas.</small></label>
+              <label id="adminLinkedDentistField" hidden>Dentista responsável<select id="adminLinkedDentist"><option value="">Selecione o dentista</option></select><small>A ASB terá acesso somente à carteira deste dentista.</small></label>
+              <fieldset id="adminCrmChannelsField" hidden style="border:1px solid #dfe5eb;border-radius:12px;padding:14px;margin:0"><legend style="font-weight:800;padding:0 6px">Números permitidos no CRM</legend><p style="margin:0 0 10px;color:#68778a;font-size:12px">Marque somente os números cujas mensagens esta pessoa poderá visualizar e responder.</p><div id="adminCrmChannelOptions" style="display:grid;gap:8px"></div><label style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e5eaf0"><input id="adminCrmManageAutomation" type="checkbox"><span><strong>Gerenciar canais e automações</strong><small style="display:block;color:#7b8795;margin-top:2px">Permite pausar sincronização, escolher datas e executar importações. Use apenas para supervisores.</small></span></label></fieldset>
+              <div class="form-grid two"><label>Consultório<select id="adminProfessionalOffice"><option value="">Selecione</option></select></label><label class="admin-check"><input id="adminOfficeResponsible" type="checkbox"> Responsável pelo consultório</label></div>
+              <label class="admin-check"><input id="adminProfessionalActive" type="checkbox" checked> Acesso ativo</label>
+              <div class="admin-form-actions"><button class="secondary-button" id="cancelProfessionalEdit" type="button" hidden>Cancelar</button><button class="primary-button" type="submit">Salvar profissional</button></div>
+            </form>
+            <div class="admin-table-card">
+              <div class="admin-card-heading"><div><span class="eyebrow">Carteiras</span><h3>Profissionais e acessos</h3></div><span id="adminProfessionalCount">0 cadastrados</span></div>
+              <div class="admin-professional-filters" aria-label="Filtros de profissionais e acessos">
+                <label class="admin-professional-search"><span>Buscar</span><input id="adminProfessionalSearch" type="search" placeholder="Nome ou e-mail" autocomplete="off"></label>
+                <label><span>Nível de acesso</span><select id="adminProfessionalRoleFilter"><option value="">Todos os níveis</option><option value="professional">Dentista</option><option value="asb">ASB</option><option value="crc">CRC</option><option value="admin">Admin Geral</option><option value="owner">Proprietária</option></select></label>
+                <label><span>Situação</span><select id="adminProfessionalStatusFilter"><option value="">Todos</option><option value="active">Ativos</option><option value="blocked">Bloqueados</option></select></label>
+                <button class="secondary-button" id="clearProfessionalFilters" type="button">Limpar filtros</button>
+              </div>
+              <div class="admin-table-wrap"><table><thead><tr><th>Profissional</th><th>Nível de acesso</th><th>Especialidade</th><th>Consultório</th><th>Carteira vinculada</th><th>Carteira</th><th>Acesso</th><th></th></tr></thead><tbody id="adminProfessionalsTable"></tbody></table></div>
+            </div>
+          </div>
+          <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Segurança</span><h3>Solicitações de senha</h3></div></div><div class="admin-master-list" id="adminPasswordRequests"></div></article>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="crm-access" hidden>
+          <section class="workspace-card crm-access-workspace">
+            <div class="admin-card-heading"><div><span class="eyebrow">Controle operacional</span><h3>Quem recebe cada número</h3><p>Defina os canais visíveis por atendente. A mesma regra controla inbox, fila, resposta e transferência.</p></div><button class="secondary-button" id="refreshCrmAccess" type="button">Atualizar</button></div>
+            <div class="crm-access-grid" id="crmAccessGrid"><p class="empty-state">Carregando permissões⬦</p></div>
+          </section>
+          <section class="workspace-card crm-transfer-test-card">
+            <div class="admin-card-heading"><div><span class="eyebrow">Validação segura</span><h3>Testar transferência</h3><p>Confirme a permissão antes de transferir um atendimento. Este teste não altera conversas.</p></div></div>
+            <div class="crm-transfer-test-form"><label>Atendente<select id="crmTestUser"><option value="">Selecione</option></select></label><label>Número / canal<select id="crmTestChannel"><option value="">Selecione</option></select></label><button class="primary-button" id="testCrmTransfer" type="button">Testar permissão</button></div>
+            <div class="crm-transfer-result" id="crmTransferTestResult" hidden></div>
+          </section>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="structure" hidden>
+          <div class="admin-overview-grid">
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Cadastro mestre</span><h3>Especialidades</h3></div></div><form class="admin-inline-form" id="adminSpecialtyForm"><input id="adminSpecialtyName" type="text" placeholder="Ex.: Implantodontia" required><button class="primary-button" type="submit">＋ Adicionar</button></form><div class="admin-master-list" id="adminSpecialtiesList"></div></article>
+            <article class="admin-card"><div class="admin-card-heading"><div><span class="eyebrow">Estrutura física</span><h3>Consultórios</h3></div></div><form class="admin-inline-form" id="adminOfficeForm"><input id="adminOfficeName" type="text" placeholder="Ex.: Consultório 4" required><button class="primary-button" type="submit">＋ Adicionar</button></form><div class="admin-master-list" id="adminOfficesList"></div></article>
+          </div>
+        </div>
+
+        <div class="admin-panel" data-admin-panel="imports" hidden>
+          <div class="import-layout"><article class="admin-card import-guide"><span class="eyebrow">Entrada segura de dados</span><h3>Central de importações</h3><p>Envie as planilhas cruas. A auditoria remove duplicidades, preserva a data mais recente e bloqueia compromissos, eventos e registros sem código de paciente para revisão.</p><div class="import-steps"><span><b>1</b> Auditar planilhas</span><span><b>2</b> Validar carteiras</span><span><b>3</b> Confirmar importação</span></div><div class="import-columns"><strong>Colunas exigidas</strong><code>Data, Paciente, Categoria, Profissional</code><br><strong>Formato do paciente</strong><code>Nome do paciente (código)</code></div></article><article class="admin-card"><div class="import-drop"><span>↑</span><strong>Importar dados</strong><small>Escolha arquivos individuais ou uma pasta inteira</small><div class="import-choice-actions"><button id="selectImportFiles" type="button">Selecionar arquivos</button><button id="selectImportFolder" type="button">Ler pasta</button></div><input id="adminImportFile" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" multiple hidden><input id="adminImportFolder" type="file" accept=".xlsx,.csv" webkitdirectory multiple hidden></div><div class="import-file-info" id="adminImportFileInfo">Nenhuma planilha selecionada.</div><div class="import-preview" id="adminImportPreview"></div><div class="import-result" id="adminImportResult" hidden></div><div class="admin-form-actions"><button class="secondary-button" id="auditAppointments" type="button" disabled>1. Auditar planilhas</button><button class="secondary-button" id="validateAppointments" type="button" disabled>2. Validar</button><button class="primary-button" id="confirmAppointments" type="button" disabled>3. Confirmar importação</button></div></article></div>
+          <div class="special-import-grid">
+            <article class="admin-card">
+              <span class="eyebrow">Catálogo exclusivo de vínculos</span><h3>Nomes pesquisáveis</h3>
+              <p>Esta lista alimenta somente as sugestões do campo Vínculos. Ela não cria pacientes e não altera nenhuma carteira.</p>
+              <div class="import-columns"><strong>Coluna aceita</strong><code>Paciente ou Nome</code></div>
+              <input id="relationshipDirectoryFile" type="file" accept=".xlsx,.csv" multiple>
+              <div class="import-preview" id="relationshipDirectoryPreview"></div><div class="import-result" id="relationshipDirectoryResult" hidden></div>
+              <div class="admin-form-actions"><button class="secondary-button" id="auditRelationshipDirectory" type="button" disabled>1. Auditar</button><button class="primary-button" id="confirmRelationshipDirectory" type="button" disabled>2. Confirmar catálogo</button></div>
+            </article>
+            <article class="admin-card">
+              <span class="eyebrow">Atualização restrita</span><h3>Pacientes agendados</h3>
+              <p>Compara as datas e mantém sempre a mais recente. Nunca duplica pacientes, nunca reduz uma data e preserva todos os demais campos do prontuário.</p>
+              <div class="import-columns"><strong>Colunas exigidas</strong><code>Paciente, Profissional, Status, Data</code><br><strong>Formato do paciente</strong><code>Nome do paciente (código)</code></div>
+              <input id="scheduledPatientsFile" type="file" accept=".xlsx,.csv" multiple>
+              <div class="import-preview" id="scheduledPatientsPreview"></div><div class="import-result" id="scheduledPatientsResult" hidden></div>
+              <div class="admin-form-actions"><button class="secondary-button" id="auditScheduledPatients" type="button" disabled>1. Auditar</button><button class="secondary-button" id="validateScheduledPatients" type="button" disabled>2. Validar</button><button class="primary-button" id="confirmScheduledPatients" type="button" disabled>3. Atualizar agendados</button></div>
+            </article>
+          </div>
+        </div>
+        <div class="admin-panel" data-admin-panel="integrations" hidden><section class="workspace-card"><div class="admin-card-heading"><div><span class="eyebrow">Integrações</span><h3>Central de APIs</h3><p>Ative, desative e configure cada conexão da clínica.</p></div><button class="primary-button" id="newApiButton" type="button">+ Nova API</button></div><div class="api-card-grid" id="apiIntegrationList"></div></section></div>
+
+        <div class="admin-panel" data-admin-panel="audit" hidden>
+          <div class="admin-table-card"><div class="admin-card-heading"><div><span class="eyebrow">Rastreabilidade</span><h3>Histórico de movimentações</h3></div><button id="refreshAudit" type="button">Atualizar</button></div><div class="admin-table-wrap"><table><thead><tr><th>Data e hora</th><th>Paciente</th><th>Evento</th><th>Descrição</th></tr></thead><tbody id="adminAuditTable"></tbody></table></div></div>
+        </div>
+      </section>
+      <dialog class="api-integration-dialog" id="apiIntegrationDialog"><form id="apiIntegrationForm"><header class="api-dialog-header"><div><span class="eyebrow">Configuração de API</span><h2 id="apiDialogTitle">Nova API</h2><p>Os dados ficam restritos ao servidor. O token não será exibido depois de salvo.</p></div></header><input id="apiIntegrationId" type="hidden"><div class="api-form-grid"><label class="api-field-full">Nome da API<input id="apiIntegrationName" type="text" required placeholder="Ex.: Clinicorp"></label><label class="api-field-full">O que esta API faz?<textarea id="apiIntegrationDescription" required placeholder="Descreva em uma frase a finalidade desta integração."></textarea></label><label>URL base<input id="apiIntegrationUrl" type="url" placeholder="https://..."></label><label>ID da conta / assinante<input id="apiIntegrationSubscriberId" type="text" placeholder="Quando a API exigir"></label><label>Usuário API<input id="apiIntegrationUser" type="text" placeholder="Usuário de integração"></label><label>Token API<input id="apiIntegrationToken" type="password" autocomplete="new-password" placeholder="Informe ou mantenha o atual"></label><label>Intervalo entre consultas (segundos)<input id="apiIntegrationInterval" type="number" min="10" max="3600" value="60" required><small>Clinicorp permite no máximo 360 consultas por hora. Mínimo: 10 segundos.</small></label></div><footer class="api-dialog-actions"><button class="api-delete-button" id="deleteApiButton" type="button" hidden>Excluir API</button><span class="api-dialog-actions-right"><button class="secondary-button" id="cancelApiDialog" type="button">Cancelar</button><button class="primary-button" type="submit">Salvar API</button></span></footer></form></dialog>
+      <dialog class="api-sync-monitor-dialog" id="apiSyncMonitorDialog"><header class="api-dialog-header"><div><span class="eyebrow">Monitoramento em tempo real</span><h2 id="apiMonitorTitle">Sincronização Clinicorp</h2><p id="apiMonitorSummary">Carregando informações…</p></div><button class="secondary-button" id="closeApiMonitor" type="button">Fechar</button></header><div class="api-monitor-body"><div class="api-monitor-status"><strong id="apiMonitorStatus">—</strong><span id="apiMonitorCount">—</span></div><div class="admin-table-wrap"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Telefone</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody id="apiMonitorLogs"><tr class="loading-row"><td colspan="5">Carregando…</td></tr></tbody></table></div><details class="api-failure-list"><summary><strong>Relação de falhas</strong> <span id="apiFailureCount">0 pacientes</span></summary><p>Estes pacientes ficam fora das próximas sincronizações para economizar tempo e requisições.</p><div class="admin-table-wrap"><table><thead><tr><th>Paciente</th><th>Motivo da falha</th><th>Última tentativa</th></tr></thead><tbody id="apiFailureLogs"><tr class="loading-row"><td colspan="3">Nenhuma falha registrada.</td></tr></tbody></table></div><button class="secondary-button" id="retryApiFailures" type="button">Liberar falhas para tentar novamente</button></details></div></dialog>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/update-notice.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

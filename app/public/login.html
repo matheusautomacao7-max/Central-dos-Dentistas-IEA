@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Central do Dentista | Instituto Eduardo Ayub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/png" href="/assets/favicon-iea.png">
+</head>
+<body class="iea-login-page">
+  <section class="login-intro" id="loginIntro" aria-label="Instituto Eduardo Ayub"><img src="/assets/login/logo-transparent.png" alt="Instituto Eduardo Ayub"></section>
+  <main class="iea-login-layout" id="loginScreen" aria-hidden="true">
+    <section class="iea-login-form-side">
+      <div class="iea-login-content">
+        <img class="iea-login-logo" src="/assets/login/logo3d-new.png" alt="Central do Dentista IEA">
+        <div class="iea-login-heading"><h1>Acesse sua conta</h1></div>
+        <form id="loginForm" novalidate>
+          <label>Usuário<input id="email" type="email" autocomplete="username" placeholder="Digite seu usuário" required></label>
+          <label>Senha<div class="password-field"><input id="password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required><button id="togglePassword" type="button" aria-label="Mostrar senha"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.75"/></svg></button></div></label>
+          <p id="loginError" class="auth-error" hidden></p>
+          <a class="iea-forgot" href="/forgot-password">Esqueci minha senha</a>
+          <button class="iea-login-submit" type="submit">Entrar</button>
+        </form>
+      </div>
+      <footer>© <span id="loginYear"></span> Instituto Eduardo Ayub — Todos os direitos reservados</footer>
+    </section>
+    <aside class="iea-login-hero" aria-label="Fachada do Instituto Eduardo Ayub"></aside>
+  </main>
+  <script src="/login.js"></script>
+</body>
+</html>

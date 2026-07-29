@@ -1,0 +1,10 @@
+.git
+.agents
+node_modules
+outputs
+qa
+app/__pycache__
+app/data/clinic.db
+*.xlsx
+*.bat
+*.ps1

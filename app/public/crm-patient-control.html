@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Controle de pacientes | IEA</title>
+  <link rel="icon" href="/favicon.png">
+  <style>
+    :root{--navy:#102e3d;--navy2:#174353;--gold:#10a85b;--bg:#f3f6f8;--line:#e4ebef;--muted:#6f8090;--green:#16a45a;--red:#c54747;--accent:#24cf69}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#082542;font-family:Manrope,Inter,Segoe UI,sans-serif}
+    button,input,select{font:inherit}.shell{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+    aside{background:var(--navy);color:#fff;padding:24px 18px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+    .brand{display:flex;gap:12px;align-items:center;padding:5px 6px 24px;border-bottom:1px solid #ffffff20}.mark{font-size:34px;color:#e8c989}.brand b{display:block}.brand span{font-size:11px;letter-spacing:.11em;color:#dbe8f3}
+    nav{padding-top:22px;display:grid;gap:8px}nav a{color:#dce8f2;text-decoration:none;padding:13px 14px;border-radius:11px;font-weight:700}nav a:hover,nav a.active{background:#ffffff18;color:#fff;border-left:3px solid var(--gold)}
+    .me{margin-top:auto;border-top:1px solid #ffffff20;padding:18px 8px 4px}.me small{color:#abc1d3}
+    main{padding:30px;min-width:0}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-end}.eyebrow{color:#b68636;font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.top h1{margin:5px 0 4px;font-size:32px}.top p{margin:0;color:var(--muted)}
+    .btn{border:1px solid var(--line);background:#fff;color:#143140;border-radius:12px;padding:11px 16px;font-weight:800;cursor:pointer}.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 8px 18px #20c9682c}.btn:disabled{opacity:.55;cursor:wait}
+    .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:24px 0}.card,.panel{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 28px #1736530a}
+    .card{padding:18px}.card span{color:var(--muted);font-size:12px}.card strong{display:block;font-size:28px;margin-top:6px}.card.green strong{color:var(--green)}
+    .panel{overflow:hidden}.filters{padding:18px;display:grid;grid-template-columns:2fr repeat(4,minmax(145px,1fr));gap:10px;border-bottom:1px solid var(--line)}
+    .filters input,.filters select{width:100%;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;background:#fff;color:#17344e}.dates{display:none;grid-column:1/-1;gap:10px;grid-template-columns:repeat(2,190px)}.dates.show{display:grid}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line);gap:12px}.toolbar span{font-size:13px;color:var(--muted)}
+    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:1120px}th{font-size:10px;letter-spacing:.08em;color:#77899a;text-align:left;background:#f7f9fb;padding:13px 16px}td{padding:14px 16px;border-top:1px solid #edf1f4;font-size:13px;vertical-align:middle}tbody tr{cursor:pointer}tbody tr:hover{background:#f7fafc}
+    .person b{display:block;font-size:14px}.person small{color:var(--muted)}.pill{display:inline-flex;border-radius:999px;padding:5px 9px;background:#e9f2f8;color:#174d76;font-weight:800;font-size:11px}.pill.ok{background:#e5f4ed;color:#176a4c}.pill.ai{background:#f3eafb;color:#76509c}
+    .empty{text-align:center!important;color:var(--muted);padding:54px!important}.pager{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--line)}
+    dialog{border:0;border-radius:18px;padding:0;width:min(700px,92vw);box-shadow:0 24px 80px #06162655}dialog::backdrop{background:#06162690}.modal-head{padding:22px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.modal-body{padding:22px 24px}.detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.detail{background:#f6f8fa;border-radius:11px;padding:12px}.detail small{display:block;color:var(--muted);margin-bottom:4px}.notes{grid-column:1/-1;white-space:pre-wrap}.close{border:0;background:#eef2f5;border-radius:9px;width:36px;height:36px;font-size:20px;cursor:pointer}
+    .error{margin:22px 0;background:#fff0f0;border:1px solid #f0c5c5;color:var(--red);padding:14px;border-radius:10px;display:none}
+    body.embed .shell{display:block;min-height:100vh}body.embed aside{display:none}body.embed main{padding:28px 32px}.embed .top h1{font-size:30px}.embed .eyebrow{color:#0aa45a}.embed .card,.embed .panel{border-color:#e6ecef;box-shadow:none}.embed .card strong{color:#102e3d}.embed .card.green strong{color:#12a759}.embed .filters input:focus,.embed .filters select:focus{outline:2px solid #23cc6850;border-color:#25c96a}
+    @media(max-width:1050px){.shell{grid-template-columns:82px 1fr}.brand div:last-child,nav a span,.me{display:none}nav a{text-align:center}.filters{grid-template-columns:repeat(2,1fr)}.cards{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside>
+    <div class="brand"><div class="mark">◒</div><div><b>Instituto</b><span>EDUARDO AYUB</span></div></div>
+    <nav>
+      <a href="/central-crc">⌂ <span>Visão geral</span></a>
+      <a href="/central-crc/whatsapp">◫ <span>CRM WhatsApp</span></a>
+      <a class="active" href="/central-crc/controle-pacientes">◎ <span>Controle de pacientes</span></a>
+    </nav>
+    <div class="me"><b id="userName">Carregando…</b><br><small>Central de relacionamento</small></div>
+  </aside>
+  <main>
+    <div class="top">
+      <div><div class="eyebrow">Central de relacionamento</div><h1>Controle de pacientes</h1><p>Atendimentos finalizados, organizados para consulta, análise e exportação.</p></div>
+      <button class="btn primary" id="exportBtn">↓ Exportar resultados</button>
+    </div>
+    <div id="error" class="error"></div>
+    <section class="cards">
+      <div class="card"><span>Atendimentos encontrados</span><strong id="kTotal">—</strong></div>
+      <div class="card green"><span>Agendamentos</span><strong id="kScheduled">—</strong></div>
+      <div class="card"><span>Com participação da IA</span><strong id="kAi">—</strong></div>
+      <div class="card"><span>Finalizados por humano</span><strong id="kHuman">—</strong></div>
+    </section>
+    <section class="panel">
+      <div class="filters">
+        <input id="search" placeholder="Buscar por paciente ou telefone">
+        <select id="period"><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option><option value="30d" selected>Últimos 30 dias</option><option value="all">Todo o período</option><option value="custom">Período personalizado</option></select>
+        <select id="agent"><option value="">Todos os atendentes</option></select>
+        <select id="category"><option value="">Todas as categorias</option></select>
+        <select id="outcome"><option value="">Todos os resultados</option></select>
+        <select id="scheduled"><option value="">Agendamento: todos</option><option value="yes">Com agendamento</option><option value="no">Sem agendamento</option></select>
+        <select id="channel"><option value="">Todos os canais</option></select>
+        <select id="professional"><option value="">Todos os profissionais</option></select>
+        <select id="actor"><option value="">IA e humano</option><option value="Humano">Finalizado por humano</option><option value="IA">Finalizado pela IA</option></select>
+        <select id="origin"><option value="">Todas as origens</option></select>
+        <div class="dates" id="dates"><input type="date" id="start"><input type="date" id="end"></div>
+      </div>
+      <div class="toolbar"><span id="resultText">Carregando registros…</span><button class="btn" id="clearBtn">Limpar filtros</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Paciente</th><th>Finalizado em</th><th>Atendente</th><th>Categoria</th><th>Resultado</th><th>Agendamento</th><th>Canal</th><th>Profissional</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="pager"><button class="btn" id="prevBtn">Anterior</button><button class="btn" id="nextBtn">Próxima</button></div>
+    </section>
+  </main>
+</div>
+<dialog id="detailModal"><div class="modal-head"><div><div class="eyebrow">Atendimento finalizado</div><h2 id="detailTitle">Paciente</h2></div><button class="close" id="closeModal">×</button></div><div class="modal-body"><div class="detail-grid" id="detailGrid"></div></div></dialog>
+<script src="/crm-patient-control.js?v=20260728-3"></script>
+</body>
+</html>
