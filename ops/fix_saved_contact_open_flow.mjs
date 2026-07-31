@@ -46,6 +46,16 @@ if (!template.includes('open_only:true')) {
   );
 }
 
+if (!template.includes('CRM_START_CONVERSATION_STABLE_V2')) {
+  replaceOnce(
+    /async startNewConversation\(\)\{[\s\S]*?\}\}\s*async loadRealContacts\(\)\{/,
+    `async startNewConversation(){if(this.state.newConversationBusy)return;const contact=this.contactsData.find(item=>String(item.id)===String(this.state.newContactId));if(!contact){this.fireToast('Selecione um contato');return;}if(!this.state.newChannelId){this.fireToast('Selecione o número de saída');return;}this.setState({newConversationBusy:true});try{const response=await fetch('/api/crm/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:contact.name,phone:contact.phone,channel_id:Number(this.state.newChannelId),open_only:true})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao abrir conversa');const id=Number(data.conversation_id||0);if(!id)throw new Error('A conversa foi criada sem um identificador válido');await new Promise(resolve=>this.setState({modal:null,screen:'inbox',inboxFilter:'mine',activeConvId:null,newConversationBusy:false,newMessage:'',searchQuery:''},resolve));await this.loadConversations(true,'mine','');await new Promise(resolve=>this.setState({activeConvId:id},resolve));await this.loadMessages(id,false,true);await Promise.all([this.loadMetrics(true),this.loadAgents(true)]);this.fireToast('Conversa aberta e atribuída a você'); // CRM_START_CONVERSATION_STABLE_V2
+    }catch(error){this.setState({newConversationBusy:false});this.fireToast(error.message||'Não foi possível abrir a conversa');}}
+    async loadRealContacts(){`,
+    'Fluxo estável de abertura da conversa',
+  );
+}
+
 if (template.includes('PRIMEIRA MENSAGEM')) {
   replaceOnce(
     /\s*<label style="display:block;font-size:11px;font-weight:800;color:var\(--text3\);margin-bottom:7px">PRIMEIRA MENSAGEM<\/label>\s*<textarea value="\{\{ newMessage \}\}" sc-camel-on-input="\{\{ onNewMessage \}\}"[\s\S]*?<\/textarea>/,

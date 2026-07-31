@@ -21,6 +21,7 @@ if (!template.includes("CRM_REAL_CONTACTS_V1") && !template.includes("CRM_REALTI
   throw new Error("Integração de contatos reais ausente.");
 }
 if (!template.includes("CRM_START_CONVERSATION_V1")) throw new Error("Início de conversa ausente.");
+if (!template.includes("CRM_START_CONVERSATION_STABLE_V2")) throw new Error("Fluxo estável de abertura de conversa ausente.");
 
 if (!template.includes("CRM_REUSABLE_TAGS_V1")) throw new Error("Reusable tag selector missing.");
 if (!template.includes("CRM_AUDIO_RECORDING_V1")) throw new Error("CRM audio recording missing.");
