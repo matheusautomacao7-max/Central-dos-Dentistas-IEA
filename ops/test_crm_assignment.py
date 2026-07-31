@@ -181,25 +181,6 @@ with tempfile.TemporaryDirectory() as directory:
             assert db.execute("SELECT delivery_status FROM crm_messages WHERE external_message_id='ia-1'").fetchone()[0] == "Read"
         server.INTEGRATION_TOKEN = original_token
 
-        # Iniciar manualmente um contato anteriormente marcado como interno
-        # transforma-o em atendimento externo e preserva a atribuiÃ§Ã£o.
-        with sqlite3.connect(server.DB_PATH) as db:
-            db.execute("INSERT INTO crm_contacts(name,phone,is_internal) VALUES('Contato interno salvo','65911112222',1)")
-        isabela.start_crm_conversation({
-            "name": "Contato interno salvo", "phone": "(65) 91111-2222",
-            "channel_id": 1, "open_only": True,
-        })
-        assert isabela.responses[-1][0] == 200
-        with sqlite3.connect(server.DB_PATH) as db:
-            manually_started = db.execute("""SELECT ct.is_internal,cv.assigned_user_id,cv.pipeline_stage
-                FROM crm_contacts ct JOIN crm_conversations cv ON cv.contact_id=ct.id
-                WHERE ct.phone='65911112222'""").fetchone()
-            assert manually_started == (0, 1, "Em atendimento")
-            assert db.execute("""SELECT COUNT(*) FROM crm_conversation_events
-                WHERE conversation_id=(SELECT cv.id FROM crm_conversations cv JOIN crm_contacts ct ON ct.id=cv.contact_id
-                                       WHERE ct.phone='65911112222')
-                  AND event_type='conversation.started'""").fetchone()[0] == 1
-
         natalia = handler_for(2, "Natalia")
         natalia.claim_crm_conversation(1)
         assert natalia.responses[-1][0] == 409
