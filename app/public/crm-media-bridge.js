@@ -1,9 +1,8 @@
 (function () {
   "use strict";
 
-  // CRM_MEDIA_BRIDGE_AUDIO_DISABLED_V12
-  // O componente principal passou a renderizar áudio nativamente. Este bridge
-  // permanece apenas como fallback de imagens, vídeos e documentos antigos.
+  // CRM_MEDIA_BRIDGE_INCREMENTAL_SAFE_V13
+  // Respostas incrementais vazias não podem apagar os controles já exibidos.
 
   var nativeFetch = window.fetch.bind(window);
   var activeConversationId = null;
@@ -367,16 +366,22 @@
     renderTimer = setTimeout(renderMedia, 60);
   }
 
-  function ingestMessages(payload) {
+  function ingestMessages(payload, incremental) {
     var list = Array.isArray(payload)
       ? payload
       : payload && (payload.messages || payload.items || payload.data);
     if (!Array.isArray(list)) return;
 
     var nextMediaItems = list.filter(function (item) {
-      var type = mediaType(item);
-      return Boolean(type && type !== "audio" && mediaUrl(item));
+      return Boolean(mediaType(item) && mediaUrl(item));
     });
+    if (incremental) {
+      var merged = new Map();
+      mediaItems.concat(nextMediaItems).forEach(function (item, index) {
+        merged.set(itemId(item, index), item);
+      });
+      nextMediaItems = Array.from(merged.values());
+    }
     var nextSignature = JSON.stringify(
       nextMediaItems.map(function (item, index) {
         return [itemId(item, index), mediaUrl(item), itemTimestamp(item)?.getTime() || 0];
@@ -410,10 +415,13 @@
     var response = await nativeFetch(input, init);
 
     if (conversationId && method === "GET") {
+      var incremental = /[?&]after_id=[1-9][0-9]*/.test(String(url || ""));
       response
         .clone()
         .json()
-        .then(ingestMessages)
+        .then(function (payload) {
+          ingestMessages(payload, incremental);
+        })
         .catch(function () {});
     }
 
@@ -438,7 +446,7 @@
         "/api/crm/conversations/" + activeConversationId + "/messages?media_refresh=" + Date.now(),
         { credentials: "same-origin", cache: "no-store" }
       );
-      if (response.ok) ingestMessages(await response.json());
+      if (response.ok) ingestMessages(await response.json(), false);
     } catch (_error) {}
   }
 
