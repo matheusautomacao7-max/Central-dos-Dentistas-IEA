@@ -9,8 +9,6 @@
   var observer = null;
   var mediaSignature = "";
   var renderingMedia = false;
-  var claimedConversationIds = new Set();
-  var claimRequests = new Map();
 
   function mediaType(item) {
     var value = String((item && (item.message_type || item.type)) || "").toLowerCase();
@@ -129,27 +127,6 @@
       .forEach(function (element) {
         element.remove();
       });
-  }
-
-  async function claimConversation(conversationId) {
-    if (!conversationId || claimedConversationIds.has(conversationId)) return;
-    if (claimRequests.has(conversationId)) return claimRequests.get(conversationId);
-    var request = nativeFetch("/api/crm/conversations/" + conversationId + "/claim", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { Accept: "application/json" }
-    })
-      .then(function (response) {
-        if (response.ok || response.status === 409) {
-          claimedConversationIds.add(conversationId);
-        }
-      })
-      .catch(function () {})
-      .finally(function () {
-        claimRequests.delete(conversationId);
-      });
-    claimRequests.set(conversationId, request);
-    return request;
   }
 
   function timelineElement() {
@@ -418,13 +395,11 @@
 
     if (conversationId && method === "GET") {
       if (activeConversationId && activeConversationId !== conversationId) {
-        claimedConversationIds.delete(activeConversationId);
         removeOrphanedMedia();
         mediaItems = [];
         mediaSignature = "";
       }
       activeConversationId = conversationId;
-      await claimConversation(conversationId);
     }
 
     var response = await nativeFetch(input, init);
