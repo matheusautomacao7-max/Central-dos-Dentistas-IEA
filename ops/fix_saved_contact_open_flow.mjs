@@ -46,7 +46,7 @@ if (!template.includes('open_only:true')) {
   );
 }
 
-if (!template.includes('CRM_START_CONVERSATION_STABLE_V2')) {
+if (!template.includes('CRM_START_CONVERSATION_STABLE_V2') && !template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4')) {
   replaceOnce(
     /async startNewConversation\(\)\{[\s\S]*?\}\}\s*async loadRealContacts\(\)\{/,
     `async startNewConversation(){if(this.state.newConversationBusy)return;const contact=this.contactsData.find(item=>String(item.id)===String(this.state.newContactId));if(!contact){this.fireToast('Selecione um contato');return;}if(!this.state.newChannelId){this.fireToast('Selecione o número de saída');return;}this.setState({newConversationBusy:true});try{const response=await fetch('/api/crm/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:contact.name,phone:contact.phone,channel_id:Number(this.state.newChannelId),open_only:true})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao abrir conversa');const id=Number(data.conversation_id||0);if(!id)throw new Error('A conversa foi criada sem um identificador válido');await new Promise(resolve=>this.setState({modal:null,screen:'inbox',inboxFilter:'mine',activeConvId:null,newConversationBusy:false,newMessage:'',searchQuery:''},resolve));await this.loadConversations(true,'mine','');await new Promise(resolve=>this.setState({activeConvId:id},resolve));await this.loadMessages(id,false,true);await Promise.all([this.loadMetrics(true),this.loadAgents(true)]);this.fireToast('Conversa aberta e atribuída a você'); // CRM_START_CONVERSATION_STABLE_V2
@@ -81,6 +81,27 @@ if (!template.includes('CRM_CONVERSATION_ID_NORMALIZED_V3')) {
     /this\.convData\.find\(c=>c\.id===S\.activeConvId\)/,
     `this.convData.find(c=>Number(c.id)===Number(S.activeConvId))`,
     'Normalização da conversa renderizada',
+  );
+}
+
+if (!template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4')) {
+  replaceOnce(
+    /componentDidMount\(\)\{([\s\S]*?)this\.loadMetrics\(\);\s*this\.loadConversations\(false,'active'\);/,
+    `componentDidMount(){$1this.loadMetrics();
+    this.resumePendingConversation(); // CRM_CONVERSATION_RELOAD_RESUME_V4`,
+    'Restauração da conversa após recarregar',
+  );
+  replaceOnce(
+    /async startNewConversation\(\)\{[\s\S]*?\}\}\s*async loadRealContacts\(\)\{/,
+    `async startNewConversation(){if(this.state.newConversationBusy)return;const contact=this.contactsData.find(item=>String(item.id)===String(this.state.newContactId));if(!contact){this.fireToast('Selecione um contato');return;}if(!this.state.newChannelId){this.fireToast('Selecione o número de saída');return;}this.setState({newConversationBusy:true});try{const response=await fetch('/api/crm/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:contact.name,phone:contact.phone,channel_id:Number(this.state.newChannelId),open_only:true})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao abrir conversa');const id=Number(data.conversation_id||0);if(!id)throw new Error('A conversa foi criada sem um identificador válido');sessionStorage.setItem('iea.crm.pendingConversationId',String(id));window.location.replace('/central-crc/whatsapp?conversation='+encodeURIComponent(id)+'&reload='+Date.now());}catch(error){this.setState({newConversationBusy:false});this.fireToast(error.message||'Não foi possível abrir a conversa');}}
+    async resumePendingConversation(){const id=Number(sessionStorage.getItem('iea.crm.pendingConversationId')||0)||null;sessionStorage.removeItem('iea.crm.pendingConversationId');if(!id){await this.loadConversations(false,'active','');return;}await new Promise(resolve=>this.setState({screen:'inbox',inboxFilter:'mine',activeConvId:id,searchQuery:''},resolve));await this.loadConversations(false,'mine','');await new Promise(resolve=>this.setState({activeConvId:id},resolve));await this.loadMessages(id,false,true);this.fireToast('Conversa aberta e atribuída a você');}
+    async loadRealContacts(){`,
+    'Recarga confiável da conversa criada',
+  );
+  replaceOnce(
+    /tags:\[\.\.\.c\.tags,\.\.\.\(!c\.assignedUserId\?\[c\.queueReason\]:\[\]\),\.\.\.\(autoLabel\[c\.automationState\]\?\[autoLabel\[c\.automationState\]\]:\[\]\)\]/,
+    `tags:[...c.tags,...(c.assignedUserId?['Atendente: '+c.owner]:[c.queueReason]),...(autoLabel[c.automationState]?[autoLabel[c.automationState]]:[])]`,
+    'Identificação visual do atendente',
   );
 }
 
