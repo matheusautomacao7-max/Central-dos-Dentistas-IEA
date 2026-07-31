@@ -56,6 +56,34 @@ if (!template.includes('CRM_START_CONVERSATION_STABLE_V2')) {
   );
 }
 
+if (!template.includes('CRM_CONVERSATION_ID_NORMALIZED_V3')) {
+  replaceOnce(
+    /const data=await this\.readJsonResponse\(response\),previous=this\.state\.activeConvId,oldById=new Map\(this\.convData\.map\(c=>\[c\.id,c\]\)\);/,
+    `const data=await this.readJsonResponse(response),previous=Number(this.state.activeConvId||0)||null,oldById=new Map(this.convData.map(c=>[Number(c.id),c])); // CRM_CONVERSATION_ID_NORMALIZED_V3`,
+    'Normalização do estado da conversa',
+  );
+  replaceOnce(
+    /const channel='channel'\+item\.channel_id,old=oldById\.get\(item\.id\),colorIndex=/,
+    `const channel='channel'+item.channel_id,old=oldById.get(Number(item.id)),colorIndex=`,
+    'Normalização do cache da conversa',
+  );
+  replaceOnce(
+    /return \{id:item\.id,contactId:item\.contact_id,/,
+    `return {id:Number(item.id),contactId:item.contact_id,`,
+    'Normalização do ID carregado',
+  );
+  replaceOnce(
+    /openConversation\(id\)\{this\.setState\(\{activeConvId:id\}\);this\.loadMessages\(id,false,true\);\}/,
+    `openConversation(id){const conversationId=Number(id||0)||null;this.setState({activeConvId:conversationId});if(conversationId)this.loadMessages(conversationId,false,true);}`,
+    'Normalização da abertura manual',
+  );
+  replaceOnce(
+    /this\.convData\.find\(c=>c\.id===S\.activeConvId\)/,
+    `this.convData.find(c=>Number(c.id)===Number(S.activeConvId))`,
+    'Normalização da conversa renderizada',
+  );
+}
+
 if (template.includes('PRIMEIRA MENSAGEM')) {
   replaceOnce(
     /\s*<label style="display:block;font-size:11px;font-weight:800;color:var\(--text3\);margin-bottom:7px">PRIMEIRA MENSAGEM<\/label>\s*<textarea value="\{\{ newMessage \}\}" sc-camel-on-input="\{\{ onNewMessage \}\}"[\s\S]*?<\/textarea>/,
