@@ -5145,13 +5145,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             self.crm_activate_due_returns(db)
             summary = db.execute(f"""SELECT
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL)) THEN 1 ELSE 0 END),0) AS active,
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL THEN 1 ELSE 0 END),0) AS waiting,
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NOT NULL THEN 1 ELSE 0 END),0) AS in_service,
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id=? THEN 1 ELSE 0 END),0) AS mine,
-                COALESCE(SUM(CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN 1 ELSE 0 END),0) AS resolved_today,
-                COALESCE(SUM(CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? AND cv.resolved_by_user_id=? THEN 1 ELSE 0 END),0) AS resolved_by_me_today,
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL THEN 1 ELSE 0 END),0) AS unread,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL)) THEN ct.id END) AS active,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL THEN ct.id END) AS waiting,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NOT NULL THEN ct.id END) AS in_service,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id=? THEN ct.id END) AS mine,
+                COUNT(DISTINCT CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN ct.id END) AS resolved_today,
+                COUNT(DISTINCT CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? AND cv.resolved_by_user_id=? THEN ct.id END) AS resolved_by_me_today,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL THEN ct.id END) AS unread,
                 COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL THEN cv.unread_count ELSE 0 END),0) AS unread_messages
               FROM crm_conversations cv
               JOIN crm_contacts ct ON ct.id=cv.contact_id
@@ -5160,8 +5160,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
               (self.authenticated_user["id"], start_date.isoformat(), end_date.isoformat(),
                start_date.isoformat(), end_date.isoformat(), self.authenticated_user["id"], *metric_params)).fetchone()
             sla = db.execute(f"""SELECT
-                COALESCE(SUM(CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL
-                  AND (julianday('now','localtime')-julianday(cv.queue_entered_at))*1440>ch.sla_minutes THEN 1 ELSE 0 END),0) AS overdue,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL
+                  AND (julianday('now','localtime')-julianday(cv.queue_entered_at))*1440>ch.sla_minutes THEN ct.id END) AS overdue,
                 ROUND(COALESCE(AVG(CASE WHEN cv.first_response_at IS NOT NULL AND cv.queue_entered_at IS NOT NULL
                   AND datetime(cv.first_response_at)>=datetime(cv.queue_entered_at)
                   THEN (julianday(cv.first_response_at)-julianday(cv.queue_entered_at))*1440 END),0),1) AS avg_first_response_minutes,
@@ -5173,8 +5173,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
               JOIN crm_channels ch ON ch.id=cv.channel_id
               WHERE {metric_where}""", (start_date.isoformat(), end_date.isoformat(), *metric_params)).fetchone()
             agent_performance = db.execute(f"""SELECT u.id,u.name,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,
-                SUM(CASE WHEN cv.status<>'Resolvida' AND date(COALESCE(cv.last_message_at,cv.created_at)) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS active,
-                SUM(CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN 1 ELSE 0 END) AS resolved_today,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND date(COALESCE(cv.last_message_at,cv.created_at)) BETWEEN ? AND ? THEN ct.id END) AS active,
+                COUNT(DISTINCT CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN ct.id END) AS resolved_today,
                 ROUND(COALESCE(AVG(CASE WHEN cv.first_response_at IS NOT NULL AND cv.queue_entered_at IS NOT NULL
                   AND date(cv.first_response_at) BETWEEN ? AND ?
                   AND datetime(cv.first_response_at)>=datetime(cv.queue_entered_at)
