@@ -6,22 +6,56 @@
   'use strict';
 
   var photoByName = new Map();
+  var photoByPhone = new Map();
   var refreshInFlight = false;
-  var decorateScheduled = false;
+  var decorateTimer = null;
+  var lastRefreshAt = 0;
+  var visibleObserver = null;
 
   function normalize(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
   }
 
+  function digits(value) {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  function inboxVisible() {
+    if (document.hidden) return false;
+    return Array.from(document.querySelectorAll('h1,h2')).some(function (node) {
+      return normalize(node.textContent) === 'conversas';
+    });
+  }
+
+  function loadAvatar(avatar, photoUrl) {
+    if (!avatar || !photoUrl || avatar.dataset.ieaProfilePhoto === photoUrl) return;
+    var image = new Image();
+    image.decoding = 'async';
+    image.onload = function () {
+      avatar.dataset.ieaProfilePhoto = photoUrl;
+      avatar.style.backgroundImage = 'url("' + photoUrl.replace(/"/g, '%22') + '")';
+      avatar.style.backgroundPosition = 'center';
+      avatar.style.backgroundSize = 'cover';
+      avatar.style.backgroundRepeat = 'no-repeat';
+      avatar.style.color = 'transparent';
+      avatar.style.textShadow = 'none';
+    };
+    image.src = photoUrl;
+  }
+
   function setAvatar(avatar, photoUrl) {
     if (!avatar || !photoUrl || avatar.dataset.ieaProfilePhoto === photoUrl) return;
-    avatar.dataset.ieaProfilePhoto = photoUrl;
-    avatar.style.backgroundImage = 'url("' + photoUrl.replace(/"/g, '%22') + '")';
-    avatar.style.backgroundPosition = 'center';
-    avatar.style.backgroundSize = 'cover';
-    avatar.style.backgroundRepeat = 'no-repeat';
-    avatar.style.color = 'transparent';
-    avatar.style.textShadow = 'none';
+    avatar.dataset.ieaPendingPhoto = photoUrl;
+    if (!visibleObserver) {
+      visibleObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          visibleObserver.unobserve(entry.target);
+          loadAvatar(entry.target, entry.target.dataset.ieaPendingPhoto);
+        });
+      }, { rootMargin: '180px 0px' });
+    }
+    visibleObserver.observe(avatar);
   }
 
   function isAvatar(element) {
@@ -35,11 +69,15 @@
   }
 
   function decoratePhotosNow() {
-    if (!photoByName.size) return;
-    var textNodes = document.querySelectorAll('span, h2, div');
+    if (!photoByName.size || !inboxVisible()) return;
+    // Elementos de texto sem filhos cobrem os nomes da lista, cabeçalho e
+    // painel lateral sem caminhar por todos os contêineres da aplicação.
+    var textNodes = document.querySelectorAll('span, strong, h2, h3, p');
     textNodes.forEach(function (label) {
       if (label.children.length) return;
-      var photoUrl = photoByName.get(normalize(label.textContent));
+      var labelText = normalize(label.textContent);
+      var phone = digits(label.textContent);
+      var photoUrl = photoByName.get(labelText) || (phone.length >= 8 ? photoByPhone.get(phone.slice(-8)) : '');
       if (!photoUrl) return;
       // Já resolvido para esta mesma URL: pula a varredura cara dos pais.
       if (label.dataset.ieaPhotoResolved === photoUrl) return;
@@ -62,26 +100,31 @@
     // fila por quadro de animação, cada mutação individual disparava um novo
     // varredura completa da página — essa era a causa da lentidão percebida
     // com listas grandes (ex.: funil com 140+ cartões).
-    if (decorateScheduled) return;
-    decorateScheduled = true;
-    window.requestAnimationFrame(function () {
-      decorateScheduled = false;
+    if (decorateTimer) window.clearTimeout(decorateTimer);
+    decorateTimer = window.setTimeout(function () {
+      decorateTimer = null;
       decoratePhotosNow();
-    });
+    }, 160);
   }
 
   async function refreshPhotos() {
-    if (refreshInFlight) return;
+    if (refreshInFlight || !inboxVisible() || Date.now() - lastRefreshAt < 45000) return;
     refreshInFlight = true;
     try {
       var response = await fetch('/api/crm/conversations?view=active', { headers: { Accept: 'application/json' } });
       if (!response.ok) return;
       var data = await response.json();
+      window.__ieaCrmConversationItems = data.items || [];
+      window.__ieaCrmConversationItemsAt = Date.now();
       (data.items || []).forEach(function (item) {
         if (item.name && item.contact_id) {
-          photoByName.set(normalize(item.name), item.profile_picture_url || ('/api/crm/contacts/' + item.contact_id + '/profile-photo'));
+          var url = item.profile_picture_url || ('/api/crm/contacts/' + item.contact_id + '/profile-photo');
+          photoByName.set(normalize(item.name), url);
+          var phone = digits(item.phone);
+          if (phone.length >= 8) photoByPhone.set(phone.slice(-8), url);
         }
       });
+      lastRefreshAt = Date.now();
       decoratePhotos();
     } catch (_) {
       // O CRM continua normalmente, apenas preserva as iniciais enquanto a foto n\u00e3o estiver dispon\u00edvel.
@@ -93,5 +136,8 @@
   var observer = new MutationObserver(function () { decoratePhotos(); });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   refreshPhotos();
-  window.setInterval(refreshPhotos, 60000);
+  window.setInterval(refreshPhotos, 90000);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshPhotos();
+  });
 }());

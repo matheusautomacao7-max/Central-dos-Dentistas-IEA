@@ -4988,9 +4988,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         status = str(query.get("status", [""])[0]).strip()
         search = str(query.get("search", [""])[0]).strip()
         view = str(query.get("view", ["workspace"])[0]).strip().lower()
+        channel_id = str(query.get("channel_id", [""])[0]).strip()
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         conditions, params = ["ch.active=1", "ch.sync_enabled=1", scope_sql], list(scope_params)
         if status: conditions.append("cv.status=?"); params.append(status)
+        if channel_id:
+            try:
+                conditions.append("ch.id=?")
+                params.append(int(channel_id))
+            except ValueError:
+                pass
         if search: conditions.append("(lower(ct.name) LIKE ? OR ct.phone LIKE ?)"); params.extend([f"%{search.lower()}%", f"%{self.crm_phone(search) or search}%"])
         if view == "queue":
             conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL")
@@ -5759,6 +5766,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         message_type = str(payload.get("message_type") or "text").strip().lower()
         body = str(payload.get("text") or "").strip()
         audio_bytes = b""
+        media_bytes = b""
+        original_file_name = ""
         mime_type = None
         media_url = None
         duration_seconds = None
@@ -5783,6 +5792,31 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": str(error)}, HTTPStatus.UNPROCESSABLE_ENTITY)
             mime_type = "audio/ogg"
             duration_seconds = crm_audio_duration_seconds(audio_bytes)
+        elif message_type in {"image", "video", "document"}:
+            encoded_media = str(payload.get("media_base64") or "").strip()
+            mime_type = str(payload.get("mime_type") or "application/octet-stream").split(";", 1)[0].strip().lower()
+            original_file_name = Path(str(payload.get("file_name") or "")).name[:180]
+            expected_group = {
+                "image": {"image/jpeg", "image/png", "image/webp"},
+                "video": {"video/mp4"},
+                "document": {"application/pdf"},
+            }[message_type]
+            if mime_type not in expected_group:
+                return self.send_json({"error": "Formato de arquivo não suportado."}, HTTPStatus.BAD_REQUEST)
+            try:
+                media_bytes = base64.b64decode(encoded_media, validate=True)
+            except (ValueError, TypeError):
+                return self.send_json({"error": "O arquivo enviado está corrompido."}, HTTPStatus.BAD_REQUEST)
+            if not media_bytes:
+                return self.send_json({"error": "Selecione um arquivo antes de enviar."}, HTTPStatus.BAD_REQUEST)
+            if len(media_bytes) > 12 * 1024 * 1024:
+                return self.send_json({"error": "O arquivo ultrapassa o limite de 12 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            if not original_file_name:
+                original_file_name = {
+                    "image/jpeg": "imagem.jpg", "image/png": "imagem.png", "image/webp": "imagem.webp",
+                    "video/mp4": "video.mp4", "application/pdf": "documento.pdf",
+                }[mime_type]
+            body = body or original_file_name
         elif message_type != "text":
             return self.send_json({"error": "Tipo de mensagem não suportado."}, HTTPStatus.BAD_REQUEST)
         elif not body:
@@ -5809,12 +5843,22 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if message_type == "audio":
                 evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
                 evolution_payload = {"number": f"55{row['phone']}", "audio": base64.b64encode(audio_bytes).decode("ascii"), "encoding": False}
+            elif message_type in {"image", "video", "document"}:
+                evolution_path = f"/message/sendMedia/{instance_path}"
+                evolution_payload = {
+                    "number": f"55{row['phone']}",
+                    "mediatype": message_type,
+                    "mimetype": mime_type,
+                    "caption": body,
+                    "media": base64.b64encode(media_bytes).decode("ascii"),
+                    "fileName": original_file_name,
+                }
             else:
                 evolution_path = f"/message/sendText/{instance_path}"
                 evolution_payload = {"number": f"55{row['phone']}", "text": body}
             request=Request(f"{base_url.rstrip('/')}{evolution_path}",data=json.dumps(evolution_payload).encode(),method="POST",headers={"Content-Type":"application/json","apikey":api_key})
             try:
-                request_timeout = 60 if message_type == "audio" else 20
+                request_timeout = 60 if message_type != "text" else 20
                 with urlopen(request,timeout=request_timeout) as response: response_data=json.loads(response.read().decode() or "{}")
             except HTTPError as error:
                 evolution_error = error.read().decode(errors="replace")[:500]
@@ -5829,6 +5873,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 target = CRM_MEDIA_DIR / file_name
                 temporary = target.with_suffix(target.suffix + ".tmp")
                 temporary.write_bytes(audio_bytes)
+                temporary.replace(target)
+                media_url = f"/api/crm/media/{file_name}"
+            elif message_type in {"image", "video", "document"}:
+                extension = self.crm_media_extension(mime_type, original_file_name)
+                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+                file_name = f"{secrets.token_hex(16)}.{extension}"
+                target = CRM_MEDIA_DIR / file_name
+                temporary = target.with_suffix(target.suffix + ".tmp")
+                temporary.write_bytes(media_bytes)
                 temporary.replace(target)
                 media_url = f"/api/crm/media/{file_name}"
             service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
@@ -5873,12 +5926,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"updated": True, "id": contact_id, "is_internal": bool(is_internal)})
 
     def start_crm_conversation(self, payload: dict) -> None:
-        """Open (or reopen) a conversation and send its first CRM-authored message."""
+        """Open (or reopen) a conversation, optionally without sending a message."""
         if not self.require_crc_access():
             return
         name = str(payload.get("name") or "").strip()[:160]
         phone = self.crm_phone(payload.get("phone"))
         body = str(payload.get("text") or "").strip()
+        open_only = bool(payload.get("open_only"))
         try:
             channel_id = int(payload.get("channel_id") or 0)
         except (TypeError, ValueError):
@@ -5889,7 +5943,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "O contato precisa ter um telefone válido com DDD."}, HTTPStatus.BAD_REQUEST)
         if not channel_id:
             return self.send_json({"error": "Selecione o número que enviará a mensagem."}, HTTPStatus.BAD_REQUEST)
-        if not body:
+        if not open_only and not body:
             return self.send_json({"error": "Digite a primeira mensagem."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             channel = db.execute("SELECT id FROM crm_channels WHERE id=? AND active=1 AND sync_enabled=1", (channel_id,)).fetchone()
@@ -5901,16 +5955,28 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           ON CONFLICT(phone) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE crm_contacts.name END,
                           updated_at=datetime('now','localtime')""", (name, phone))
             contact = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (phone,)).fetchone()
-            db.execute("""INSERT INTO crm_conversations(channel_id,contact_id,status,pipeline_stage,assigned_user_id,
-                              assigned_at,first_response_at,unread_count,last_direction,updated_at)
-                          VALUES(?,?,'Aberta','Em atendimento',?,datetime('now','localtime'),datetime('now','localtime'),0,'outbound',datetime('now','localtime'))
-                          ON CONFLICT(channel_id,contact_id) DO UPDATE SET status='Aberta',pipeline_stage='Em atendimento',
-                              assigned_user_id=excluded.assigned_user_id,assigned_at=COALESCE(crm_conversations.assigned_at,excluded.assigned_at),
-                              first_response_at=COALESCE(crm_conversations.first_response_at,excluded.first_response_at),
-                              unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,updated_at=datetime('now','localtime')""",
-                       (channel_id, contact["id"], self.authenticated_user["id"]))
+            if open_only:
+                db.execute("""INSERT INTO crm_conversations(channel_id,contact_id,status,pipeline_stage,assigned_user_id,
+                                  assigned_at,unread_count,updated_at)
+                              VALUES(?,?,'Aberta','Em atendimento',?,datetime('now','localtime'),0,datetime('now','localtime'))
+                              ON CONFLICT(channel_id,contact_id) DO UPDATE SET status='Aberta',pipeline_stage='Em atendimento',
+                                  assigned_user_id=excluded.assigned_user_id,
+                                  assigned_at=COALESCE(crm_conversations.assigned_at,excluded.assigned_at),
+                                  unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,updated_at=datetime('now','localtime')""",
+                           (channel_id, contact["id"], self.authenticated_user["id"]))
+            else:
+                db.execute("""INSERT INTO crm_conversations(channel_id,contact_id,status,pipeline_stage,assigned_user_id,
+                                  assigned_at,first_response_at,unread_count,last_direction,updated_at)
+                              VALUES(?,?,'Aberta','Em atendimento',?,datetime('now','localtime'),datetime('now','localtime'),0,'outbound',datetime('now','localtime'))
+                              ON CONFLICT(channel_id,contact_id) DO UPDATE SET status='Aberta',pipeline_stage='Em atendimento',
+                                  assigned_user_id=excluded.assigned_user_id,assigned_at=COALESCE(crm_conversations.assigned_at,excluded.assigned_at),
+                                  first_response_at=COALESCE(crm_conversations.first_response_at,excluded.first_response_at),
+                                  unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,updated_at=datetime('now','localtime')""",
+                           (channel_id, contact["id"], self.authenticated_user["id"]))
             conversation = db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?",
                                       (channel_id, contact["id"])).fetchone()
+        if open_only:
+            return self.send_json({"ok": True, "conversation_id": int(conversation["id"])})
         return self.send_crm_message(int(conversation["id"]), {"text": body})
 
     def resolve_crm_conversation(self, conversation_id: int, payload: dict) -> None:

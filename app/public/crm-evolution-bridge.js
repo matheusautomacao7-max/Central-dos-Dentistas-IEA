@@ -49,29 +49,73 @@
   async function enhanceConversationOrigin() {
     if (!location.pathname.includes("whatsapp")) return;
     const now = Date.now();
-    if (!conversationOriginItems.length || now - conversationOriginLoadedAt > 15000) {
+    const sharedItems = window.__ieaCrmConversationItems || [];
+    const sharedAt = Number(window.__ieaCrmConversationItemsAt || 0);
+    if (sharedItems.length && now - sharedAt < 90000) {
+      conversationOriginItems = sharedItems.filter(item => item.campaign_name || item.automation_flow);
+      conversationOriginLoadedAt = sharedAt;
+    } else if (!conversationOriginItems.length || now - conversationOriginLoadedAt > 60000) {
       try {
-        const payload = await api("/api/crm/conversations?view=operational");
+        const payload = await api("/api/crm/conversations?view=active");
         conversationOriginItems = (payload.items || []).filter(item => (item.campaign_name || item.automation_flow) && item.phone);
         conversationOriginLoadedAt = now;
       } catch (_) {
         return;
       }
     }
-    const spans = [...document.querySelectorAll("span")];
-    for (const item of conversationOriginItems) {
-      const phone = String(item.phone || "").replace(/\D/g, "");
-      if (!phone) continue;
-      const phoneElement = spans.find(element => String(element.textContent || "").replace(/\D/g, "") === phone);
-      const heading = phoneElement?.parentElement?.previousElementSibling;
-      if (!heading || heading.querySelector("[data-crm-origin-badge]")) continue;
+    const normalized = value => String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+    const compactPhone = value => String(value || "").replace(/\D/g, "");
+    const findItem = value => {
+      const content = normalized(value);
+      const contentDigits = compactPhone(value);
+      return conversationOriginItems.find(entry => {
+        const phone = compactPhone(entry.phone);
+        const suffix = phone.slice(-8);
+        return (entry.name && content.includes(normalized(entry.name))) ||
+          (phone && (contentDigits.includes(phone) || (suffix.length === 8 && contentDigits.includes(suffix))));
+      });
+    };
+    const makeBadge = item => {
       const badge = document.createElement("span");
-      badge.dataset.crmOriginBadge = "1";
-      badge.title = "Campanha ou workflow que originou esta conversa";
+      badge.dataset.crmOriginBadge = String(item.id || item.conversation_id || "1");
+      badge.title = "Campanha que originou esta conversa";
       badge.textContent = `Campanha: ${item.campaign_name || item.automation_flow}`;
-      badge.style.cssText = "font-size:11px;font-weight:800;padding:4px 9px;border-radius:20px;white-space:nowrap;background:#f4ead2;color:#8b621b;flex:0 0 auto";
-      heading.appendChild(badge);
-    }
+      badge.style.cssText = "display:inline-flex;align-items:center;margin-left:6px;font-size:10px;font-weight:850;padding:3px 7px;border-radius:20px;line-height:1.2;white-space:nowrap;background:#efe4ff;color:#6d36a6;border:1px solid #dfcff3";
+      return badge;
+    };
+
+    // Etiqueta em cada cartão da lista. Procuramos o menor contêiner que
+    // contém nome + status, evitando depender das classes minificadas.
+    conversationOriginItems.forEach(item => {
+      const labels = [...document.querySelectorAll("span,strong,p,div")].filter(element =>
+        !element.children.length && normalized(element.textContent) === normalized(item.name)
+      );
+      labels.forEach(label => {
+        let card = label.parentElement;
+        for (let level = 0; card && level < 5; level += 1, card = card.parentElement) {
+          const box = card.getBoundingClientRect();
+          const cardText = normalized(card.textContent);
+          if (box.width > 140 && box.width < 520 && box.height > 45 && box.height < 190 &&
+              /(média|alta|baixa|aguardando atendimento|humano assumiu)/.test(cardText)) break;
+        }
+        if (!card || card.querySelector("[data-crm-origin-badge]")) return;
+        const anchors = [...card.querySelectorAll("span")];
+        const anchor = anchors.find(element => /^(média|alta|baixa|aguardando atendimento)$/i.test(text(element)));
+        if (anchor) anchor.insertAdjacentElement("afterend", makeBadge(item));
+        else label.insertAdjacentElement("afterend", makeBadge(item));
+      });
+    });
+
+    const header = [...document.querySelectorAll("header,main > div,section > div")].find(element => {
+      const text = element.textContent || "";
+      return element.querySelector("h1,h2,h3,strong") && /\d{8,15}/.test(text.replace(/\D/g, ""));
+    });
+    if (!header) return;
+    const item = findItem(header.textContent);
+    if (!item) return;
+    const title = header.querySelector("h1,h2,h3,strong");
+    if (!title || header.querySelector("[data-crm-origin-badge]")) return;
+    title.insertAdjacentElement("afterend", makeBadge(item));
   }
 
   function scheduleConversationOrigin() {
@@ -1015,19 +1059,27 @@
     }
   }, true);
 
-  const observer = new MutationObserver(() => {
-    enhanceIntegrationScreen();
-    scheduleConversationOrigin();
-    enhanceCampaignScreen();
-    const modal = findModal();
-    if (!modal || modal.dataset.evolutionReady) return;
-    modal.dataset.evolutionReady = "1";
-    const input = modal.querySelector("input");
-    if (input) { input.value = "Teste-CRM-IEA"; input.readOnly = true; }
-    generateQr();
-  });
+  let enhancementScheduled = false;
+  function scheduleEnhancements() {
+    if (enhancementScheduled || document.hidden) return;
+    enhancementScheduled = true;
+    window.requestAnimationFrame(() => {
+      enhancementScheduled = false;
+      enhanceIntegrationScreen();
+      scheduleConversationOrigin();
+      enhanceCampaignScreen();
+      const modal = findModal();
+      if (!modal || modal.dataset.evolutionReady) return;
+      modal.dataset.evolutionReady = "1";
+      const input = modal.querySelector("input");
+      if (input) { input.value = "Teste-CRM-IEA"; input.readOnly = true; }
+      generateQr();
+    });
+  }
+  const observer = new MutationObserver(scheduleEnhancements);
   observer.observe(document.documentElement, {childList: true, subtree: true});
-  enhanceIntegrationScreen();
-  scheduleConversationOrigin();
-  enhanceCampaignScreen();
+  scheduleEnhancements();
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) scheduleEnhancements();
+  });
 })();

@@ -280,20 +280,17 @@
     }
   }
   function openPatientControl() {
-    let frame = document.getElementById("iea-patient-control-screen");
-    if (!frame) {
-      frame = document.createElement("iframe");
-      frame.id = "iea-patient-control-screen";
-      frame.src = "/central-crc/controle-pacientes/embed?embed=1&v=20260728-4";
-      frame.title = "Controle de pacientes";
-      frame.style.cssText = "position:fixed;left:80px;right:0;top:0;bottom:0;width:calc(100% - 80px);height:100vh;border:0;background:#f1f4f7;z-index:40";
-      document.body.appendChild(frame);
+    if (window.IEACrmOperations && window.IEACrmOperations.openControl) {
+      window.IEACrmOperations.openControl();
+      return;
     }
-    frame.hidden = false;
     const link = document.querySelector("[data-iea-patient-control]");
     if (link) link.style.background = "rgba(255,255,255,.16)";
   }
   function closePatientControl(event) {
+    if (window.IEACrmOperations && window.IEACrmOperations.closeScreen) {
+      window.IEACrmOperations.closeScreen(event);
+    }
     const frame = document.getElementById("iea-patient-control-screen");
     if (!frame || frame.hidden) return;
     if (event && event.target.closest("[data-iea-patient-control]")) return;
@@ -332,7 +329,19 @@
       content.innerHTML = `<div style="padding:12px;background:#feeceb;color:#b92c2c;border-radius:10px;font-weight:700">${escapeHtml(error.message)}</div>`;
     } finally { reportLoading = false; }
   }
-  new MutationObserver(() => { ensureResolutionStyle(); mountReport(); mountPatientControlLink(); normalizeCrmNavigation(); }).observe(document.body, { childList: true, subtree: true });
+  let maintenanceScheduled = false;
+  function scheduleMaintenance() {
+    if (maintenanceScheduled || document.hidden) return;
+    maintenanceScheduled = true;
+    window.requestAnimationFrame(() => {
+      maintenanceScheduled = false;
+      ensureResolutionStyle();
+      mountReport();
+      mountPatientControlLink();
+      normalizeCrmNavigation();
+    });
+  }
+  new MutationObserver(scheduleMaintenance).observe(document.body, { childList: true, subtree: true });
   mountReport();
   mountPatientControlLink();
   normalizeCrmNavigation();
