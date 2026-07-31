@@ -3166,6 +3166,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except (URLError, TimeoutError) as error:
             raise RuntimeError(f"Não foi possível conectar à Evolution: {error}") from error
 
+    def crm_evolution_connection_state(self, instance_name: str, base_url: str, api_key: str) -> str:
+        instance_path = quote(str(instance_name), safe="")
+        result = self.evolution_api_request(
+            f"/instance/connectionState/{instance_path}", base_url=base_url, api_key=api_key
+        )
+        instance = result.get("instance") if isinstance(result, dict) else None
+        state = (instance or {}).get("state") if isinstance(instance, dict) else None
+        if not state and isinstance(result, dict):
+            state = result.get("state") or result.get("connectionStatus")
+        return str(state or "unknown").strip().lower()
+
     @staticmethod
     def evolution_instance_summary(item: dict) -> dict:
         instance = item.get("instance") if isinstance(item.get("instance"), dict) else item
@@ -3781,20 +3792,36 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         display_name = str(payload.get("display_name") or instance_name).strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", instance_name):
             return self.send_json({"error": "Use apenas letras, números, hífen ou sublinhado no nome da instância."}, HTTPStatus.BAD_REQUEST)
+        with connect() as db:
+            existing_channel = db.execute(
+                "SELECT evolution_base_url,evolution_api_key FROM crm_channels WHERE instance_name=?",
+                (instance_name,),
+            ).fetchone()
+        configured_url, configured_key = self.evolution_credentials()
+        channel_base_url = (existing_channel["evolution_base_url"] if existing_channel else None) or configured_url
+        channel_api_key = (existing_channel["evolution_api_key"] if existing_channel else None) or configured_key
         try:
             try:
-                connected = self.evolution_api_request(f"/instance/connect/{instance_name}")
+                connected = self.evolution_api_request(
+                    f"/instance/connect/{instance_name}", base_url=channel_base_url, api_key=channel_api_key
+                )
             except RuntimeError as error:
                 if "404" not in str(error): raise
-                self.evolution_api_request("/instance/create", "POST", {"instanceName": instance_name, "qrcode": True, "integration": "WHATSAPP-BAILEYS"})
-                connected = self.evolution_api_request(f"/instance/connect/{instance_name}")
+                self.evolution_api_request(
+                    "/instance/create", "POST",
+                    {"instanceName": instance_name, "qrcode": True, "integration": "WHATSAPP-BAILEYS"},
+                    base_url=channel_base_url, api_key=channel_api_key,
+                )
+                connected = self.evolution_api_request(
+                    f"/instance/connect/{instance_name}", base_url=channel_base_url, api_key=channel_api_key
+                )
             webhook_url = f"{PUBLIC_APP_URL}/api/integrations/evolution/webhook?token={INTEGRATION_TOKEN}"
             def configure_webhook() -> None:
                 try:
                     self.evolution_api_request(f"/webhook/set/{instance_name}", "POST", {"webhook": {
                         "enabled": True, "url": webhook_url, "webhookByEvents": False, "webhookBase64": False,
                         "events": ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE"]
-                    }})
+                    }}, base_url=channel_base_url, api_key=channel_api_key)
                 except RuntimeError:
                     pass
             threading.Thread(target=configure_webhook, daemon=True).start()
@@ -5831,7 +5858,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif not body:
             return self.send_json({"error":"Digite uma mensagem."},HTTPStatus.BAD_REQUEST)
         with connect() as db:
-            row=db.execute("""SELECT cv.channel_id,ct.phone,ct.is_internal,ch.instance_name,ch.evolution_base_url,ch.evolution_api_key,
+            row=db.execute("""SELECT cv.channel_id,ct.phone,ct.is_internal,ch.instance_name,ch.display_name,ch.evolution_base_url,ch.evolution_api_key,
                                       cv.assigned_user_id,u.name AS assigned_to
                                FROM crm_conversations cv
                               JOIN crm_contacts ct ON ct.id=cv.contact_id JOIN crm_channels ch ON ch.id=cv.channel_id
@@ -5848,6 +5875,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             base_url = row["evolution_base_url"] or configured_url
             api_key = row["evolution_api_key"] or configured_key
             if not base_url or not api_key: return self.send_json({"error":"Configure a URL e a chave da Evolution neste canal antes de enviar."},HTTPStatus.CONFLICT)
+            try:
+                connection_state = self.crm_evolution_connection_state(row["instance_name"], base_url, api_key)
+            except RuntimeError as error:
+                return self.send_json({"error":f"Não foi possível verificar a conexão do canal {row['display_name']}: {error}"},HTTPStatus.BAD_GATEWAY)
+            if connection_state != "open":
+                db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
+                return self.send_json({
+                    "error": f"O WhatsApp do canal {row['display_name']} está desconectado. Reconecte o número por QR Code em Integrações antes de enviar.",
+                    "code": "WHATSAPP_DISCONNECTED",
+                }, HTTPStatus.CONFLICT)
+            db.execute("UPDATE crm_channels SET connection_status='Conectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
             instance_path = quote(str(row["instance_name"]), safe="")
             if message_type == "audio":
                 evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
@@ -5872,6 +5910,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             except HTTPError as error:
                 evolution_error = error.read().decode(errors="replace")[:500]
                 print(f"[crm-send] Evolution HTTP {error.code} na conversa {conversation_id}: {evolution_error}", flush=True)
+                if "ConnectionClosed" in evolution_error or "connection closed" in evolution_error.lower():
+                    db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
+                    return self.send_json({
+                        "error": f"O WhatsApp do canal {row['display_name']} foi desconectado. Reconecte o número por QR Code em Integrações e tente novamente.",
+                        "code": "WHATSAPP_DISCONNECTED",
+                    }, HTTPStatus.CONFLICT)
                 return self.send_json({"error":f"Evolution respondeu {error.code}: {evolution_error}"},HTTPStatus.BAD_GATEWAY)
             except (URLError,TimeoutError) as error: return self.send_json({"error":f"Não foi possível conectar à Evolution: {error}"},HTTPStatus.BAD_GATEWAY)
             external_id=str(((response_data.get("key") or {}).get("id")) or response_data.get("id") or secrets.token_hex(12))
