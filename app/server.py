@@ -272,6 +272,8 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE users ADD COLUMN crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0")
         if "crm_feature_scope_enabled" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0")
+        if "crm_operational_agent" not in user_columns:
+            db.execute("ALTER TABLE users ADD COLUMN crm_operational_agent INTEGER NOT NULL DEFAULT 1")
         if "service_sector" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
@@ -2088,7 +2090,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_admin_crm_channel_access(self) -> None:
         with connect() as db:
-            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,
+            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,u.crm_operational_agent,
                        COALESCE(GROUP_CONCAT(CAST(cuc.channel_id AS TEXT)),'') AS channel_ids,
                        COALESCE(MAX(cuc.can_manage_automation),0) AS can_manage_automation,
                        COALESCE((SELECT GROUP_CONCAT(cuf.feature_key) FROM crm_user_features cuf WHERE cuf.user_id=u.id),'') AS feature_keys
@@ -5199,7 +5201,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=CURRENT_DATE THEN ct.id END) AS resolved_today
                 FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id
                 LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
-                WHERE u.access_role='crc' AND u.active=1
+                WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1
                 GROUP BY u.id,u.name,u.email,u.crm_channel_scope_enabled ORDER BY u.name COLLATE NOCASE""").fetchall()
         self.send_json({"items": [dict(row) for row in rows], "current_user_id": self.authenticated_user["id"]})
 
@@ -5319,6 +5321,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         query = query or {}
         month_value = str((query.get("month") or [datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")])[0]).strip()
         can_configure = self.crm_feature_allowed("settings")
+        has_requested_user = bool(query.get("user_id"))
         try:
             requested_user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
             crm_goal_month_bounds(month_value)
@@ -5326,15 +5329,22 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Informe um mês e uma atendente válidos."}, HTTPStatus.BAD_REQUEST)
         user_id = requested_user_id if can_configure else int(self.authenticated_user["id"])
         with connect() as db:
+            agents = db.execute(
+                "SELECT id,name FROM users WHERE access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1 ORDER BY name COLLATE NOCASE"
+            ).fetchall() if can_configure else []
+            if can_configure and not has_requested_user and agents:
+                current_is_operational = db.execute(
+                    "SELECT 1 FROM users WHERE id=? AND COALESCE(crm_operational_agent,1)=1",
+                    (user_id,),
+                ).fetchone()
+                if not current_is_operational:
+                    user_id = int(agents[0]["id"])
             user = db.execute(
-                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,),
+                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1", (user_id,),
             ).fetchone()
             if not user:
                 return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
             payload = self.crm_goal_dashboard_data(db, user_id, month_value)
-            agents = db.execute(
-                "SELECT id,name FROM users WHERE access_role='crc' AND active=1 ORDER BY name COLLATE NOCASE"
-            ).fetchall() if can_configure else []
         payload["can_configure"] = can_configure
         payload["agents"] = [dict(row) for row in agents]
         self.send_json(payload)
@@ -5440,7 +5450,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Use apenas números inteiros positivos nas metas."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             user = db.execute(
-                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,),
+                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1", (user_id,),
             ).fetchone()
             if not user:
                 return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
@@ -5532,7 +5542,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
               FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id
               LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
               LEFT JOIN crm_channels ch ON ch.id=cv.channel_id
-              WHERE u.access_role='crc' AND u.active=1 AND (cv.id IS NULL OR ct.is_internal=0)
+              WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1 AND (cv.id IS NULL OR ct.is_internal=0)
                 AND (?=0 OR ch.id=?)
               GROUP BY u.id,u.name,u.service_sector ORDER BY resolved_today DESC,u.name""",
               (start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat(),
@@ -6668,7 +6678,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return [{"label": key, "total": value} for key, value in
                         sorted(values.items(), key=lambda item: (-item[1], item[0]))]
             agents = db.execute("""SELECT id,name FROM users
-                                   WHERE access_role='crc' AND active=1 ORDER BY name""").fetchall()
+                                   WHERE access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1 ORDER BY name""").fetchall()
             channels = db.execute("""SELECT id,display_name FROM crm_channels
                                      ORDER BY display_name""").fetchall()
         self.send_json({

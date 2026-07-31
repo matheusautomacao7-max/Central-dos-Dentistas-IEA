@@ -96,6 +96,8 @@ def test_schema_and_frontend_contract() -> None:
     db.executescript(schema)
     columns = {row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)")}
     assert {"patient_type", "is_recovery"} <= columns
+    user_columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+    assert "crm_operational_agent" in user_columns
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"crm_goals", "crm_goal_achievements"} <= tables
 

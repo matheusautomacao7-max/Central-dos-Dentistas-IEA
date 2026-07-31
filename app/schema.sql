@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS users (
     two_factor_exempt INTEGER NOT NULL DEFAULT 0,
     crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0,
     crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0,
+    crm_operational_agent INTEGER NOT NULL DEFAULT 1,
     service_sector TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (professional_id) REFERENCES professionals(id),
     FOREIGN KEY (linked_professional_id) REFERENCES professionals(id)
