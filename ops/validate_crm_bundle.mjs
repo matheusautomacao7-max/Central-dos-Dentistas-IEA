@@ -25,6 +25,8 @@ if (!template.includes("CRM_START_CONVERSATION_STABLE_V2") && !template.includes
 if (!template.includes("CRM_CONVERSATION_ID_NORMALIZED_V3")) throw new Error("Normalização do ID da conversa ausente.");
 
 if (!template.includes("CRM_CONVERSATION_AUTO_REVEAL_V5")) throw new Error("Automatic conversation reveal missing.");
+if (!template.includes("CRM_ATTENDANCE_TIMELINE_V6")) throw new Error("Attendance timeline missing.");
+if (!template.includes("CRM_TIMELINE_STATE_STABLE_V7")) throw new Error("Timeline state stability missing.");
 if (!template.includes("'Atendente: '+c.owner")) throw new Error("Visible attendant identification missing.");
 if (!template.includes("CRM_REUSABLE_TAGS_V1")) throw new Error("Reusable tag selector missing.");
 if (!template.includes("CRM_AUDIO_RECORDING_V1")) throw new Error("CRM audio recording missing.");

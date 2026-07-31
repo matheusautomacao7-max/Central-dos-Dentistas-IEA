@@ -126,6 +126,61 @@ if (!template.includes('CRM_CONVERSATION_AUTO_REVEAL_V5')) {
   );
 }
 
+if (!template.includes('CRM_ATTENDANCE_TIMELINE_V6')) {
+  replaceOnce(
+    /async loadMessages\(id,silent=false,forceBottom=false,incremental=false\)\{/,
+    `async loadTimeline(id,silent=true){try{const target=this.convData.find(c=>Number(c.id)===Number(id));if(!target)return;const response=await fetch(\`/api/crm/conversations/\${id}/timeline\`,{headers:{'Accept':'application/json'}});if(!response.ok)throw new Error('Falha ao carregar histórico');const data=await this.readJsonResponse(response);const labels={
+      'conversation.started':['Atendimento iniciado por ','#2563eb'],
+      'conversation.assigned':['Atendimento assumido por ','#16a34a'],
+      'conversation.assignment_restored':['Atendimento atribuído a ','#16a34a'],
+      'conversation.transferred':['Atendimento transferido por ','#f59e0b'],
+      'conversation.resolved':['Atendimento finalizado por ','#7c3aed'],
+      'return.scheduled':['Retorno programado por ','#0ea5e9'],
+      'return.reopened':['Atendimento reaberto por ','#0ea5e9']};target.history=(data.events||[]).filter(event=>labels[event.event_type]).map(event=>{const entry=labels[event.event_type],parsed=this.parseDate(event.created_at);return{title:entry[0]+(event.actor_name||'Sistema'),date:parsed?parsed.toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):String(event.created_at||''),color:entry[1]};});this.setState(s=>({timelineRevision:(s.timelineRevision||0)+1})); // CRM_ATTENDANCE_TIMELINE_V6
+    }catch(error){if(!silent)this.fireToast('Não foi possível carregar o histórico do atendimento');}}
+  async loadMessages(id,silent=false,forceBottom=false,incremental=false){`,
+    'Carregamento do histórico de atendimento',
+  );
+  replaceOnce(
+    /if\(active&&\(!oldActive\|\|!oldActive\.msgs\.length\|\|oldActive\.rawLast!==nextActive\.rawLast\)\)await this\.loadMessages\(active,true,!oldActive\);/,
+    `if(active&&(!oldActive||!oldActive.msgs.length||oldActive.rawLast!==nextActive.rawLast))await Promise.all([this.loadMessages(active,true,!oldActive),this.loadTimeline(active,true)]);`,
+    'Histórico na seleção automática',
+  );
+  replaceOnce(
+    /openConversation\(id\)\{const conversationId=Number\(id\|\|0\)\|\|null;this\.setState\(\{activeConvId:conversationId\}\);if\(conversationId\)this\.loadMessages\(conversationId,false,true\);\}/,
+    `openConversation(id){const conversationId=Number(id||0)||null;this.setState({activeConvId:conversationId});if(conversationId)Promise.all([this.loadMessages(conversationId,false,true),this.loadTimeline(conversationId,false)]);}`,
+    'Histórico ao abrir a conversa',
+  );
+  replaceOnce(
+    /await this\.loadMessages\(id,true,true\);this\.fireToast\('Atendimento iniciado e atribuído a você'\);/,
+    `await Promise.all([this.loadMessages(id,true,true),this.loadTimeline(id,true)]);this.fireToast('Atendimento iniciado e atribuído a você');`,
+    'Histórico ao assumir atendimento',
+  );
+  replaceOnce(
+    /await this\.loadMessages\(Number\(id\),false,true\);await Promise\.all\(\[this\.loadMetrics\(true\),this\.loadAgents\(true\)\]\);/,
+    `await Promise.all([this.loadMessages(Number(id),false,true),this.loadTimeline(Number(id),true),this.loadMetrics(true),this.loadAgents(true)]);`,
+    'Histórico ao iniciar atendimento',
+  );
+  replaceOnce(
+    /automationStyle:`([^`]+)`,history:\[\]\};/,
+    'automationStyle:`$1`,history:ac.history||[]};',
+    'Histórico no painel lateral',
+  );
+  replaceOnce(
+    /<span style="width:10px;height:10px;border-radius:50%;background:#25d366;flex:0 0 auto;margin-top:3px"><\/span>/,
+    `<span style="width:10px;height:10px;border-radius:50%;background:{{ h.color }};flex:0 0 auto;margin-top:3px"></span>`,
+    'Cor do evento no histórico',
+  );
+}
+
+if (!template.includes('CRM_TIMELINE_STATE_STABLE_V7')) {
+  replaceOnce(
+    /note:item\.internal_note\|\|'',history:\[\],createdAt:/,
+    `note:item.internal_note||'',history:old?.history||[],/* CRM_TIMELINE_STATE_STABLE_V7 */createdAt:`,
+    'Preservação do histórico durante a sincronização',
+  );
+}
+
 if (template.includes('PRIMEIRA MENSAGEM')) {
   replaceOnce(
     /\s*<label style="display:block;font-size:11px;font-weight:800;color:var\(--text3\);margin-bottom:7px">PRIMEIRA MENSAGEM<\/label>\s*<textarea value="\{\{ newMessage \}\}" sc-camel-on-input="\{\{ onNewMessage \}\}"[\s\S]*?<\/textarea>/,
