@@ -35,4 +35,5 @@ if (!template.includes("CRM_REFRESH_RACE_FIXED_V9")) throw new Error("Conversati
 if (!template.includes("CRM_NATIVE_AUDIO_STABLE_V10")) throw new Error("Stable native audio player missing.");
 if (!template.includes("CRM_PERSISTENT_CONVERSATION_CACHE_V11")) throw new Error("Persistent message and timeline cache missing.");
 if (!template.includes("CRM_INTERNAL_TEAM_FILTER_V14")) throw new Error("Internal team Inbox filter missing.");
+if (!template.includes("CRM_COMPOSER_TOOLS_V15")) throw new Error("Emoji and attachment composer tools missing.");
 console.log(JSON.stringify({ logic: "ok", fakeData: 0, realContacts: true, reusableTags: true }));

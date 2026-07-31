@@ -1062,7 +1062,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         crm_message_media_match = re.fullmatch(r"/api/crm/messages/(\d+)/media", parsed.path)
         if crm_message_media_match:
             return self.get_crm_message_media(int(crm_message_media_match.group(1)))
-        crm_media_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|bin))", parsed.path)
+        crm_media_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", parsed.path)
         if crm_media_match:
             return self.get_crm_media(crm_media_match.group(1))
         if parsed.path == "/api/crm/webhook-events":
@@ -5289,7 +5289,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_media_extension(mime_type: str | None, file_name: str | None = None) -> str:
-        allowed = {"webm", "ogg", "oga", "mp4", "m4a", "jpg", "jpeg", "png", "webp", "pdf"}
+        allowed = {"webm", "ogg", "oga", "mp4", "m4a", "jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip"}
         suffix = Path(str(file_name or "")).suffix.lower().lstrip(".")
         if suffix in allowed:
             return suffix
@@ -5298,7 +5298,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "audio/ogg": "ogg", "audio/opus": "ogg", "audio/webm": "webm",
             "audio/mp4": "m4a", "audio/mpeg": "mp4", "video/mp4": "mp4",
             "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
-            "application/pdf": "pdf",
+            "application/pdf": "pdf", "application/msword": "doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            "application/vnd.ms-excel": "xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+            "application/vnd.ms-powerpoint": "ppt",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+            "text/plain": "txt", "application/zip": "zip", "application/x-zip-compressed": "zip",
         }
         return known.get(clean_mime, "bin")
 
@@ -5320,7 +5326,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not row or not row["external_message_id"]:
             return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
         cached = str(row["media_url"] or "")
-        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|bin))", cached)
+        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", cached)
         if cached_match:
             return self.get_crm_media(cached_match.group(1))
         try:
@@ -5393,7 +5399,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_media(self, file_name: str) -> None:
         if not self.require_crc_access():
             return
-        if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|bin)", file_name):
+        if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin)", file_name):
             return self.send_json({"error": "Arquivo de mídia inválido."}, HTTPStatus.BAD_REQUEST)
         target = (CRM_MEDIA_DIR / file_name).resolve()
         if target.parent != CRM_MEDIA_DIR.resolve() or not target.is_file():
@@ -5835,7 +5841,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             expected_group = {
                 "image": {"image/jpeg", "image/png", "image/webp"},
                 "video": {"video/mp4"},
-                "document": {"application/pdf"},
+                "document": {
+                    "application/pdf", "application/msword",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "application/vnd.ms-powerpoint",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "text/plain", "application/zip", "application/x-zip-compressed",
+                },
             }[message_type]
             if mime_type not in expected_group:
                 return self.send_json({"error": "Formato de arquivo não suportado."}, HTTPStatus.BAD_REQUEST)
@@ -5851,6 +5865,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 original_file_name = {
                     "image/jpeg": "imagem.jpg", "image/png": "imagem.png", "image/webp": "imagem.webp",
                     "video/mp4": "video.mp4", "application/pdf": "documento.pdf",
+                    "application/msword": "documento.doc",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "documento.docx",
+                    "application/vnd.ms-excel": "planilha.xls",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "planilha.xlsx",
+                    "application/vnd.ms-powerpoint": "apresentacao.ppt",
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "apresentacao.pptx",
+                    "text/plain": "documento.txt", "application/zip": "arquivo.zip",
+                    "application/x-zip-compressed": "arquivo.zip",
                 }[mime_type]
             body = body or original_file_name
         elif message_type != "text":
