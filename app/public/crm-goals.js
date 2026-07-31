@@ -238,7 +238,11 @@
     if (document.querySelector("[data-iea-goals-nav]")) return;
     const management = Array.from(document.querySelectorAll("aside div,aside span"))
       .find(element => /^Gestão$/i.test((element.textContent || "").trim()));
-    const aside = management && management.closest("aside");
+    const aside = (management && management.closest("aside")) || Array.from(document.querySelectorAll("aside"))
+      .find(element => {
+        const width = element.getBoundingClientRect().width;
+        return width > 0 && width <= 120;
+      });
     if (!aside) return;
     const item = document.createElement("a");
     item.dataset.ieaGoalsNav = "1";
@@ -249,9 +253,12 @@
     item.onmouseenter = () => { if (!root) item.style.background = "rgba(255,255,255,.08)"; };
     item.onmouseleave = () => { if (!root) item.style.background = "transparent"; };
     item.onclick = event => { event.preventDefault(); event.stopPropagation(); openGoals(); };
-    const managementItem = management.closest("a,button,[role=button],div");
+    const managementItem = management && management.closest("a,button,[role=button],div");
     if (managementItem && managementItem.parentElement === aside) managementItem.insertAdjacentElement("afterend", item);
-    else aside.appendChild(item);
+    else {
+      const spacer = Array.from(aside.children).find(child => getComputedStyle(child).flexGrow === "1");
+      aside.insertBefore(item, spacer || null);
+    }
   }
 
   function scheduleMount() {

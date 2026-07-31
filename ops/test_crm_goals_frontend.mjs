@@ -63,7 +63,7 @@ const server = http.createServer(async (request, response) => {
     return response.end(JSON.stringify(dashboard));
   }
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><html><body style="margin:0"><aside style="width:80px;height:100vh;background:#122b46"><div><span>Gestão</span></div></aside><h1>Conversas</h1><script src="/crm-goals.js"></script></body></html>`);
+  response.end(`<!doctype html><html><body style="margin:0"><aside style="width:80px;height:100vh;background:#122b46"><div><span>Inbox</span></div><div style="flex:1"></div></aside><h1>Conversas</h1><script src="/crm-goals.js"></script></body></html>`);
 });
 
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
