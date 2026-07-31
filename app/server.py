@@ -2997,6 +2997,29 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             digits = digits[2:]
         return digits if len(digits) in {10, 11} else ""
 
+    # CRM_PATIENT_OWNERSHIP_LOCK_V16
+    @staticmethod
+    def crm_contact_active_owner(db, contact_id: int):
+        """Return the first active owner for a patient across every channel."""
+        return db.execute(
+            """SELECT cv.id AS conversation_id,cv.assigned_user_id,u.name AS assigned_to
+                 FROM crm_conversations cv
+                 JOIN users u ON u.id=cv.assigned_user_id
+                WHERE cv.contact_id=? AND cv.status<>'Resolvida'
+                  AND cv.assigned_user_id IS NOT NULL
+                ORDER BY COALESCE(cv.assigned_at,cv.updated_at),cv.id
+                LIMIT 1""",
+            (contact_id,),
+        ).fetchone()
+
+    def reject_crm_contact_owner_conflict(self, owner) -> None:
+        self.send_json({
+            "error": f"Este paciente já está em atendimento com {owner['assigned_to'] or 'outra atendente'}. Solicite a transferência antes de acessar.",
+            "code": "PATIENT_ASSIGNED_TO_ANOTHER_USER",
+            "conversation_id": int(owner["conversation_id"]),
+            "assigned_to": owner["assigned_to"],
+        }, HTTPStatus.CONFLICT)
+
     def require_crc_access(self) -> bool:
         if self.authenticated_user and self.authenticated_user["access_role"] == "crc":
             return True
@@ -5880,7 +5903,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif not body:
             return self.send_json({"error":"Digite uma mensagem."},HTTPStatus.BAD_REQUEST)
         with connect() as db:
-            row=db.execute("""SELECT cv.channel_id,ct.phone,ct.is_internal,ch.instance_name,ch.display_name,ch.evolution_base_url,ch.evolution_api_key,
+            row=db.execute("""SELECT cv.channel_id,ct.id AS contact_id,ct.phone,ct.is_internal,ch.instance_name,ch.display_name,ch.evolution_base_url,ch.evolution_api_key,
                                       cv.assigned_user_id,u.name AS assigned_to
                                FROM crm_conversations cv
                               JOIN crm_contacts ct ON ct.id=cv.contact_id JOIN crm_channels ch ON ch.id=cv.channel_id
@@ -5889,6 +5912,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not row: return self.send_json({"error":"Conversa ou canal não encontrado."},HTTPStatus.NOT_FOUND)
             if not self.crm_channel_allowed(db, row["channel_id"], "reply"):
                 return self.send_json({"error":"Você não possui permissão para responder por este número."},HTTPStatus.FORBIDDEN)
+            if not row["is_internal"]:
+                active_owner = self.crm_contact_active_owner(db, row["contact_id"])
+                if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
+                    return self.reject_crm_contact_owner_conflict(active_owner)
             if row["assigned_user_id"] and row["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.send_json({"error":f"Este atendimento já está atribuído a {row['assigned_to']}. Transfira antes de responder."},HTTPStatus.CONFLICT)
             if not row["assigned_user_id"] and not row["is_internal"]:
@@ -6030,12 +6057,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           ON CONFLICT(phone) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE crm_contacts.name END,
                           updated_at=datetime('now','localtime')""", (name, phone))
             contact = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (phone,)).fetchone()
+            db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (contact["id"],)).fetchone()
             # Abrir um atendimento manualmente Ã© uma declaraÃ§Ã£o explÃ­cita de
             # atendimento externo. Isso tambÃ©m corrige contatos que tenham sido
             # marcados como internos anteriormente; caso contrÃ¡rio, as rotinas
             # de sincronizaÃ§Ã£o removeriam a atribuiÃ§Ã£o logo depois da abertura.
             db.execute("""UPDATE crm_contacts SET is_internal=0,
                           updated_at=datetime('now','localtime') WHERE id=?""", (contact["id"],))
+            active_owner = self.crm_contact_active_owner(db, contact["id"])
+            if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
+                return self.reject_crm_contact_owner_conflict(active_owner)
             existing = db.execute("""SELECT cv.id,cv.channel_id,cv.assigned_user_id,u.name AS assigned_to
                                      FROM crm_conversations cv
                                      LEFT JOIN users u ON u.id=cv.assigned_user_id
@@ -6144,6 +6175,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
             if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
                 return self.send_json({"error":"Você não possui permissão para resolver atendimentos deste número."},HTTPStatus.FORBIDDEN)
+            db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
+            active_owner = self.crm_contact_active_owner(db, current["contact_id"])
+            if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
+                return self.reject_crm_contact_owner_conflict(active_owner)
             if current["assigned_user_id"] and current["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.send_json({"error":f"Este atendimento pertence a {current['assigned_to']}. Transfira antes de resolver."},HTTPStatus.CONFLICT)
             attendance_number = db.execute(
@@ -6458,6 +6493,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             current = db.execute("SELECT * FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
             if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
+            db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
             if not self.crm_channel_allowed(db, current["channel_id"]):
                 return self.send_json({"error":"Você não possui acesso a este canal."},HTTPStatus.FORBIDDEN)
             priority = str(payload.get("priority", current["priority"]) or "Normal").strip().title()
@@ -6468,6 +6504,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if stage not in {"Novo","Em atendimento","Aguardando cliente","Resolvido"}:
                 return self.send_json({"error":"Etapa inválida."}, HTTPStatus.BAD_REQUEST)
             assigned_user_id = current["assigned_user_id"]
+            transfer_contact_ownership = False
             if "assigned_user_id" in payload:
                 assigned_user_id = self.authenticated_user["id"] if payload["assigned_user_id"] == "me" else payload["assigned_user_id"]
                 if current["assigned_user_id"] and current["assigned_user_id"] != self.authenticated_user["id"]:
@@ -6481,6 +6518,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     if not assignee: return self.send_json({"error":"Atendente inválida ou inativa."},HTTPStatus.BAD_REQUEST)
                     if not self.crm_channel_allowed(db, current["channel_id"], None, assigned_user_id):
                         return self.send_json({"error":"A atendente escolhida não possui acesso a este canal."},HTTPStatus.CONFLICT)
+                    active_owner = self.crm_contact_active_owner(db, current["contact_id"])
+                    if active_owner and active_owner["assigned_user_id"] != assigned_user_id:
+                        if current["assigned_user_id"] == self.authenticated_user["id"] and assigned_user_id != self.authenticated_user["id"]:
+                            transfer_contact_ownership = True
+                        else:
+                            return self.reject_crm_contact_owner_conflict(active_owner)
                     if stage == current["pipeline_stage"] and stage == "Novo": stage = "Em atendimento"
             scheduled_return_at = current["scheduled_return_at"]
             if "scheduled_return_at" in payload:
@@ -6514,6 +6557,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if assigned_user_id != current["assigned_user_id"]:
                 event_type = "conversation.assigned" if current["assigned_user_id"] is None else "conversation.transferred"
                 self.crm_record_event(db, conversation_id, event_type, {"from_user_id": current["assigned_user_id"], "to_user_id": assigned_user_id})
+            if transfer_contact_ownership:
+                siblings = db.execute("""SELECT id,assigned_user_id FROM crm_conversations
+                                          WHERE contact_id=? AND id<>? AND status<>'Resolvida'""",
+                                      (current["contact_id"], conversation_id)).fetchall()
+                db.execute("""UPDATE crm_conversations SET assigned_user_id=?,assigned_at=datetime('now','localtime'),
+                              pipeline_stage=CASE WHEN pipeline_stage='Novo' THEN 'Em atendimento' ELSE pipeline_stage END,
+                              automation_state='paused',updated_at=datetime('now','localtime')
+                              WHERE contact_id=? AND id<>? AND status<>'Resolvida'""",
+                           (assigned_user_id, current["contact_id"], conversation_id))
+                for sibling in siblings:
+                    if sibling["assigned_user_id"] != assigned_user_id:
+                        self.crm_record_event(db, sibling["id"], "conversation.transferred", {
+                            "from_user_id": sibling["assigned_user_id"], "to_user_id": assigned_user_id,
+                            "source": "patient_ownership_transfer",
+                        })
             if isinstance(payload.get("tag_names"), list):
                 names = list(dict.fromkeys(str(name).strip()[:40] for name in payload["tag_names"] if str(name).strip()))
                 db.execute("DELETE FROM crm_conversation_tags WHERE conversation_id=?", (conversation_id,))
@@ -6528,19 +6586,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crc_access():
             return
         with connect() as db:
-            current = db.execute("""SELECT cv.channel_id,cv.assigned_user_id,cv.status,ct.is_internal,u.name AS assigned_to
+            current = db.execute("""SELECT cv.channel_id,cv.contact_id,cv.assigned_user_id,cv.status,ct.is_internal,u.name AS assigned_to
                                    FROM crm_conversations cv
                                    JOIN crm_contacts ct ON ct.id=cv.contact_id
                                    LEFT JOIN users u ON u.id=cv.assigned_user_id
                                    WHERE cv.id=?""", (conversation_id,)).fetchone()
             if not current:
                 return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
+            db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
             if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
                 return self.send_json({"error": "Você não possui permissão para atender por este canal."}, HTTPStatus.FORBIDDEN)
             if current["is_internal"]:
                 return self.send_json({"claimed": False, "internal": True, "id": conversation_id})
             if current["status"] != "Aberta":
                 return self.send_json({"error": "Somente atendimentos abertos podem ser assumidos."}, HTTPStatus.CONFLICT)
+            active_owner = self.crm_contact_active_owner(db, current["contact_id"])
+            if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
+                return self.reject_crm_contact_owner_conflict(active_owner)
             if current["assigned_user_id"] == self.authenticated_user["id"]:
                 return self.send_json({"claimed": True, "already_owned": True, "id": conversation_id})
             if current["assigned_user_id"] is not None:
