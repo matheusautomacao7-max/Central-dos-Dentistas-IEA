@@ -5065,15 +5065,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 LEFT JOIN users resolver ON resolver.id=cv.resolved_by_user_id WHERE {' AND '.join(conditions)}
                 ORDER BY COALESCE(cv.last_message_at,cv.created_at) DESC LIMIT 500""", params).fetchall()
         items = []
+        seen_phones = set()
         for row in rows:
             item = dict(row)
+            phone_key = self.crm_phone(item.get("phone"))
+            if phone_key and phone_key in seen_phones:
+                continue
+            if phone_key:
+                seen_phones.add(phone_key)
             # Sempre exponha a rota protegida do CRM. Ela devolve a foto que
             # está em cache ou tenta obtê-la sob demanda na Evolution; quando
             # o perfil não possui foto, o front preserva as iniciais.
             if item.get("contact_id") and self.crm_phone(item.get("phone")):
                 item["profile_picture_url"] = f"/api/crm/contacts/{item['contact_id']}/profile-photo"
             items.append(item)
-        self.send_json({"items": items, "total": total, "view": view})
+        self.send_json({"items": items, "total": len(items), "raw_total": total, "view": view})
 
     def get_crm_agents(self) -> None:
         if not self.require_crc_access(): return
@@ -5964,7 +5970,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             # de sincronizaÃ§Ã£o removeriam a atribuiÃ§Ã£o logo depois da abertura.
             db.execute("""UPDATE crm_contacts SET is_internal=0,
                           updated_at=datetime('now','localtime') WHERE id=?""", (contact["id"],))
-            if open_only:
+            existing = db.execute("""SELECT id,channel_id FROM crm_conversations
+                                     WHERE contact_id=? AND status<>'Resolvida'
+                                     ORDER BY CASE WHEN assigned_user_id=? THEN 0 ELSE 1 END,
+                                              CASE WHEN channel_id=? THEN 0 ELSE 1 END,
+                                              datetime(updated_at) DESC,id DESC LIMIT 1""",
+                                  (contact["id"], self.authenticated_user["id"], channel_id)).fetchone()
+            if existing:
+                db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
+                              assigned_user_id=?,assigned_at=COALESCE(assigned_at,datetime('now','localtime')),
+                              unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,
+                              automation_state='paused',updated_at=datetime('now','localtime') WHERE id=?""",
+                           (self.authenticated_user["id"], existing["id"]))
+                conversation = existing
+            elif open_only:
                 db.execute("""INSERT INTO crm_conversations(channel_id,contact_id,status,pipeline_stage,assigned_user_id,
                                   assigned_at,unread_count,updated_at)
                               VALUES(?,?,'Aberta','Em atendimento',?,datetime('now','localtime'),0,datetime('now','localtime'))
@@ -5982,13 +6001,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   first_response_at=COALESCE(crm_conversations.first_response_at,excluded.first_response_at),
                                   unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,updated_at=datetime('now','localtime')""",
                            (channel_id, contact["id"], self.authenticated_user["id"]))
-            conversation = db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?",
-                                      (channel_id, contact["id"])).fetchone()
+            if not existing:
+                conversation = db.execute("SELECT id,channel_id FROM crm_conversations WHERE channel_id=? AND contact_id=?",
+                                          (channel_id, contact["id"])).fetchone()
             self.crm_record_event(db, int(conversation["id"]), "conversation.started", {
-                "source": "contacts", "open_only": open_only,
+                "source": "contacts", "open_only": open_only, "reused": bool(existing),
             })
         if open_only:
-            return self.send_json({"ok": True, "conversation_id": int(conversation["id"])})
+            return self.send_json({"ok": True, "conversation_id": int(conversation["id"]),
+                                   "reused": bool(existing), "channel_id": int(conversation["channel_id"])})
         return self.send_crm_message(int(conversation["id"]), {"text": body})
 
     def resolve_crm_conversation(self, conversation_id: int, payload: dict) -> None:

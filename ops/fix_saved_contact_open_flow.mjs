@@ -46,7 +46,7 @@ if (!template.includes('open_only:true')) {
   );
 }
 
-if (!template.includes('CRM_START_CONVERSATION_STABLE_V2') && !template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4')) {
+if (!template.includes('CRM_START_CONVERSATION_STABLE_V2') && !template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4') && !template.includes('CRM_CONVERSATION_AUTO_REVEAL_V5')) {
   replaceOnce(
     /async startNewConversation\(\)\{[\s\S]*?\}\}\s*async loadRealContacts\(\)\{/,
     `async startNewConversation(){if(this.state.newConversationBusy)return;const contact=this.contactsData.find(item=>String(item.id)===String(this.state.newContactId));if(!contact){this.fireToast('Selecione um contato');return;}if(!this.state.newChannelId){this.fireToast('Selecione o número de saída');return;}this.setState({newConversationBusy:true});try{const response=await fetch('/api/crm/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:contact.name,phone:contact.phone,channel_id:Number(this.state.newChannelId),open_only:true})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao abrir conversa');const id=Number(data.conversation_id||0);if(!id)throw new Error('A conversa foi criada sem um identificador válido');await new Promise(resolve=>this.setState({modal:null,screen:'inbox',inboxFilter:'mine',activeConvId:null,newConversationBusy:false,newMessage:'',searchQuery:''},resolve));await this.loadConversations(true,'mine','');await new Promise(resolve=>this.setState({activeConvId:id},resolve));await this.loadMessages(id,false,true);await Promise.all([this.loadMetrics(true),this.loadAgents(true)]);this.fireToast('Conversa aberta e atribuída a você'); // CRM_START_CONVERSATION_STABLE_V2
@@ -84,7 +84,7 @@ if (!template.includes('CRM_CONVERSATION_ID_NORMALIZED_V3')) {
   );
 }
 
-if (!template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4')) {
+if (!template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4') && !template.includes('CRM_CONVERSATION_AUTO_REVEAL_V5')) {
   replaceOnce(
     /componentDidMount\(\)\{([\s\S]*?)this\.loadMetrics\(\);\s*this\.loadConversations\(false,'active'\);/,
     `componentDidMount(){$1this.loadMetrics();
@@ -102,6 +102,27 @@ if (!template.includes('CRM_CONVERSATION_RELOAD_RESUME_V4')) {
     /tags:\[\.\.\.c\.tags,\.\.\.\(!c\.assignedUserId\?\[c\.queueReason\]:\[\]\),\.\.\.\(autoLabel\[c\.automationState\]\?\[autoLabel\[c\.automationState\]\]:\[\]\)\]/,
     `tags:[...c.tags,...(c.assignedUserId?['Atendente: '+c.owner]:[c.queueReason]),...(autoLabel[c.automationState]?[autoLabel[c.automationState]]:[])]`,
     'Identificação visual do atendente',
+  );
+}
+
+if (!template.includes('CRM_CONVERSATION_AUTO_REVEAL_V5')) {
+  replaceOnce(
+    /this\.resumePendingConversation\(\); \/\/ CRM_CONVERSATION_RELOAD_RESUME_V4/,
+    `this.loadConversations(false,'active',''); // CRM_CONVERSATION_AUTO_REVEAL_V5`,
+    'Carga inicial sem recarregar a pÃ¡gina',
+  );
+  replaceOnce(
+    /\},8000\);\s*this\._messageTimer=/,
+    `},3000);
+    this._messageTimer=`,
+    'SincronizaÃ§Ã£o automÃ¡tica da lista',
+  );
+  replaceOnce(
+    /async startNewConversation\(\)\{[\s\S]*?\}\s*async loadRealContacts\(\)\{/,
+    `async startNewConversation(){if(this.state.newConversationBusy)return;const contact=this.contactsData.find(item=>String(item.id)===String(this.state.newContactId));if(!contact){this.fireToast('Selecione um contato');return;}if(!this.state.newChannelId){this.fireToast('Selecione o nÃºmero de saÃ­da');return;}this.setState({newConversationBusy:true});try{const response=await fetch('/api/crm/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:contact.name,phone:contact.phone,channel_id:Number(this.state.newChannelId),open_only:true})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Falha ao abrir conversa');const id=Number(data.conversation_id||0);if(!id)throw new Error('A conversa foi criada sem um identificador vÃ¡lido');await this.revealConversation(id,!!data.reused);}catch(error){this.setState({newConversationBusy:false});this.fireToast(error.message||'NÃ£o foi possÃ­vel abrir a conversa');}}
+    async revealConversation(id,reused=false){await new Promise(resolve=>this.setState({modal:null,screen:'inbox',inboxFilter:'mine',activeConvId:id,newConversationBusy:false,newMessage:'',searchQuery:''},resolve));for(let attempt=0;attempt<12;attempt+=1){await this.loadConversations(true,'mine','');if(this.convData.some(item=>Number(item.id)===Number(id))){await new Promise(resolve=>this.setState({activeConvId:Number(id)},resolve));await this.loadMessages(Number(id),false,true);await Promise.all([this.loadMetrics(true),this.loadAgents(true)]);this.fireToast(reused?'Conversa existente aberta e atribuÃ­da a vocÃª':'Conversa aberta e atribuÃ­da a vocÃª');return;}await new Promise(resolve=>setTimeout(resolve,250));}throw new Error('A conversa foi criada, mas nÃ£o apareceu na lista. Tente novamente.');}
+    async loadRealContacts(){`,
+    'Abertura automÃ¡tica com tentativas',
   );
 }
 

@@ -21,10 +21,10 @@ if (!template.includes("CRM_REAL_CONTACTS_V1") && !template.includes("CRM_REALTI
   throw new Error("Integração de contatos reais ausente.");
 }
 if (!template.includes("CRM_START_CONVERSATION_V1")) throw new Error("Início de conversa ausente.");
-if (!template.includes("CRM_START_CONVERSATION_STABLE_V2") && !template.includes("CRM_CONVERSATION_RELOAD_RESUME_V4")) throw new Error("Fluxo estável de abertura de conversa ausente.");
+if (!template.includes("CRM_START_CONVERSATION_STABLE_V2") && !template.includes("CRM_CONVERSATION_RELOAD_RESUME_V4") && !template.includes("CRM_CONVERSATION_AUTO_REVEAL_V5")) throw new Error("Fluxo estável de abertura de conversa ausente.");
 if (!template.includes("CRM_CONVERSATION_ID_NORMALIZED_V3")) throw new Error("Normalização do ID da conversa ausente.");
 
-if (!template.includes("CRM_CONVERSATION_RELOAD_RESUME_V4")) throw new Error("Conversation reload/resume missing.");
+if (!template.includes("CRM_CONVERSATION_AUTO_REVEAL_V5")) throw new Error("Automatic conversation reveal missing.");
 if (!template.includes("'Atendente: '+c.owner")) throw new Error("Visible attendant identification missing.");
 if (!template.includes("CRM_REUSABLE_TAGS_V1")) throw new Error("Reusable tag selector missing.");
 if (!template.includes("CRM_AUDIO_RECORDING_V1")) throw new Error("CRM audio recording missing.");

@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory() as directory:
             id INTEGER PRIMARY KEY, channel_id INTEGER, contact_id INTEGER,
             status TEXT DEFAULT 'Aberta', pipeline_stage TEXT DEFAULT 'Novo',
             assigned_user_id INTEGER, assigned_at TEXT, unread_count INTEGER DEFAULT 0,
-            resolved_at TEXT, resolved_by_user_id INTEGER, updated_at TEXT,
+            resolved_at TEXT, resolved_by_user_id INTEGER, automation_state TEXT DEFAULT 'manual', updated_at TEXT,
             UNIQUE(channel_id, contact_id)
         );
         CREATE TABLE crm_conversation_events (
@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory() as directory:
         );
         INSERT INTO users VALUES(20,'Matheus Henrique');
         INSERT INTO crm_channels VALUES(2,1,1);
+        INSERT INTO crm_channels VALUES(3,1,1);
         INSERT INTO crm_contacts(id,name,phone,is_internal) VALUES(1,'Paciente salvo','6796150513',1);
     """)
     db.commit()
@@ -75,6 +76,14 @@ with tempfile.TemporaryDirectory() as directory:
             assert tuple(row) == (0, 20, "Em atendimento")
             event = check.execute("SELECT event_type,actor_user_id FROM crm_conversation_events").fetchone()
             assert tuple(event) == ("conversation.started", 20)
+
+        handler.start_crm_conversation({
+            "name": "Paciente salvo", "phone": "6796150513",
+            "channel_id": 3, "open_only": True,
+        })
+        assert handler.responses[-1][1]["reused"] is True
+        with test_connect() as check:
+            assert check.execute("SELECT COUNT(*) FROM crm_conversations").fetchone()[0] == 1
     finally:
         server.connect = original_connect
 
