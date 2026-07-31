@@ -115,8 +115,21 @@ with tempfile.TemporaryDirectory() as directory:
         assert isabela.responses[-1][0] == 200
         with sqlite3.connect(server.DB_PATH) as db:
             assert db.execute("SELECT priority FROM crm_conversations WHERE id=1").fetchone()[0] == "Alta"
-        isabela.update_crm_conversation(1, {"assigned_user_id": "me", "pipeline_stage": "Em atendimento"})
+        isabela.claim_crm_conversation(1)
         assert isabela.responses[-1][0] == 200
+        assert isabela.responses[-1][1]["claimed"] is True
+        with sqlite3.connect(server.DB_PATH) as db:
+            claimed = db.execute("SELECT assigned_user_id,pipeline_stage,automation_state FROM crm_conversations WHERE id=1").fetchone()
+            assert claimed == (1, "Em atendimento", "paused")
+            assignment_events = db.execute("SELECT COUNT(*) FROM crm_conversation_events WHERE conversation_id=1 AND event_type='conversation.assigned'").fetchone()[0]
+            assert assignment_events == 1
+
+        # Reabrir a mesma conversa pelo mesmo usuário é idempotente.
+        isabela.claim_crm_conversation(1)
+        assert isabela.responses[-1][0] == 200
+        assert isabela.responses[-1][1]["already_owned"] is True
+        with sqlite3.connect(server.DB_PATH) as db:
+            assert db.execute("SELECT COUNT(*) FROM crm_conversation_events WHERE conversation_id=1 AND event_type='conversation.assigned'").fetchone()[0] == 1
 
         with sqlite3.connect(server.DB_PATH) as db:
             db.execute("INSERT INTO crm_messages(conversation_id,external_message_id,direction,body,message_at) VALUES(1,'ia-1','outbound','IA','2026-07-21 05:02:00')")
@@ -169,7 +182,7 @@ with tempfile.TemporaryDirectory() as directory:
         server.INTEGRATION_TOKEN = original_token
 
         natalia = handler_for(2, "Natalia")
-        natalia.update_crm_conversation(1, {"assigned_user_id": "me", "pipeline_stage": "Em atendimento"})
+        natalia.claim_crm_conversation(1)
         assert natalia.responses[-1][0] == 409
 
         isabela.get_crm_conversations({"view": ["mine"]})

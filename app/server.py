@@ -1171,6 +1171,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         crm_resolve_match = re.fullmatch(r"/api/crm/conversations/(\d+)/resolve", parsed.path)
         if crm_resolve_match:
             return self.resolve_crm_conversation(int(crm_resolve_match.group(1)), self.read_json())
+        crm_claim_match = re.fullmatch(r"/api/crm/conversations/(\d+)/claim", parsed.path)
+        if crm_claim_match:
+            return self.claim_crm_conversation(int(crm_claim_match.group(1)))
         if parsed.path == "/api/crm/n8n/config":
             return self.save_crm_n8n_config(self.read_json())
         if parsed.path == "/api/crm/n8n/callback-keys":
@@ -6414,6 +6417,56 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     tag_id = db.execute("SELECT id FROM crm_tags WHERE name=? COLLATE NOCASE", (name,)).fetchone()[0]
                     db.execute("INSERT OR IGNORE INTO crm_conversation_tags(conversation_id,tag_id) VALUES(?,?)", (conversation_id, tag_id))
         self.send_json({"updated":True,"id":conversation_id})
+
+    def claim_crm_conversation(self, conversation_id: int) -> None:
+        """Atomically assign an open external conversation to the current CRC user."""
+        if not self.require_crc_access():
+            return
+        with connect() as db:
+            current = db.execute("""SELECT cv.channel_id,cv.assigned_user_id,cv.status,ct.is_internal,u.name AS assigned_to
+                                   FROM crm_conversations cv
+                                   JOIN crm_contacts ct ON ct.id=cv.contact_id
+                                   LEFT JOIN users u ON u.id=cv.assigned_user_id
+                                   WHERE cv.id=?""", (conversation_id,)).fetchone()
+            if not current:
+                return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
+            if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
+                return self.send_json({"error": "Você não possui permissão para atender por este canal."}, HTTPStatus.FORBIDDEN)
+            if current["is_internal"]:
+                return self.send_json({"claimed": False, "internal": True, "id": conversation_id})
+            if current["status"] != "Aberta":
+                return self.send_json({"error": "Somente atendimentos abertos podem ser assumidos."}, HTTPStatus.CONFLICT)
+            if current["assigned_user_id"] == self.authenticated_user["id"]:
+                return self.send_json({"claimed": True, "already_owned": True, "id": conversation_id})
+            if current["assigned_user_id"] is not None:
+                return self.send_json(
+                    {"error": f"Este atendimento já está atribuído a {current['assigned_to'] or 'outra atendente'}."},
+                    HTTPStatus.CONFLICT,
+                )
+
+            result = db.execute("""UPDATE crm_conversations
+                                      SET assigned_user_id=?,
+                                          assigned_at=COALESCE(assigned_at,datetime('now','localtime')),
+                                          pipeline_stage=CASE WHEN pipeline_stage='Novo' THEN 'Em atendimento' ELSE pipeline_stage END,
+                                          automation_state='paused',
+                                          updated_at=datetime('now','localtime')
+                                    WHERE id=? AND assigned_user_id IS NULL AND status='Aberta'""",
+                                (self.authenticated_user["id"], conversation_id))
+            if result.rowcount != 1:
+                owner = db.execute("""SELECT u.name FROM crm_conversations cv
+                                      LEFT JOIN users u ON u.id=cv.assigned_user_id WHERE cv.id=?""",
+                                   (conversation_id,)).fetchone()
+                return self.send_json(
+                    {"error": f"Este atendimento acabou de ser assumido por {(owner['name'] if owner else None) or 'outra atendente'}."},
+                    HTTPStatus.CONFLICT,
+                )
+            self.crm_record_event(
+                db,
+                conversation_id,
+                "conversation.assigned",
+                {"from_user_id": None, "to_user_id": self.authenticated_user["id"], "source": "conversation.opened"},
+            )
+        self.send_json({"claimed": True, "id": conversation_id})
 
     def get_crm_webhook_events(self) -> None:
         if not self.require_crm_feature("integrations"): return

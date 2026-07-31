@@ -9,6 +9,8 @@
   var observer = null;
   var mediaSignature = "";
   var renderingMedia = false;
+  var claimedConversationIds = new Set();
+  var claimRequests = new Map();
 
   function mediaType(item) {
     var value = String((item && (item.message_type || item.type)) || "").toLowerCase();
@@ -127,6 +129,27 @@
       .forEach(function (element) {
         element.remove();
       });
+  }
+
+  async function claimConversation(conversationId) {
+    if (!conversationId || claimedConversationIds.has(conversationId)) return;
+    if (claimRequests.has(conversationId)) return claimRequests.get(conversationId);
+    var request = nativeFetch("/api/crm/conversations/" + conversationId + "/claim", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" }
+    })
+      .then(function (response) {
+        if (response.ok || response.status === 409) {
+          claimedConversationIds.add(conversationId);
+        }
+      })
+      .catch(function () {})
+      .finally(function () {
+        claimRequests.delete(conversationId);
+      });
+    claimRequests.set(conversationId, request);
+    return request;
   }
 
   function timelineElement() {
@@ -294,12 +317,10 @@
 
   function renderMedia() {
     if (!activeConversationId || !composerInput()) {
-      removeOrphanedMedia();
       return;
     }
     var timeline = timelineElement();
     if (!timeline || !isVisible(timeline)) {
-      removeOrphanedMedia();
       return;
     }
     var distanceFromBottom = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight;
@@ -391,12 +412,24 @@
   }
 
   window.fetch = async function (input, init) {
-    var response = await nativeFetch(input, init);
     var url = typeof input === "string" ? input : input && input.url;
     var conversationId = parseConversationId(url);
+    var method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
 
-    if (conversationId && (!init || !init.method || String(init.method).toUpperCase() === "GET")) {
+    if (conversationId && method === "GET") {
+      if (activeConversationId && activeConversationId !== conversationId) {
+        claimedConversationIds.delete(activeConversationId);
+        removeOrphanedMedia();
+        mediaItems = [];
+        mediaSignature = "";
+      }
       activeConversationId = conversationId;
+      await claimConversation(conversationId);
+    }
+
+    var response = await nativeFetch(input, init);
+
+    if (conversationId && method === "GET") {
       response
         .clone()
         .json()
@@ -418,7 +451,6 @@
 
   async function refreshActiveConversation() {
     if (!activeConversationId || !composerInput()) {
-      removeOrphanedMedia();
       return;
     }
     try {
@@ -435,7 +467,6 @@
     observer = new MutationObserver(function (mutations) {
       if (renderingMedia) return;
       if (!composerInput()) {
-        removeOrphanedMedia();
         return;
       }
       var needsRender = mutations.some(function (mutation) {
@@ -465,7 +496,6 @@
       function () {
         setTimeout(function () {
           if (!composerInput()) {
-            removeOrphanedMedia();
             return;
           }
           scheduleRender();
