@@ -5136,8 +5136,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             rows = db.execute("""SELECT u.id,u.name,u.email,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,COALESCE(u.crm_channel_scope_enabled,0) AS crm_channel_scope_enabled,
                     (SELECT STRING_AGG(cuc.channel_id::text, ',' ORDER BY cuc.channel_id) FROM crm_user_channels cuc WHERE cuc.user_id=u.id AND cuc.can_reply=1) AS crm_channel_ids,
-                    COUNT(CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida' THEN 1 END) AS active_count,
-                    COUNT(CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=CURRENT_DATE THEN 1 END) AS resolved_today
+                    COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida' THEN ct.id END) AS active_count,
+                    COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=CURRENT_DATE THEN ct.id END) AS resolved_today
                 FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id
                 LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
                 WHERE u.access_role='crc' AND u.active=1

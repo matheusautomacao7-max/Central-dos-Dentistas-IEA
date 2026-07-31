@@ -172,6 +172,7 @@ try:
     source = Path(server.__file__).read_text(encoding="utf-8")
     assert "CRM_PATIENT_OWNERSHIP_LOCK_V16" in source
     assert "patient_ownership_transfer" in source
+    assert "COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida' THEN ct.id END) AS active_count" in source
 finally:
     server.connect = original_connect
 
