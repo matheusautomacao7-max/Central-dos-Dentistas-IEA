@@ -32,4 +32,5 @@ if (!template.includes("CRM_REUSABLE_TAGS_V1")) throw new Error("Reusable tag se
 if (!template.includes("CRM_AUDIO_RECORDING_V1")) throw new Error("CRM audio recording missing.");
 if (!template.includes("CRM_OWNERSHIP_TIMELINE_AUDIO_V8")) throw new Error("Ownership timeline and stable audio player missing.");
 if (!template.includes("CRM_REFRESH_RACE_FIXED_V9")) throw new Error("Conversation refresh race fix missing.");
+if (!template.includes("CRM_NATIVE_AUDIO_STABLE_V10")) throw new Error("Stable native audio player missing.");
 console.log(JSON.stringify({ logic: "ok", fakeData: 0, realContacts: true, reusableTags: true }));
