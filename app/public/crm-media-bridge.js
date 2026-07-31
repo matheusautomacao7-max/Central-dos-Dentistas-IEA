@@ -1,6 +1,10 @@
 (function () {
   "use strict";
 
+  // CRM_MEDIA_BRIDGE_AUDIO_DISABLED_V12
+  // O componente principal passou a renderizar áudio nativamente. Este bridge
+  // permanece apenas como fallback de imagens, vídeos e documentos antigos.
+
   var nativeFetch = window.fetch.bind(window);
   var activeConversationId = null;
   var mediaItems = [];
@@ -370,7 +374,8 @@
     if (!Array.isArray(list)) return;
 
     var nextMediaItems = list.filter(function (item) {
-      return Boolean(mediaType(item) && mediaUrl(item));
+      var type = mediaType(item);
+      return Boolean(type && type !== "audio" && mediaUrl(item));
     });
     var nextSignature = JSON.stringify(
       nextMediaItems.map(function (item, index) {
@@ -465,7 +470,7 @@
     removeOrphanedMedia();
     startObserver();
     clearInterval(refreshTimer);
-    refreshTimer = setInterval(refreshActiveConversation, 8000);
+    refreshTimer = null;
     document.addEventListener(
       "click",
       function () {
