@@ -6014,13 +6014,22 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             # de sincronizaÃ§Ã£o removeriam a atribuiÃ§Ã£o logo depois da abertura.
             db.execute("""UPDATE crm_contacts SET is_internal=0,
                           updated_at=datetime('now','localtime') WHERE id=?""", (contact["id"],))
-            existing = db.execute("""SELECT id,channel_id FROM crm_conversations
+            existing = db.execute("""SELECT cv.id,cv.channel_id,cv.assigned_user_id,u.name AS assigned_to
+                                     FROM crm_conversations cv
+                                     LEFT JOIN users u ON u.id=cv.assigned_user_id
                                      WHERE contact_id=? AND status<>'Resolvida'
                                      ORDER BY CASE WHEN assigned_user_id=? THEN 0 ELSE 1 END,
                                               CASE WHEN channel_id=? THEN 0 ELSE 1 END,
-                                              datetime(updated_at) DESC,id DESC LIMIT 1""",
+                                              datetime(cv.updated_at) DESC,cv.id DESC LIMIT 1""",
                                   (contact["id"], self.authenticated_user["id"], channel_id)).fetchone()
             if existing:
+                if existing["assigned_user_id"] and existing["assigned_user_id"] != self.authenticated_user["id"]:
+                    return self.send_json({
+                        "error": f"Este paciente já está em atendimento com {existing['assigned_to']}. Solicite a transferência antes de acessar.",
+                        "code": "CONVERSATION_ASSIGNED_TO_ANOTHER_USER",
+                        "conversation_id": int(existing["id"]),
+                        "assigned_to": existing["assigned_to"],
+                    }, HTTPStatus.CONFLICT)
                 db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
                               assigned_user_id=?,assigned_at=COALESCE(assigned_at,datetime('now','localtime')),
                               unread_count=0,resolved_at=NULL,resolved_by_user_id=NULL,

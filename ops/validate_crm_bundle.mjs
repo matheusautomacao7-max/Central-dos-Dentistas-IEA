@@ -30,4 +30,5 @@ if (!template.includes("CRM_TIMELINE_STATE_STABLE_V7")) throw new Error("Timelin
 if (!template.includes("'Atendente: '+c.owner")) throw new Error("Visible attendant identification missing.");
 if (!template.includes("CRM_REUSABLE_TAGS_V1")) throw new Error("Reusable tag selector missing.");
 if (!template.includes("CRM_AUDIO_RECORDING_V1")) throw new Error("CRM audio recording missing.");
+if (!template.includes("CRM_OWNERSHIP_TIMELINE_AUDIO_V8")) throw new Error("Ownership timeline and stable audio player missing.");
 console.log(JSON.stringify({ logic: "ok", fakeData: 0, realContacts: true, reusableTags: true }));

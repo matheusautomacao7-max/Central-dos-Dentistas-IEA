@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory() as directory:
             actor_user_id INTEGER, actor_name TEXT, details_json TEXT
         );
         INSERT INTO users VALUES(20,'Matheus Henrique');
+        INSERT INTO users VALUES(21,'Matheus Defende');
         INSERT INTO crm_channels VALUES(2,1,1);
         INSERT INTO crm_channels VALUES(3,1,1);
         INSERT INTO crm_contacts(id,name,phone,is_internal) VALUES(1,'Paciente salvo','6796150513',1);
@@ -84,6 +85,19 @@ with tempfile.TemporaryDirectory() as directory:
         assert handler.responses[-1][1]["reused"] is True
         with test_connect() as check:
             assert check.execute("SELECT COUNT(*) FROM crm_conversations").fetchone()[0] == 1
+
+        with test_connect() as check:
+            check.execute("UPDATE crm_conversations SET assigned_user_id=21 WHERE id=1")
+        handler.start_crm_conversation({
+            "name": "Paciente salvo", "phone": "6796150513",
+            "channel_id": 2, "open_only": True,
+        })
+        status, payload = handler.responses[-1]
+        assert status == 409
+        assert payload["code"] == "CONVERSATION_ASSIGNED_TO_ANOTHER_USER"
+        assert payload["assigned_to"] == "Matheus Defende"
+        with test_connect() as check:
+            assert check.execute("SELECT assigned_user_id FROM crm_conversations WHERE id=1").fetchone()[0] == 21
     finally:
         server.connect = original_connect
 
