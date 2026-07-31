@@ -114,7 +114,7 @@
       const actions = overlay.querySelector(".iea-r-actions");
       const error = overlay.querySelector(".iea-r-error");
       const form = {
-        category: "", outcome: "", interest: "", origin: "", notes: "",
+        patient_type: "", is_recovery: "0", category: "", outcome: "", interest: "", origin: "", notes: "",
         responsible_professional: "", scheduled_date: "", scheduled_time: "",
         schedule_type: "", next_contact_at: "", attempts: "", loss_reason: ""
       };
@@ -123,27 +123,38 @@
       const read = () => overlay.querySelectorAll("[data-field]").forEach(el => { form[el.dataset.field] = el.value; });
       const showError = msg => { error.textContent = msg; error.style.display = "block"; };
       const conditionalFields = () => {
+        const recoveryField = form.patient_type === "Retorno s/ Tratamento" && form.outcome === "Agendou" ? `
+          <div class="iea-r-field full"><label>Este agendamento recuperou um paciente?</label><select data-field="is_recovery">
+            <option value="0"${form.is_recovery !== "1" ? " selected" : ""}>Não</option>
+            <option value="1"${form.is_recovery === "1" ? " selected" : ""}>Sim, paciente recuperado</option>
+          </select></div>` : "";
+        if (!recoveryField) form.is_recovery = "0";
         if (form.outcome === "Agendou") {
           // O resultado já confirma o agendamento; não há uma segunda decisão a tomar.
           form.schedule_type = "Agendado";
-          return `
+          return `${recoveryField}
           <div class="iea-r-field"><label>Data do agendamento</label><input data-field="scheduled_date" type="date" value="${escapeHtml(form.scheduled_date)}"></div>
           <div class="iea-r-field"><label>Horário</label><input data-field="scheduled_time" type="time" value="${escapeHtml(form.scheduled_time)}"></div>
           <div class="iea-r-field full"><label>Profissional</label><select data-field="responsible_professional">${dentistOptions(dentists, form.responsible_professional)}</select></div>`;
         }
-        if (["Quer agendar","Retorno"].includes(form.outcome)) return `
+        if (["Quer agendar","Retorno"].includes(form.outcome)) return `${recoveryField}
           <div class="iea-r-field full"><label>Próximo contato</label><input data-field="next_contact_at" type="datetime-local" value="${escapeHtml(form.next_contact_at)}"></div>`;
-        if (form.outcome === "Novo Contato IA") return `
+        if (form.outcome === "Novo Contato IA") return `${recoveryField}
           <div class="iea-r-field"><label>Tentativas realizadas</label><input data-field="attempts" type="number" min="0" max="99" value="${escapeHtml(form.attempts)}"></div>
           <div class="iea-r-field"><label>Próxima tentativa (opcional)</label><input data-field="next_contact_at" type="datetime-local" value="${escapeHtml(form.next_contact_at)}"></div>`;
-        if (["Mudou de cidade","Em tratamento externo","Desqualificado","Outros"].includes(form.outcome)) return `
+        if (["Mudou de cidade","Em tratamento externo","Desqualificado","Outros"].includes(form.outcome)) return `${recoveryField}
           <div class="iea-r-field full"><label>Motivo / explicação</label><textarea data-field="loss_reason" placeholder="Registre o motivo para os relatórios">${escapeHtml(form.loss_reason)}</textarea></div>`;
-        return "";
+        return recoveryField;
       };
       const render = () => {
         error.style.display = "none";
         overlay.querySelectorAll(".iea-r-step").forEach((el, i) => el.classList.toggle("on", i < step));
         if (step === 1) body.innerHTML = `<div class="iea-r-grid">
+          <div class="iea-r-field full"><label>Tipo de paciente</label><select data-field="patient_type">
+            <option value="">Selecione...</option>
+            <option value="Primeira consulta">Primeira consulta</option>
+            <option value="Retorno s/ Tratamento">Cliente recorrente — retorno sem tratamento</option>
+          </select></div>
           <div class="iea-r-field"><label>Categoria</label><select data-field="category">${opts(categories)}</select></div>
           <div class="iea-r-field"><label>Resultado</label><select data-field="outcome">${opts(outcomes)}</select></div>
           <div class="iea-r-field"><label>Interesse</label><select data-field="interest">${opts(interests)}</select></div>
@@ -154,7 +165,9 @@
         </div>`;
         if (step === 3) {
           const rows = [
-            ["Paciente", patientName || visiblePatientName()], ["Categoria", form.category], ["Resultado", form.outcome],
+            ["Paciente", patientName || visiblePatientName()], ["Tipo de paciente", form.patient_type],
+            ["Categoria", form.category], ["Resultado", form.outcome],
+            ["Paciente recuperado", form.is_recovery === "1" ? "Sim" : "Não"],
             ["Interesse", form.interest || "Não informado"], ["Origem", form.origin || "Não informada"],
             ["Profissional", form.responsible_professional || "Não informado"],
             ["Agendamento", form.scheduled_date ? `${form.scheduled_date} às ${form.scheduled_time} · ${form.schedule_type}` : "Não"],
@@ -169,7 +182,7 @@
         actions.querySelector("[data-back]").onclick = () => { if (step === 1) close(); else { step--; render(); } };
         actions.querySelector("[data-next]").onclick = () => {
           read();
-          if (step === 1 && (!form.category || !form.outcome)) return showError("Selecione a categoria e o resultado.");
+          if (step === 1 && (!form.patient_type || !form.category || !form.outcome)) return showError("Selecione o tipo de paciente, a categoria e o resultado.");
           if (step === 2) {
             if (form.outcome === "Agendou" && (!form.scheduled_date || !form.scheduled_time || !form.responsible_professional)) return showError("Preencha data, horário e profissional do agendamento.");
             if (["Quer agendar","Retorno"].includes(form.outcome) && !form.next_contact_at) return showError("Informe a data e o horário do próximo contato.");
@@ -320,7 +333,9 @@
       const s = data.summary || {};
       const cards = [
         ["Atendimentos",s.total],["1ª consulta",s.first_consultations],["Controle",s.controls],
-        ["Tratamento",s.treatments],["Orçamento",s.budgets],["Agendou",s.scheduled],["Conversão",`${s.conversion_rate || 0}%`]
+        ["Tratamento",s.treatments],["Orçamento",s.budgets],["Agendou",s.scheduled],
+        ["Conversão · 1ª consulta",`${s.first_consultation_conversion_rate || 0}%`],
+        ["Conversão · Recorrente",`${s.recurring_conversion_rate || 0}%`]
       ];
       const lines = items => (items || []).slice(0,8).map(x => `<div class="iea-report-line"><span>${escapeHtml(x.label)}</span><b>${x.total}</b></div>`).join("") || `<div class="iea-report-line"><span>Sem registros no período</span></div>`;
       content.innerHTML = `<div class="iea-kpis">${cards.map(c => `<div class="iea-kpi"><small>${c[0]}</small><strong>${c[1] || 0}</strong></div>`).join("")}</div>

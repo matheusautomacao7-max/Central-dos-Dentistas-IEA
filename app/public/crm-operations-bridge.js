@@ -52,6 +52,7 @@
 
   function screen(title, subtitle) {
     css();
+    if (window.IEACrmGoals && window.IEACrmGoals.close) window.IEACrmGoals.close();
     closeScreen();
     const root = document.createElement("section");
     root.className = "iea-ops-screen";

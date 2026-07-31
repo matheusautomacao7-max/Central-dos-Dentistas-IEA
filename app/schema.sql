@@ -512,6 +512,8 @@ CREATE TABLE IF NOT EXISTS crm_service_resolutions (
     contact_id INTEGER NOT NULL,
     channel_id INTEGER NOT NULL,
     attendance_number INTEGER NOT NULL DEFAULT 1,
+    patient_type TEXT,
+    is_recovery INTEGER NOT NULL DEFAULT 0,
     category TEXT NOT NULL,
     outcome TEXT NOT NULL,
     interest TEXT,
@@ -548,6 +550,47 @@ ON crm_service_resolutions(category, outcome, resolved_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_crm_service_resolutions_agent
 ON crm_service_resolutions(resolved_by_user_id, resolved_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    month_start TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    monthly_target INTEGER NOT NULL DEFAULT 0,
+    daily_target INTEGER NOT NULL DEFAULT 0,
+    celebration_enabled INTEGER NOT NULL DEFAULT 1,
+    celebration_message TEXT,
+    created_by_user_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, month_start, metric_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_goals_period
+ON crm_goals(month_start, user_id);
+
+CREATE TABLE IF NOT EXISTS crm_goal_achievements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id INTEGER,
+    user_id INTEGER NOT NULL,
+    metric_key TEXT NOT NULL,
+    achievement_type TEXT NOT NULL,
+    period_key TEXT NOT NULL,
+    target_value INTEGER NOT NULL,
+    realized_value INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    source_resolution_id INTEGER,
+    achieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, metric_key, achievement_type, period_key, target_value),
+    FOREIGN KEY (goal_id) REFERENCES crm_goals(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_resolution_id) REFERENCES crm_service_resolutions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_goal_achievements_user
+ON crm_goal_achievements(user_id, achieved_at DESC);
 
 CREATE TABLE IF NOT EXISTS crm_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

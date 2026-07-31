@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 import json
 import base64
 import csv
@@ -15,6 +16,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import math
 import unicodedata
 import qrcode
 from qrcode.image.svg import SvgPathImage
@@ -103,6 +105,50 @@ N8N_OVERVIEW_CACHE: dict[str, object] = {
 }
 CRM_PROFILE_PHOTO_MISS_LOCK = threading.Lock()
 CRM_PROFILE_PHOTO_MISS: dict[int, float] = {}
+
+CRM_GOAL_METRICS = {
+    "first_consultations": "Primeiras consultas",
+    "recoveries": "Recuperação de pacientes",
+    "attendances": "Atendimentos",
+}
+CRM_PATIENT_TYPES = {"Primeira consulta", "Retorno s/ Tratamento"}
+CRM_MONTH_NAMES = (
+    "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+)
+
+
+def crm_goal_month_bounds(month_value: str) -> tuple[date, date]:
+    """Return the first and last day for a validated YYYY-MM goal period."""
+    if not re.fullmatch(r"\d{4}-\d{2}", month_value or ""):
+        raise ValueError("Mês inválido")
+    first = datetime.strptime(month_value + "-01", "%Y-%m-%d").date()
+    last = date(first.year, first.month, calendar.monthrange(first.year, first.month)[1])
+    return first, last
+
+
+def crm_open_days_remaining(reference: date, month_start: date) -> int:
+    """Count open clinic days (Monday through Saturday) still available."""
+    month_end = date(month_start.year, month_start.month, calendar.monthrange(month_start.year, month_start.month)[1])
+    if reference > month_end:
+        return 0
+    cursor = max(reference, month_start)
+    return sum(1 for offset in range((month_end - cursor).days + 1)
+               if (cursor + timedelta(days=offset)).weekday() < 6)
+
+
+def crm_goal_progress(target: int, realized: int, remaining_days: int) -> dict:
+    target = max(0, int(target or 0))
+    realized = max(0, int(realized or 0))
+    gap = max(0, target - realized)
+    return {
+        "target": target,
+        "realized": realized,
+        "percentage": round(realized / target * 100, 1) if target else 0,
+        "gap": gap,
+        "required_per_open_day": math.ceil(gap / remaining_days) if gap and remaining_days else 0,
+        "reached": bool(target and realized >= target),
+    }
 
 
 def convert_crm_audio_to_ogg(audio_bytes: bytes) -> bytes:
@@ -229,6 +275,15 @@ def initialize_database() -> None:
         if "service_sector" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
+        crm_resolution_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
+        }
+        if "patient_type" not in crm_resolution_columns:
+            db.execute("ALTER TABLE crm_service_resolutions ADD COLUMN patient_type TEXT")
+        if "is_recovery" not in crm_resolution_columns:
+            db.execute("ALTER TABLE crm_service_resolutions ADD COLUMN is_recovery INTEGER NOT NULL DEFAULT 0")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_service_resolutions_goals
+                      ON crm_service_resolutions(resolved_by_user_id,patient_type,is_recovery,outcome,resolved_at DESC)""")
         crm_message_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_messages)").fetchall()}
         for column, definition in {
             "author_type": "TEXT NOT NULL DEFAULT 'unknown'",
@@ -1021,6 +1076,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_tags()
         if parsed.path == "/api/crm/metrics":
             return self.get_crm_metrics(parse_qs(parsed.query))
+        if parsed.path == "/api/crm/goals":
+            return self.get_crm_goals(parse_qs(parsed.query))
         if parsed.path == "/api/crm/resolution-reports":
             return self.get_crm_resolution_reports(parse_qs(parsed.query))
         if parsed.path == "/api/crm/patient-control":
@@ -1155,6 +1212,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.create_crm_tag(self.read_json())
         if parsed.path == "/api/crm/quick-replies":
             return self.create_crm_quick_reply(self.read_json())
+        if parsed.path == "/api/crm/goals":
+            return self.save_crm_goals(self.read_json())
         if parsed.path == "/api/crm/evolution/connect":
             return self.connect_evolution_instance(self.read_json())
         if parsed.path == "/api/crm/evolution/config":
@@ -5163,6 +5222,247 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             row = db.execute("SELECT id,name,color FROM crm_tags WHERE name=? COLLATE NOCASE", (name,)).fetchone()
         self.send_json(dict(row), HTTPStatus.CREATED)
 
+    @staticmethod
+    def crm_goal_actuals(db, user_id: int, start_date: date, end_date: date) -> dict:
+        patient_type_sql = "COALESCE(NULLIF(TRIM(COALESCE(r.patient_type,'')),''),CASE WHEN r.category='Primeira consulta' THEN 'Primeira consulta' ELSE '' END)"
+        row = db.execute(f"""SELECT
+                COUNT(*) AS attendances,
+                COUNT(*) FILTER (WHERE {patient_type_sql}='Primeira consulta') AS first_total,
+                COUNT(*) FILTER (WHERE {patient_type_sql}='Primeira consulta' AND r.outcome='Agendou') AS first_converted,
+                COUNT(*) FILTER (WHERE {patient_type_sql}='Retorno s/ Tratamento') AS recurring_total,
+                COUNT(*) FILTER (WHERE {patient_type_sql}='Retorno s/ Tratamento' AND r.outcome='Agendou') AS recurring_converted,
+                COUNT(*) FILTER (WHERE {patient_type_sql}='Retorno s/ Tratamento' AND r.is_recovery<>0 AND r.outcome='Agendou') AS recoveries
+              FROM crm_service_resolutions r
+              JOIN crm_contacts ct ON ct.id=r.contact_id
+             WHERE r.resolved_by_user_id=? AND ct.is_internal=0
+               AND date(r.resolved_at) BETWEEN ? AND ?""",
+            (user_id, start_date.isoformat(), end_date.isoformat()),
+        ).fetchone()
+        values = {key: int(row[key] or 0) for key in (
+            "attendances", "first_total", "first_converted", "recurring_total",
+            "recurring_converted", "recoveries",
+        )}
+        values["first_consultations"] = values["first_converted"]
+        return values
+
+    def crm_goal_dashboard_data(self, db, user_id: int, month_value: str) -> dict:
+        month_start, month_end = crm_goal_month_bounds(month_value)
+        today = datetime.now(CLINIC_TIMEZONE).date()
+        month_actuals = self.crm_goal_actuals(db, user_id, month_start, month_end)
+        if month_start.year == today.year and month_start.month == today.month:
+            day_actuals = self.crm_goal_actuals(db, user_id, today, today)
+        else:
+            day_actuals = {key: 0 for key in month_actuals}
+        remaining_days = crm_open_days_remaining(today, month_start)
+        goal_rows = db.execute(
+            """SELECT id,metric_key,monthly_target,daily_target,celebration_enabled,celebration_message
+                 FROM crm_goals WHERE user_id=? AND month_start=?""",
+            (user_id, month_start.isoformat()),
+        ).fetchall()
+        configured = {row["metric_key"]: dict(row) for row in goal_rows}
+        items = []
+        for metric_key, label in CRM_GOAL_METRICS.items():
+            goal = configured.get(metric_key, {})
+            month_progress = crm_goal_progress(
+                goal.get("monthly_target", 0), month_actuals.get(metric_key, 0), remaining_days,
+            )
+            day_progress = crm_goal_progress(
+                goal.get("daily_target", 0), day_actuals.get(metric_key, 0), 1,
+            )
+            items.append({
+                "metric_key": metric_key,
+                "label": label,
+                "goal_id": goal.get("id"),
+                "monthly": month_progress,
+                "daily": day_progress,
+                "celebration_enabled": bool(goal.get("celebration_enabled", 1)),
+                "celebration_message": goal.get("celebration_message") or "",
+            })
+        user = db.execute(
+            "SELECT id,name,email FROM users WHERE id=? AND access_role='crc'", (user_id,),
+        ).fetchone()
+        history = db.execute(
+            """SELECT metric_key,achievement_type,period_key,target_value,realized_value,message,achieved_at
+                 FROM crm_goal_achievements WHERE user_id=?
+                ORDER BY achieved_at DESC,id DESC LIMIT 20""", (user_id,),
+        ).fetchall()
+        return {
+            "month": month_value,
+            "month_label": f"{CRM_MONTH_NAMES[month_start.month]} {month_start.year}",
+            "user": dict(user) if user else {"id": user_id, "name": "Atendente"},
+            "schedule": {
+                "weekdays": "Segunda a sexta, 08h às 18h",
+                "saturday": "Sábado, 08h às 12h",
+                "remaining_open_days": remaining_days,
+            },
+            "items": items,
+            "conversion": {
+                "first_consultation": {
+                    "converted": month_actuals["first_converted"],
+                    "opportunities": month_actuals["first_total"],
+                    "percentage": round(month_actuals["first_converted"] / month_actuals["first_total"] * 100, 1)
+                    if month_actuals["first_total"] else 0,
+                },
+                "recurring": {
+                    "converted": month_actuals["recurring_converted"],
+                    "opportunities": month_actuals["recurring_total"],
+                    "percentage": round(month_actuals["recurring_converted"] / month_actuals["recurring_total"] * 100, 1)
+                    if month_actuals["recurring_total"] else 0,
+                },
+            },
+            "history": [dict(row) for row in history],
+        }
+
+    def get_crm_goals(self, query: dict | None = None) -> None:
+        if not self.require_crc_access():
+            return
+        query = query or {}
+        month_value = str((query.get("month") or [datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")])[0]).strip()
+        can_configure = self.crm_feature_allowed("settings")
+        try:
+            requested_user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
+            crm_goal_month_bounds(month_value)
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Informe um mês e uma atendente válidos."}, HTTPStatus.BAD_REQUEST)
+        user_id = requested_user_id if can_configure else int(self.authenticated_user["id"])
+        with connect() as db:
+            user = db.execute(
+                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,),
+            ).fetchone()
+            if not user:
+                return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
+            payload = self.crm_goal_dashboard_data(db, user_id, month_value)
+            agents = db.execute(
+                "SELECT id,name FROM users WHERE access_role='crc' AND active=1 ORDER BY name COLLATE NOCASE"
+            ).fetchall() if can_configure else []
+        payload["can_configure"] = can_configure
+        payload["agents"] = [dict(row) for row in agents]
+        self.send_json(payload)
+
+    def crm_evaluate_goal_achievements(self, db, user_id: int, source_resolution_id: int | None = None) -> list[dict]:
+        today = datetime.now(CLINIC_TIMEZONE).date()
+        month_value = today.strftime("%Y-%m")
+        month_start, month_end = crm_goal_month_bounds(month_value)
+        goals = db.execute(
+            """SELECT id,metric_key,monthly_target,daily_target,celebration_enabled,celebration_message
+                 FROM crm_goals WHERE user_id=? AND month_start=?""",
+            (user_id, month_start.isoformat()),
+        ).fetchall()
+        if not goals:
+            return []
+        user = db.execute("SELECT name FROM users WHERE id=?", (user_id,)).fetchone()
+        user_name = user["name"] if user else "Atendente"
+        month_actuals = self.crm_goal_actuals(db, user_id, month_start, month_end)
+        day_actuals = self.crm_goal_actuals(db, user_id, today, today)
+        created = []
+
+        def record(goal_id, metric_key, achievement_type, period_key, target, realized, custom_message=""):
+            if not target or realized < target:
+                return
+            label = CRM_GOAL_METRICS.get(metric_key, "Todas as metas")
+            period_label = "diária" if achievement_type == "daily" else "mensal"
+            message = (
+                f"{custom_message.strip()[:140]} Resultado: {realized} de {target}." if custom_message else
+                f"Parabéns, {user_name}! Meta {period_label} de {label} alcançada: {realized} de {target}."
+            )
+            cursor = db.execute(
+                """INSERT OR IGNORE INTO crm_goal_achievements(
+                       goal_id,user_id,metric_key,achievement_type,period_key,target_value,
+                       realized_value,message,source_resolution_id)
+                     VALUES(?,?,?,?,?,?,?,?,?)""",
+                (goal_id, user_id, metric_key, achievement_type, period_key, target,
+                 realized, message, source_resolution_id),
+            )
+            if cursor.rowcount:
+                created.append({
+                    "metric_key": metric_key, "achievement_type": achievement_type,
+                    "target": target, "realized": realized, "message": message,
+                })
+
+        enabled_goals = []
+        for goal in goals:
+            metric_key = goal["metric_key"]
+            if metric_key not in CRM_GOAL_METRICS or not goal["celebration_enabled"]:
+                continue
+            enabled_goals.append(goal)
+            record(goal["id"], metric_key, "monthly", month_value,
+                   int(goal["monthly_target"] or 0), month_actuals.get(metric_key, 0),
+                   goal["celebration_message"] or "")
+            record(goal["id"], metric_key, "daily", today.isoformat(),
+                   int(goal["daily_target"] or 0), day_actuals.get(metric_key, 0),
+                   goal["celebration_message"] or "")
+
+        for achievement_type, period_key, actuals, target_column in (
+            ("monthly", month_value, month_actuals, "monthly_target"),
+            ("daily", today.isoformat(), day_actuals, "daily_target"),
+        ):
+            complete = len(enabled_goals) == len(CRM_GOAL_METRICS) and all(
+                int(goal[target_column] or 0) > 0 and
+                actuals.get(goal["metric_key"], 0) >= int(goal[target_column] or 0)
+                for goal in enabled_goals
+            )
+            if complete:
+                target_sum = sum(int(goal[target_column] or 0) for goal in enabled_goals)
+                realized_sum = sum(actuals.get(goal["metric_key"], 0) for goal in enabled_goals)
+                record(None, "all_goals", achievement_type, period_key, target_sum, realized_sum,
+                       f"Parabéns, {user_name}! Todas as metas {('do dia' if achievement_type == 'daily' else 'do mês')} foram alcançadas.")
+        return created
+
+    def save_crm_goals(self, payload: dict) -> None:
+        if not self.require_crc_access():
+            return
+        if not self.require_crm_feature("settings"):
+            return
+        month_value = str(payload.get("month") or "").strip()
+        try:
+            user_id = int(payload.get("user_id") or 0)
+            month_start, _ = crm_goal_month_bounds(month_value)
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Selecione o mês e a atendente."}, HTTPStatus.BAD_REQUEST)
+        raw_goals = payload.get("goals") or {}
+        if not isinstance(raw_goals, dict):
+            return self.send_json({"error": "As metas informadas são inválidas."}, HTTPStatus.BAD_REQUEST)
+        normalized = {}
+        try:
+            for metric_key in CRM_GOAL_METRICS:
+                item = raw_goals.get(metric_key) or {}
+                monthly_target = int(item.get("monthly_target") or 0)
+                daily_target = int(item.get("daily_target") or 0)
+                if not 0 <= monthly_target <= 100000 or not 0 <= daily_target <= 10000:
+                    raise ValueError
+                normalized[metric_key] = {
+                    "monthly_target": monthly_target,
+                    "daily_target": daily_target,
+                    "celebration_enabled": 1 if item.get("celebration_enabled", True) else 0,
+                    "celebration_message": str(item.get("celebration_message") or "").strip()[:180] or None,
+                }
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Use apenas números inteiros positivos nas metas."}, HTTPStatus.BAD_REQUEST)
+        with connect() as db:
+            user = db.execute(
+                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,),
+            ).fetchone()
+            if not user:
+                return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
+            for metric_key, item in normalized.items():
+                db.execute(
+                    """INSERT INTO crm_goals(user_id,month_start,metric_key,monthly_target,daily_target,
+                                              celebration_enabled,celebration_message,created_by_user_id)
+                         VALUES(?,?,?,?,?,?,?,?)
+                         ON CONFLICT(user_id,month_start,metric_key) DO UPDATE SET
+                           monthly_target=excluded.monthly_target,daily_target=excluded.daily_target,
+                           celebration_enabled=excluded.celebration_enabled,
+                           celebration_message=excluded.celebration_message,
+                           updated_at=datetime('now','localtime')""",
+                    (user_id, month_start.isoformat(), metric_key, item["monthly_target"], item["daily_target"],
+                     item["celebration_enabled"], item["celebration_message"], self.authenticated_user["id"]),
+                )
+            achievements = self.crm_evaluate_goal_achievements(db, user_id)
+            dashboard = self.crm_goal_dashboard_data(db, user_id, month_value)
+        dashboard["can_configure"] = True
+        dashboard["achievements"] = achievements
+        self.send_json(dashboard)
+
     def get_crm_metrics(self, query: dict | None = None) -> None:
         if not self.require_crc_access(): return
         query = query or {}
@@ -6136,8 +6436,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "Mudou de cidade", "Em tratamento externo", "Desqualificado", "Outros",
         }
         category = str(payload.get("category") or "").strip()
+        patient_type = str(payload.get("patient_type") or "").strip()
+        recovery_raw = payload.get("is_recovery", False)
+        is_recovery = 1 if recovery_raw is True or str(recovery_raw).strip().lower() in {"1", "true", "sim", "yes"} else 0
         outcome = str(payload.get("outcome") or payload.get("reason") or "").strip()
         outcome = legacy_outcome_aliases.get(outcome, outcome)
+        # Preserve older integrations while the CRM UI now records this field
+        # explicitly. Existing first-consultation categories remain first;
+        # the other legacy categories are recurrent returns without treatment.
+        if not patient_type:
+            patient_type = "Primeira consulta" if category == "Primeira consulta" else "Retorno s/ Tratamento"
         interest = str(payload.get("interest") or "").strip()
         origin = str(payload.get("origin") or "").strip()
         notes = str(payload.get("notes") or "").strip()[:2000]
@@ -6153,8 +6461,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             attempts = 0
         if category not in allowed_categories:
             return self.send_json({"error": "Selecione a categoria do atendimento."}, HTTPStatus.BAD_REQUEST)
+        if patient_type not in CRM_PATIENT_TYPES:
+            return self.send_json({"error": "Informe se é primeira consulta ou retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
         if outcome not in allowed_outcomes:
             return self.send_json({"error": "Selecione o resultado do atendimento."}, HTTPStatus.BAD_REQUEST)
+        if is_recovery and patient_type != "Retorno s/ Tratamento":
+            return self.send_json({"error": "Recuperação de paciente só pode ser marcada em retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
+        if is_recovery and outcome != "Agendou":
+            return self.send_json({"error": "A recuperação entra na meta somente quando o paciente agendou."}, HTTPStatus.BAD_REQUEST)
         if outcome == "Agendou":
             if not scheduled_date or not scheduled_time or not professional:
                 return self.send_json({"error": "Informe data, horário e profissional do agendamento."}, HTTPStatus.BAD_REQUEST)
@@ -6199,15 +6513,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     "SELECT MAX(0,CAST((julianday('now','localtime')-julianday(?))*86400 AS INTEGER))",
                     (current["assigned_at"],),
                 ).fetchone()[0]
-            db.execute("""INSERT INTO crm_service_resolutions(
-                            conversation_id,contact_id,channel_id,attendance_number,category,outcome,
+            resolution_cursor = db.execute("""INSERT INTO crm_service_resolutions(
+                            conversation_id,contact_id,channel_id,attendance_number,patient_type,is_recovery,category,outcome,
                             interest,origin,responsible_professional,notes,scheduled_date,scheduled_time,
                             schedule_type,next_contact_at,attempts,loss_reason,resolved_by_user_id,
                             resolved_by_name,ai_involved,final_actor,campaign_name,workflow_name,
                             wait_seconds,service_seconds,metadata_json)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                        (conversation_id,current["contact_id"],current["channel_id"],attendance_number,
-                        category,outcome,interest or None,origin or None,professional or None,notes or None,
+                        patient_type,is_recovery,category,outcome,interest or None,origin or None,professional or None,notes or None,
                         scheduled_date or None,scheduled_time or None,schedule_type or None,next_contact_at or None,
                         attempts,loss_reason or None,self.authenticated_user["id"],self.authenticated_user["name"],
                         ai_involved,final_actor,current["automation_flow"] or None,current["automation_flow"] or None,
@@ -6222,10 +6536,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                updated_at=datetime('now','localtime') WHERE id=?""",
                               (self.authenticated_user["id"],self.authenticated_user["id"],outcome,conversation_id))
             self.crm_record_event(db, conversation_id, "conversation.resolved", {
-                "category": category, "outcome": outcome, "attendance_number": attendance_number,
+                "category": category, "patient_type": patient_type, "is_recovery": bool(is_recovery),
+                "outcome": outcome, "attendance_number": attendance_number,
             })
+            achievements = self.crm_evaluate_goal_achievements(
+                db, int(self.authenticated_user["id"]),
+                int(resolution_cursor.lastrowid) if resolution_cursor.lastrowid else None,
+            )
         self.send_json({"resolved":True,"id":conversation_id,"reason":outcome,
-                        "category":category,"attendance_number":attendance_number})
+                        "category":category,"patient_type":patient_type,
+                        "attendance_number":attendance_number,"achievements":achievements})
 
     def get_crm_resolution_reports(self, query: dict) -> None:
         if not self.require_crc_access():
@@ -6297,12 +6617,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   LEFT JOIN crm_contacts ct ON ct.id=r.contact_id
                                   LEFT JOIN crm_channels ch ON ch.id=r.channel_id
                                   {clause} ORDER BY r.resolved_at DESC LIMIT 500""", params).fetchall()
+            report_patient_type_sql = "COALESCE(NULLIF(TRIM(COALESCE(r.patient_type,'')),''),CASE WHEN r.category='Primeira consulta' THEN 'Primeira consulta' ELSE '' END)"
+            conversion_totals = db.execute(f"""SELECT
+                    COUNT(*) FILTER (WHERE {report_patient_type_sql}='Primeira consulta') AS first_total,
+                    COUNT(*) FILTER (WHERE {report_patient_type_sql}='Primeira consulta' AND r.outcome='Agendou') AS first_converted,
+                    COUNT(*) FILTER (WHERE {report_patient_type_sql}='Retorno s/ Tratamento') AS recurring_total,
+                    COUNT(*) FILTER (WHERE {report_patient_type_sql}='Retorno s/ Tratamento' AND r.outcome='Agendou') AS recurring_converted
+                  FROM crm_service_resolutions r {clause}""", params).fetchone()
             data = [dict(row) for row in rows]
             for row in data:
                 row["outcome"] = legacy_outcome_aliases.get(row.get("outcome"), row.get("outcome"))
             total = len(data)
             count = lambda field, value: sum(1 for row in data if row.get(field) == value)
             scheduled = count("outcome", "Agendou")
+            first_total = int(conversion_totals["first_total"] or 0)
+            first_converted = int(conversion_totals["first_converted"] or 0)
+            recurring_total = int(conversion_totals["recurring_total"] or 0)
+            recurring_converted = int(conversion_totals["recurring_converted"] or 0)
             summary = {
                 "total": total,
                 "first_consultations": count("category", "Primeira consulta"),
@@ -6320,6 +6651,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     "Mudou de cidade", "Em tratamento externo", "Desqualificado"
                 }),
                 "conversion_rate": round((scheduled / total * 100), 1) if total else 0,
+                "first_consultation_conversion_rate": round(first_converted / first_total * 100, 1) if first_total else 0,
+                "first_consultation_converted": first_converted,
+                "first_consultation_opportunities": first_total,
+                "recurring_conversion_rate": round(recurring_converted / recurring_total * 100, 1) if recurring_total else 0,
+                "recurring_converted": recurring_converted,
+                "recurring_opportunities": recurring_total,
                 "ai_involved": sum(1 for row in data if row.get("ai_involved")),
                 "human_finalized": sum(1 for row in data if row.get("final_actor") == "Humano"),
             }
