@@ -5958,6 +5958,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           ON CONFLICT(phone) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE crm_contacts.name END,
                           updated_at=datetime('now','localtime')""", (name, phone))
             contact = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (phone,)).fetchone()
+            # Abrir um atendimento manualmente Ã© uma declaraÃ§Ã£o explÃ­cita de
+            # atendimento externo. Isso tambÃ©m corrige contatos que tenham sido
+            # marcados como internos anteriormente; caso contrÃ¡rio, as rotinas
+            # de sincronizaÃ§Ã£o removeriam a atribuiÃ§Ã£o logo depois da abertura.
+            db.execute("""UPDATE crm_contacts SET is_internal=0,
+                          updated_at=datetime('now','localtime') WHERE id=?""", (contact["id"],))
             if open_only:
                 db.execute("""INSERT INTO crm_conversations(channel_id,contact_id,status,pipeline_stage,assigned_user_id,
                                   assigned_at,unread_count,updated_at)
@@ -5978,6 +5984,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            (channel_id, contact["id"], self.authenticated_user["id"]))
             conversation = db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?",
                                       (channel_id, contact["id"])).fetchone()
+            self.crm_record_event(db, int(conversation["id"]), "conversation.started", {
+                "source": "contacts", "open_only": open_only,
+            })
         if open_only:
             return self.send_json({"ok": True, "conversation_id": int(conversation["id"])})
         return self.send_crm_message(int(conversation["id"]), {"text": body})
