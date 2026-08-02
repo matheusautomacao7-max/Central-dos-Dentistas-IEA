@@ -341,6 +341,10 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE users ADD COLUMN crm_operational_agent INTEGER NOT NULL DEFAULT 1")
         if "crm_manage_automation" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN crm_manage_automation INTEGER NOT NULL DEFAULT 0")
+            db.execute("""UPDATE users SET crm_manage_automation=1
+                          WHERE EXISTS (SELECT 1 FROM crm_user_channels permission
+                                        WHERE permission.user_id=users.id
+                                          AND permission.can_manage_automation=1)""")
         if "service_sector" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
@@ -2364,7 +2368,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def permission_change_summary(before: dict, after: dict) -> str:
         labels = {
-            "scope_enabled": "Restrição por canal",
+            "channel_scope_enabled": "Restrição por canal",
             "feature_scope_enabled": "Personalização de telas",
             "can_manage_automation": "Supervisão de automações",
             "operational_agent": "Participação nos atendimentos",

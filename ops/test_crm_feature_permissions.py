@@ -103,6 +103,7 @@ assert "before_json" in permission_save and "after_json" in permission_save
 assert permission_save.count(" is True") >= 3, "permission writes must use strict booleans"
 assert "crm_manage_automation" in permission_save
 assert "crm_operational_agent" in permission_save
+assert "permission.can_manage_automation=1" in server_source
 
 n8n_manager = methods["require_crm_n8n_manager"]
 assert "crm_can_manage_automation" in n8n_manager, "n8n management must require the explicit automation capability"
