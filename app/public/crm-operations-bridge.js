@@ -67,10 +67,18 @@
     if (event && event.target && event.target.closest && event.target.closest("[data-iea-patient-control]")) return;
     if (activeScreen) activeScreen.remove();
     activeScreen = null;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("screen") === "patient-control") {
+      url.searchParams.delete("screen");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
   }
 
   async function openControl() {
     const body = screen("Controle de pacientes", "Atendimentos finalizados, métricas e exportação em uma tela nativa do CRM.");
+    const url = new URL(window.location.href);
+    url.searchParams.set("screen", "patient-control");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     body.innerHTML = `<div class="iea-panel"><div class="iea-filters">
       <input class="iea-field" data-search placeholder="Buscar paciente ou telefone">
       <select class="iea-field" data-period><option value="30d">Últimos 30 dias</option><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option></select>

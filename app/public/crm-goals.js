@@ -107,6 +107,14 @@
     refreshTimer = null;
     const link = document.querySelector("[data-iea-goals-nav]");
     if (link) link.style.background = "transparent";
+    updateScreenUrl("");
+  }
+
+  function updateScreenUrl(screen) {
+    const url = new URL(window.location.href);
+    if (screen) url.searchParams.set("screen", screen);
+    else url.searchParams.delete("screen");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   function openGoals() {
@@ -119,6 +127,7 @@
     document.body.appendChild(root);
     const link = document.querySelector("[data-iea-goals-nav]");
     if (link) link.style.background = "rgba(255,255,255,.16)";
+    updateScreenUrl("goals");
     loadGoals();
     refreshTimer = window.setInterval(() => {
       if (root && !document.hidden && activeTab === "progress") loadGoals(true);
@@ -295,11 +304,11 @@
         return width > 0 && width <= 120;
       });
     if (!aside) return;
-    const item = document.createElement("a");
+    const item = document.createElement("button");
     item.dataset.ieaGoalsNav = "1";
-    item.href = "/central-crc/whatsapp?screen=goals";
+    item.type = "button";
     item.title = "Metas";
-    item.style.cssText = "width:56px;min-height:58px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.72);text-decoration:none;font:700 9.5px Manrope,system-ui,sans-serif;gap:5px;margin:2px 0";
+    item.style.cssText = "width:56px;min-height:58px;border:0;padding:0;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;color:rgba(255,255,255,.72);text-decoration:none;font:700 9.5px Manrope,system-ui,sans-serif;gap:5px;margin:2px 0;cursor:pointer";
     item.innerHTML = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1"></circle><path d="m15 9 5-5"></path></svg><span>Metas</span>';
     item.onmouseenter = () => { if (!root) item.style.background = "rgba(255,255,255,.08)"; };
     item.onmouseleave = () => { if (!root) item.style.background = "transparent"; };

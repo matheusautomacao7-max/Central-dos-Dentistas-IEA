@@ -6,10 +6,11 @@ import { chromium } from "playwright";
 
 const navigationScript = await readFile(new URL("../app/public/crm-navigation-order.js", import.meta.url), "utf8");
 const resolutionScript = await readFile(new URL("../app/public/crm-resolution-flow.js", import.meta.url), "utf8");
+const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260802-navigation-v1/);
-assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-control-icon-v1/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260802-spa-navigation-v1/);
+assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
 assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
 assert.match(resolutionScript, /style="display:block;flex:0 0 22px;margin:0 auto"/);
@@ -24,24 +25,45 @@ const server = http.createServer((request, response) => {
     response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
     return response.end(resolutionScript);
   }
+  if (request.url.startsWith("/crm-operations-bridge.js")) {
+    response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+    return response.end(operationsScript);
+  }
+  if (request.url.startsWith("/api/crm/permissions")) {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    return response.end(JSON.stringify({ feature_scope_enabled: false, allowed_features: [] }));
+  }
+  if (request.url.startsWith("/api/admin/crm-channel-access")) {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    return response.end(JSON.stringify({ users: [], channels: [] }));
+  }
+  if (request.url.startsWith("/api/crm/patient-control")) {
+    response.writeHead(200, { "Content-Type": "application/json" });
+    return response.end(JSON.stringify({ summary: {}, items: [], categories: [], outcomes: [] }));
+  }
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   response.end(`<!doctype html><html><body>
     <aside style="width:80px;display:flex;flex-direction:column">
       <div data-logo>Logo</div><div data-search>Busca</div>
-      <div data-nav><span>Inbox</span></div>
-      <div data-nav><span>Filas</span></div>
-      <div data-nav><span>Funil</span></div>
-      <div data-nav><span>Gestão</span></div>
-      <div data-nav data-iea-patients-nav><span>Pacientes</span></div>
-      <div data-nav><span>Campanhas</span></div>
-      <div data-nav><span>Integra</span></div>
-      <div data-nav><span>Config</span></div>
-      <a data-nav data-iea-goals-nav><span>Metas</span></a>
+      <a href="/reload?screen=inbox" data-nav><span>Inbox</span></a>
+      <a href="/reload?screen=queue" data-nav><span>Filas</span></a>
+      <a href="/reload?screen=funnel" data-nav><span>Funil</span></a>
+      <a href="/reload?screen=management" data-nav><span>Gestão</span></a>
+      <a href="/reload?screen=contacts" data-nav data-iea-patients-nav><span>Pacientes</span></a>
+      <a href="/reload?screen=campaigns" data-nav><span>Campanhas</span></a>
+      <a href="/reload?screen=integrations" data-nav><span>Integra</span></a>
+      <a href="/reload?screen=settings" data-nav><span>Config</span></a>
+      <button type="button" data-nav data-iea-goals-nav><span>Metas</span></button>
       <div style="flex:1"></div>
     </aside>
-    <script>window.clicks=0;document.querySelectorAll('[data-nav]')[2].addEventListener('click',()=>window.clicks++);</script>
-    <script src="/crm-resolution-flow.js?v=20260802-control-icon-v1"></script>
-    <script src="/crm-navigation-order.js?v=20260802-navigation-v1"></script>
+    <script>
+      window.clicks=0; window.goalsOpened=0;
+      window.IEACrmGoals={open:()=>window.goalsOpened++};
+      document.querySelectorAll('[data-nav]')[2].addEventListener('click',()=>window.clicks++);
+    </script>
+    <script src="/crm-resolution-flow.js?v=20260802-spa-navigation-v1"></script>
+    <script src="/crm-operations-bridge.js?v=20260802-spa-navigation-v1"></script>
+    <script src="/crm-navigation-order.js?v=20260802-spa-navigation-v1"></script>
   </body></html>`);
 });
 
@@ -80,6 +102,32 @@ try {
 
   await page.getByText("Funil", { exact: true }).click();
   assert.equal(await page.evaluate(() => window.clicks), 1, "reordering must preserve existing event listeners");
+  assert.equal(new URL(page.url()).pathname, "/", "sidebar navigation must not load another document");
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
+
+  for (const label of ["Inbox", "Filas", "Pacientes", "Gestão", "Campanhas", "Integração", "Configuração"]) {
+    await page.getByText(label, { exact: true }).click();
+    assert.equal(new URL(page.url()).pathname, "/", `${label} must keep SPA navigation`);
+    assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
+  }
+
+  await page.getByText("Metas", { exact: true }).click();
+  assert.equal(await page.evaluate(() => window.goalsOpened), 1);
+  await page.getByText("Controle", { exact: true }).click();
+  await page.getByRole("heading", { name: "Controle de pacientes" }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("screen"), "patient-control");
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
+
+  await page.locator("[data-iea-goals-nav]").evaluate((item) => {
+    const legacy = document.createElement("a");
+    legacy.href = "/central-crc/whatsapp?screen=goals";
+    legacy.dataset.ieaGoalsNav = "1";
+    legacy.innerHTML = "<span>Metas</span>";
+    item.replaceWith(legacy);
+  });
+  await page.getByText("Metas", { exact: true }).click();
+  assert.equal(await page.evaluate(() => window.goalsOpened), 2, "a remounted legacy link must still use SPA navigation");
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
 
   await page.locator("aside > [data-nav]").evaluateAll((nodes) => {
     for (const node of nodes) {

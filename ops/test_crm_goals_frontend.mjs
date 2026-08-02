@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260802-goals-visual-v3/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260802-spa-navigation-v1/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
 assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
@@ -90,6 +90,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await page.getByText("Metas", { exact: true }).click();
+  assert.equal(new URL(page.url()).searchParams.get("screen"), "goals");
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
   await page.getByRole("heading", { name: "Metas individuais" }).waitFor();
   assert.equal(await page.getByText("Primeiras consultas", { exact: true }).count(), 2);
   assert.equal(await page.getByText("Conversão · Cliente recorrente", { exact: true }).count(), 1);

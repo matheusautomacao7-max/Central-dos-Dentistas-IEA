@@ -252,12 +252,12 @@
       .find(el => /^Gestão$/i.test((el.textContent || "").trim()));
     const aside = management && management.closest("aside");
     if (!aside) return;
-    const item = document.createElement("a");
+    const item = document.createElement("button");
     item.dataset.ieaPatientControl = "1";
-    item.href = "/central-crc/whatsapp?screen=patient-control";
+    item.type = "button";
     item.title = "Controle";
     item.setAttribute("aria-label", "Controle");
-    item.style.cssText = "width:56px;min-height:58px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.72);text-decoration:none;font:700 9.5px Manrope,system-ui,sans-serif;gap:5px;margin:2px 0";
+    item.style.cssText = "width:56px;min-height:58px;border:0;padding:0;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:transparent;color:rgba(255,255,255,.72);text-decoration:none;font:700 9.5px Manrope,system-ui,sans-serif;gap:5px;margin:2px 0;cursor:pointer";
     item.innerHTML = controlNavigationMarkup();
     item.addEventListener("mouseenter", () => item.style.background = "rgba(255,255,255,.08)");
     item.addEventListener("mouseleave", () => item.style.background = "transparent");

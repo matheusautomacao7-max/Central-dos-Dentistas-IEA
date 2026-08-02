@@ -54,6 +54,47 @@
     return "";
   }
 
+  function directNavigationItem(target) {
+    const aside = target && target.closest && target.closest("aside");
+    if (!aside) return null;
+    let item = target;
+    while (item && item.parentElement !== aside) item = item.parentElement;
+    return item && item.parentElement === aside ? item : null;
+  }
+
+  function updateScreenUrl(screen) {
+    const url = new URL(window.location.href);
+    if (screen) url.searchParams.set("screen", screen);
+    else url.searchParams.delete("screen");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  function handleNavigation(event) {
+    const item = directNavigationItem(event.target);
+    const key = navigationKey(item);
+    if (!key) return;
+
+    // The CRM sidebar is SPA navigation. A legacy anchor may still appear
+    // during a render, but it must never load a new document.
+    if (item.tagName === "A") event.preventDefault();
+
+    if (key === "metas" && window.IEACrmGoals && window.IEACrmGoals.open) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.IEACrmGoals.open();
+      return;
+    }
+    if (key === "controle" && window.IEACrmOperations && window.IEACrmOperations.openControl) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.IEACrmOperations.openControl();
+      updateScreenUrl("patient-control");
+      return;
+    }
+
+    updateScreenUrl("");
+  }
+
   function leafWithLabel(item, accepted) {
     return Array.from(item.querySelectorAll("span,div")).find((node) =>
       !node.children.length && accepted.includes(normalized(node.textContent))
@@ -174,6 +215,7 @@
     childList: true,
     subtree: true,
   });
+  document.addEventListener("click", handleNavigation, true);
   maintainOrder();
   window.IEACrmNavigationOrder = { maintain: maintainOrder, operational: OPERATIONAL_ORDER, admin: ADMIN_ORDER, full: FULL_ORDER };
 })();
