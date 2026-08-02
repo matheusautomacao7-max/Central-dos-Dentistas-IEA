@@ -21,8 +21,12 @@ const pageHtml = `<!doctype html><html><body data-omtheme="light" style="margin:
   <aside style="width:80px;height:100vh;display:flex;flex-direction:column;align-items:center;background:#122b46">
     <div style="flex:1"></div>
     <div id="theme" style="width:44px;height:38px;cursor:pointer"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3"></path></svg></div>
-    <div id="avatar" style="width:44px;height:44px;cursor:pointer">MH</div>
-  </aside><script src="/crm-collaborator-profile.js"></script></body></html>`;
+    <div style="position:relative;cursor:pointer"><div id="avatar" style="width:42px;height:42px;border-radius:50%;cursor:pointer">AS</div><span style="position:absolute;width:13px;height:13px"></span></div>
+  </aside><script>
+    document.getElementById("theme").addEventListener("click", function () {
+      document.body.dataset.omtheme = document.body.dataset.omtheme === "dark" ? "light" : "dark";
+    });
+  </script><script src="/crm-collaborator-profile.js"></script></body></html>`;
 
 const server = http.createServer(async (request, response) => {
   if (request.url === "/crm-collaborator-profile.js") {
@@ -54,12 +58,15 @@ const browser = await chromium.launch({headless:true,...(executablePath ? {execu
 try {
   const page = await browser.newPage({viewport:{width:1440,height:900}});
   await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  const avatar = page.getByRole("button", {name:"Abrir meu perfil e conquistas"});
+  await avatar.waitFor();
+  assert.equal(await avatar.textContent(), "MH", "o avatar legado AS deve receber as iniciais reais");
   const theme = page.getByRole("button", {name:"Alternar modo noturno"});
   await theme.waitFor(); await theme.click();
   await page.waitForFunction(() => document.body.dataset.omtheme === "dark");
   assert.equal(await page.evaluate(() => localStorage.getItem("iea.crm.theme")), "dark");
 
-  await page.getByRole("button", {name:"Abrir meu perfil e conquistas"}).click();
+  await avatar.click();
   await page.getByRole("heading", {name:"Matheus Henrique"}).waitFor();
   assert.equal(await page.getByRole("dialog").count(), 1);
   assert.equal(await page.getByText("Administrador do CRM", {exact:true}).count(), 1);

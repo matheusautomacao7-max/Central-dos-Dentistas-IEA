@@ -163,11 +163,25 @@
     if (!currentUser) return null;
     var aside = document.querySelector("aside");
     if (!aside) return null;
+    var tagged = aside.querySelector("[data-iea-cp-trigger='true']");
+    if (tagged) return tagged;
     var expected = initials(currentUser.name);
     var candidates = Array.from(aside.querySelectorAll("div,span")).filter(function (element) {
       return element.children.length === 0 && String(element.textContent || "").trim().toUpperCase() === expected && visibleFooterElement(element);
     });
-    return candidates.length ? candidates[candidates.length - 1] : null;
+    if (candidates.length) return candidates[candidates.length - 1];
+
+    // O bundle legado ainda desenha o rodapé com as iniciais fixas "AS".
+    // Identifica o avatar pela geometria circular para não depender desse texto.
+    var circular = Array.from(aside.querySelectorAll("div")).filter(function (element) {
+      if (!visibleFooterElement(element)) return false;
+      var style = window.getComputedStyle(element);
+      var width = parseFloat(style.width || "0");
+      var height = parseFloat(style.height || "0");
+      var radius = parseFloat(style.borderTopLeftRadius || "0");
+      return width >= 38 && width <= 48 && height >= 38 && height <= 48 && radius >= 18;
+    });
+    return circular.length ? circular[circular.length - 1] : null;
   }
 
   function findThemeButton() {
@@ -182,20 +196,22 @@
   function enhanceTheme() {
     var button = findThemeButton();
     if (!button || button.dataset.ieaThemeBound) return;
-    var saved = localStorage.getItem(THEME_KEY);
-    if ((saved === "dark" || saved === "light") && document.body.getAttribute("data-omtheme") !== saved) {
-      button.click();
-      window.setTimeout(function () { document.body.setAttribute("data-omtheme", saved); }, 0);
-    }
     button.dataset.ieaThemeBound = "true";
     button.setAttribute("role", "button"); button.setAttribute("tabindex", "0");
     button.setAttribute("aria-label", "Alternar modo noturno"); button.setAttribute("title", "Alternar modo noturno");
     button.addEventListener("click", function () {
       var next = document.body.getAttribute("data-omtheme") === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, next);
-      window.setTimeout(function () { if (document.body.getAttribute("data-omtheme") !== next) document.body.setAttribute("data-omtheme", next); }, 0);
-    });
+      window.setTimeout(function () {
+        localStorage.setItem(THEME_KEY, next);
+        if (document.body.getAttribute("data-omtheme") !== next) document.body.setAttribute("data-omtheme", next);
+      }, 0);
+    }, true);
     button.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); button.click(); } });
+    var saved = localStorage.getItem(THEME_KEY);
+    if ((saved === "dark" || saved === "light") && document.body.getAttribute("data-omtheme") !== saved) {
+      button.click();
+      window.setTimeout(function () { document.body.setAttribute("data-omtheme", saved); }, 0);
+    }
   }
 
   function enhanceAvatar() {
@@ -204,6 +220,7 @@
     avatar.dataset.ieaCpBound = "true"; avatar.dataset.ieaCpTrigger = "true";
     avatar.classList.add("iea-cp-trigger"); avatar.setAttribute("role", "button"); avatar.setAttribute("tabindex", "0");
     avatar.setAttribute("aria-label", "Abrir meu perfil e conquistas"); avatar.setAttribute("title", "Abrir perfil");
+    if (avatar.children.length === 0) avatar.textContent = initials(currentUser.name);
     avatar.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); openProfile(); });
     avatar.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); openProfile(); } });
   }
