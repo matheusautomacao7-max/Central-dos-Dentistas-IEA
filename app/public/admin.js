@@ -7,6 +7,9 @@ const slug = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toL
 const currency = (cents = 0) => new Intl.NumberFormat("pt-BR", {style: "currency", currency: "BRL"}).format(cents / 100);
 const accessRoleLabels = {professional: "Dentista", asb: "ASB", crc: "CRC", admin: "Admin Geral", owner: "Proprietária"};
 const accessRoleLabel = role => accessRoleLabels[role] || "Não definido";
+const professionalAccessLabel = item => item.access_role === "crc"
+  ? `CRC · ${item.crm_access_level === "admin" ? "Administrador" : "Atendente"}`
+  : accessRoleLabel(item.access_role);
 
 const NETWORK_ERROR_MESSAGE = "Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.";
 const isNetworkError = error => error instanceof TypeError;
@@ -44,8 +47,9 @@ function renderCrmAccess() {
     const restricted = Number(user.crm_channel_scope_enabled) === 1;
     const featuresRestricted = Number(user.crm_feature_scope_enabled) === 1;
     const operationalAgent = Number(user.crm_operational_agent) === 1;
+    const crmLevelLabel = user.crm_access_level === "admin" ? "Administrador do CRM" : "Atendente do CRM";
     return `<article class="crm-access-card" data-crm-access-user="${user.id}">
-      <div class="crm-access-card-head"><div class="admin-overview-avatar">${escapeHtml(initials(user.name))}</div><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email || "")}</small></div><span class="access-badge ${user.active ? "" : "off"}">${user.active ? "Ativo" : "Bloqueado"}</span></div>
+      <div class="crm-access-card-head"><div class="admin-overview-avatar">${escapeHtml(initials(user.name))}</div><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email || "")} · ${escapeHtml(crmLevelLabel)}</small></div><span class="access-badge ${user.active ? "" : "off"}">${user.active ? "Ativo" : "Bloqueado"}</span></div>
       <label class="crm-manager-toggle"><input type="checkbox" data-crm-operational-agent ${operationalAgent ? "checked" : ""}><span><strong>Participa dos atendimentos</strong><small>Desmarque para contas de supervisão e testes: não recebe conversas nem entra nas métricas individuais.</small></span></label>
       <label class="crm-scope-toggle"><input type="checkbox" data-crm-scope ${restricted ? "checked" : ""}><span><strong>Restringir aos números marcados</strong><small>Desmarcado: visualiza todos os canais.</small></span></label>
       <div class="crm-channel-checks">${channels.map(channel => `<label><input type="checkbox" data-crm-channel value="${channel.id}" ${selected.has(String(channel.id)) ? "checked" : ""}><span><strong>${escapeHtml(crmChannelLabel(channel))}</strong><small>${escapeHtml(channel.phone || channel.instance_name || "Sem telefone")} · ${channel.sync_enabled ? "Sincronizando" : "Pausado"}</small></span></label>`).join("") || '<p class="empty-state">Nenhum canal conectado.</p>'}</div>
@@ -118,7 +122,7 @@ function renderProfessionalsTable() {
     const linkedPortfolio = item.access_role === "asb" && item.linked_professional_name
       ? `<span class="linked-portfolio-badge">${escapeHtml(item.linked_professional_name)}</span>`
       : '<span class="linked-portfolio-empty">—</span>';
-    return `<tr><td><div class="admin-person"><strong>${escapeHtml(item.name)}${item.is_owner ? " · Proprietária" : ""}</strong><small>${escapeHtml(item.email || "Sem e-mail")}</small></div></td><td><span class="access-level-badge access-level-${escapeHtml(item.access_role || "undefined")}">${escapeHtml(accessRoleLabel(item.access_role))}</span></td><td>${escapeHtml(item.specialties || "Não definida")}</td><td>${escapeHtml(item.offices || "Não definido")}</td><td>${linkedPortfolio}</td><td>${item.patient_count} pacientes</td><td><span class="access-badge ${item.access_active ? "" : "off"}">${item.access_active ? "Ativo" : "Bloqueado"}</span></td><td><button class="admin-edit-button" type="button" data-edit-professional="${item.id}">Editar</button></td></tr>`;
+    return `<tr><td><div class="admin-person"><strong>${escapeHtml(item.name)}${item.is_owner ? " · Proprietária" : ""}</strong><small>${escapeHtml(item.email || "Sem e-mail")}</small></div></td><td><span class="access-level-badge access-level-${escapeHtml(item.access_role || "undefined")}">${escapeHtml(professionalAccessLabel(item))}</span></td><td>${escapeHtml(item.specialties || "Não definida")}</td><td>${escapeHtml(item.offices || "Não definido")}</td><td>${linkedPortfolio}</td><td>${item.patient_count} pacientes</td><td><span class="access-badge ${item.access_active ? "" : "off"}">${item.access_active ? "Ativo" : "Bloqueado"}</span></td><td><button class="admin-edit-button" type="button" data-edit-professional="${item.id}">Editar</button></td></tr>`;
   }).join("") : `<tr class="loading-row"><td colspan="8">Nenhum profissional encontrado com estes filtros.</td></tr>`;
   $$('[data-edit-professional]').forEach(button => {
     button.addEventListener("click", () => editProfessional(button.dataset.editProfessional));
@@ -218,6 +222,7 @@ function resetProfessionalForm() {
   $("#adminProfessionalPhotoPreview").removeAttribute("src");
   $("#adminProfessionalId").value = "";
   $("#adminProfessionalRole").value = "";
+  $("#adminCrmAccessLevel").value = "attendant";
   $("#adminServiceSector").value = "CRC";
   $("#adminProfessionalActive").checked = true;
   $("#adminProfessionalFormTitle").textContent = "Novo profissional";
@@ -236,9 +241,15 @@ function updateAccessRoleHelp() {
     owner: 'Proprietária: acessa a própria carteira, supervisiona o sistema e também entra no painel administrativo. Pode excluir pacientes da própria carteira mediante senha; procedimentos e contato/referência continuam exclusivos do CRC.'
   };
   $('#accessRoleHelp').textContent = descriptions[$('#adminAccessRole').value];
+  const isCrc = $("#adminAccessRole").value === "crc";
+  const isCrcAdmin = isCrc && $("#adminCrmAccessLevel").value === "admin";
   $("#adminLinkedDentistField").hidden = $("#adminAccessRole").value !== "asb";
-  $("#adminCrmChannelsField").hidden = $("#adminAccessRole").value !== "crc";
-  $("#adminServiceSectorField").hidden = $("#adminAccessRole").value !== "crc";
+  $("#adminCrmAccessLevelField").hidden = !isCrc;
+  $("#adminCrmChannelsField").hidden = !isCrc || isCrcAdmin;
+  $("#adminServiceSectorField").hidden = !isCrc;
+  $("#adminCrmAccessLevelHelp").textContent = isCrcAdmin
+    ? "Administrador: acesso total ao CRM, configura metas e gerencia permissões. Não recebe atendimentos automaticamente."
+    : "Atendente: participa dos atendimentos e segue as permissões de canais e telas.";
 }
 
 function editProfessional(id) {
@@ -249,6 +260,7 @@ function editProfessional(id) {
   $("#adminProfessionalEmail").value = String(item.email || "").replace(/@instituto\.local$/i, "");
   $("#adminProfessionalRole").value = item.role || "";
   $("#adminAccessRole").value = item.access_role || "professional";
+  $("#adminCrmAccessLevel").value = item.crm_access_level || "attendant";
   $("#adminServiceSector").value = item.service_sector || "CRC";
   $("#adminLinkedDentist").value = item.linked_professional_id || "";
   renderCrmChannelOptions(String(item.crm_channel_ids || "").split(",").filter(Boolean));
@@ -325,6 +337,7 @@ $$('[data-open-admin-tab]').forEach(button => button.addEventListener("click", (
 $("#adminMobileMenu").addEventListener("click", () => $(".sidebar").classList.toggle("open"));
 $("#cancelProfessionalEdit").addEventListener("click", resetProfessionalForm);
 $("#adminAccessRole").addEventListener("change", updateAccessRoleHelp);
+$("#adminCrmAccessLevel").addEventListener("change", updateAccessRoleHelp);
 $("#adminProfessionalSearch").addEventListener("input", event => {
   state.professionalFilters.search = event.target.value;
   renderProfessionalsTable();
@@ -349,7 +362,7 @@ $("#adminProfessionalForm").addEventListener("submit", async event => {
   event.preventDefault();
   const id = $("#adminProfessionalId").value;
    const emailUser = $("#adminProfessionalEmail").value.trim().toLowerCase().replace(/@instituto\.local$/i, "");
-   const payload = {name: $("#adminProfessionalName").value.trim(), email: `${emailUser}@instituto.local`, role: $("#adminProfessionalRole").value.trim(), access_role: $("#adminAccessRole").value, service_sector: $("#adminServiceSector").value, linked_professional_id: $("#adminLinkedDentist").value, specialty_id: $("#adminProfessionalSpecialty").value, office_id: $("#adminProfessionalOffice").value, office_responsible: $("#adminOfficeResponsible").checked, active: $("#adminProfessionalActive").checked, temporary_password: $("#adminTemporaryPassword").value, crm_channel_ids: $$('[name="adminCrmChannel"]:checked').map(input => Number(input.value)), crm_can_manage_automation: $("#adminCrmManageAutomation").checked};
+   const payload = {name: $("#adminProfessionalName").value.trim(), email: `${emailUser}@instituto.local`, role: $("#adminProfessionalRole").value.trim(), access_role: $("#adminAccessRole").value, crm_access_level: $("#adminCrmAccessLevel").value, service_sector: $("#adminServiceSector").value, linked_professional_id: $("#adminLinkedDentist").value, specialty_id: $("#adminProfessionalSpecialty").value, office_id: $("#adminProfessionalOffice").value, office_responsible: $("#adminOfficeResponsible").checked, active: $("#adminProfessionalActive").checked, temporary_password: $("#adminTemporaryPassword").value, crm_channel_ids: $$('[name="adminCrmChannel"]:checked').map(input => Number(input.value)), crm_can_manage_automation: $("#adminCrmManageAutomation").checked};
    try { const result = await api(id ? `/api/admin/professionals/${id}` : "/api/admin/professionals", {method: id ? "PATCH" : "POST", body: JSON.stringify(payload)}); const professionalId = id || result.id; if (state.professionalPhoto) await api(`/api/admin/professionals/${professionalId}/photo`, {method: "POST", body: JSON.stringify({image: state.professionalPhoto})}); resetProfessionalForm(); await loadAdmin(); showToast(id ? "Profissional atualizado." : "Profissional e acesso preparados."); }
   catch (error) { showToast(error.message, true); }
 });

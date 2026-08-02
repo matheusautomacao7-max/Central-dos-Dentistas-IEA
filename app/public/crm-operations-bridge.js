@@ -132,7 +132,7 @@
         button.onclick = () => saveUser(button.closest("[data-user]"));
       });
     } catch (error) {
-      body.innerHTML = `<div class="iea-panel"><h3>Acesso restrito</h3><p>${esc(error.message)}</p><p>Somente o administrador geral pode alterar essas permissões.</p></div>`;
+      body.innerHTML = `<div class="iea-panel"><h3>Acesso restrito</h3><p>${esc(error.message)}</p><p>Somente o administrador do CRM ou o administrador geral pode alterar essas permissões.</p></div>`;
     }
   }
 
@@ -145,7 +145,11 @@
     const features = csv(user.feature_keys);
     const featureScopeEnabled = Number(user.crm_feature_scope_enabled) === 1;
     const selectedChannels = new Set(csv(user.channel_ids));
-    return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)}</small>
+    const level = user.crm_access_level === "admin" ? "Administrador do CRM" : "Atendente do CRM";
+    if (user.crm_access_level === "admin") {
+      return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} · ${esc(level)}</small><div class="iea-panel" style="margin-top:14px"><strong>Acesso total ao CRM</strong><p style="margin-bottom:0">Pode configurar metas e permissões. Este grau é alterado no cadastro do profissional.</p></div></article>`;
+    }
+    return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} · ${esc(level)}</small>
       <label style="display:flex;gap:8px;margin:14px 0 8px;font-size:13px"><input type="checkbox" data-channel-scope ${user.crm_channel_scope_enabled ? "checked" : ""}> Restringir aos canais selecionados</label>
       <div class="iea-checks">${channels.map(channel => `<label><input type="checkbox" data-channel="${Number(channel.id)}" ${selectedChannels.has(String(channel.id)) ? "checked" : ""}> ${esc(channel.name || channel.instance_name || `Canal ${channel.id}`)}</label>`).join("")}</div>
       <label style="display:flex;gap:8px;margin:16px 0 8px;font-size:13px"><input type="checkbox" data-feature-scope ${featureScopeEnabled ? "checked" : ""}> Personalizar telas disponíveis</label>

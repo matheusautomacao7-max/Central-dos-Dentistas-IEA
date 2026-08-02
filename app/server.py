@@ -333,7 +333,8 @@ def ensure_crm_permission_constraints(db) -> None:
         crm_channel_scope_enabled=CASE WHEN crm_channel_scope_enabled IN (0,1) THEN crm_channel_scope_enabled ELSE 0 END,
         crm_feature_scope_enabled=CASE WHEN crm_feature_scope_enabled IN (0,1) THEN crm_feature_scope_enabled ELSE 0 END,
         crm_operational_agent=CASE WHEN crm_operational_agent IN (0,1) THEN crm_operational_agent ELSE 0 END,
-        crm_manage_automation=CASE WHEN crm_manage_automation IN (0,1) THEN crm_manage_automation ELSE 0 END""")
+        crm_manage_automation=CASE WHEN crm_manage_automation IN (0,1) THEN crm_manage_automation ELSE 0 END,
+        crm_access_level=CASE WHEN crm_access_level IN ('attendant','admin') THEN crm_access_level ELSE 'attendant' END""")
     db.execute("""UPDATE crm_user_channels SET
         can_reply=CASE WHEN can_reply IN (0,1) THEN can_reply ELSE 0 END,
         can_manage_automation=CASE WHEN can_manage_automation IN (0,1) THEN can_manage_automation ELSE 0 END""")
@@ -344,6 +345,7 @@ def ensure_crm_permission_constraints(db) -> None:
         ("users", "users_crm_feature_scope_bool", "crm_feature_scope_enabled IN (0,1)"),
         ("users", "users_crm_operational_agent_bool", "crm_operational_agent IN (0,1)"),
         ("users", "users_crm_manage_automation_bool", "crm_manage_automation IN (0,1)"),
+        ("users", "users_crm_access_level_valid", "crm_access_level IN ('attendant','admin')"),
         ("crm_user_channels", "crm_user_channels_reply_bool", "can_reply IN (0,1)"),
         ("crm_user_channels", "crm_user_channels_automation_bool", "can_manage_automation IN (0,1)"),
         ("crm_user_features", "crm_user_features_key_valid",
@@ -440,6 +442,14 @@ def initialize_database() -> None:
                           WHERE EXISTS (SELECT 1 FROM crm_user_channels permission
                                         WHERE permission.user_id=users.id
                                           AND permission.can_manage_automation=1)""")
+        if "crm_access_level" not in user_columns:
+            db.execute("ALTER TABLE users ADD COLUMN crm_access_level TEXT NOT NULL DEFAULT 'attendant'")
+            db.execute("""UPDATE users SET crm_access_level='admin'
+                          WHERE access_role='crc'
+                            AND (COALESCE(crm_manage_automation,0)=1 OR COALESCE(crm_operational_agent,1)=0)""")
+        db.execute("""UPDATE users SET crm_channel_scope_enabled=0,crm_feature_scope_enabled=0,
+                         crm_manage_automation=1,crm_operational_agent=0
+                      WHERE access_role='crc' AND crm_access_level='admin'""")
         if "service_sector" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
@@ -660,11 +670,12 @@ def initialize_database() -> None:
                 crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0,
                 crm_operational_agent INTEGER NOT NULL DEFAULT 1,
                 crm_manage_automation INTEGER NOT NULL DEFAULT 0,
+                crm_access_level TEXT NOT NULL DEFAULT 'attendant',
                 service_sector TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (professional_id) REFERENCES professionals(id), FOREIGN KEY (linked_professional_id) REFERENCES professionals(id))""")
             db.execute("""INSERT INTO users_crc_migration
-                (id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, service_sector)
-                SELECT id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, service_sector FROM users""")
+                (id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, crm_access_level, service_sector)
+                SELECT id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, crm_access_level, service_sector FROM users""")
             db.execute("DROP TABLE users")
             db.execute("ALTER TABLE users_crc_migration RENAME TO users")
             db.commit()
@@ -892,7 +903,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         token_hash = hashlib.sha256(session.value.encode("utf-8")).hexdigest()
         with connect() as db:
             row = db.execute("""
-                SELECT u.id, u.professional_id, u.linked_professional_id, u.name, u.email, u.access_role, u.service_sector, u.permissions_json, pr.photo_data,
+                SELECT u.id, u.professional_id, u.linked_professional_id, u.name, u.email, u.access_role, u.crm_access_level, u.service_sector, u.permissions_json, pr.photo_data,
                        linked_pr.name AS linked_professional_name,
                        u.must_change_password, u.active, u.two_factor_enabled, u.two_factor_secret, u.two_factor_exempt,
                        (SELECT GROUP_CONCAT(o.name, ', ') FROM professional_offices po JOIN offices o ON o.id=po.office_id WHERE po.professional_id=u.professional_id AND o.active=1) AS offices,
@@ -997,6 +1008,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return {"authenticated": True, "user": {
             "id": user["id"], "name": user["name"], "email": user["email"],
             "role": user["access_role"], "professional_id": user["professional_id"],
+            "crm_access_level": user.get("crm_access_level") or "attendant",
             "linked_professional_id": user.get("linked_professional_id"),
             "portfolio_professional_id": (
                 user.get("linked_professional_id")
@@ -1016,6 +1028,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "two_factor_exempt": bool(user.get("two_factor_exempt")),
             "permissions": permissions,
             "can_admin_portal": self.can_admin_portal(user),
+            "can_manage_crm": self.can_manage_crm(user),
             "admin_path": ADMIN_ROUTE if self.can_admin_portal(user) else None,
         }}
 
@@ -1028,6 +1041,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except (TypeError, json.JSONDecodeError):
             permissions = {}
         return user["access_role"] == "admin" and permissions.get("admin_portal", True) is not False
+
+    @classmethod
+    def can_manage_crm(cls, user: dict) -> bool:
+        """Administra somente o CRM, sem herdar o painel administrativo geral."""
+        return cls.can_admin_portal(user) or (
+            user.get("access_role") == "crc" and user.get("crm_access_level") == "admin"
+        )
 
     @staticmethod
     def can_manage_crc_fields(user: dict) -> bool:
@@ -1262,15 +1282,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         crm_contact_photo_match = re.fullmatch(r"/api/crm/contacts/(\d+)/profile-photo", parsed.path)
         if crm_contact_photo_match:
             return self.get_crm_contact_profile_photo(int(crm_contact_photo_match.group(1)))
-        if parsed.path.startswith("/api/admin/") and not self.can_admin_portal(self.authenticated_user):
+        crm_admin_endpoint = parsed.path == "/api/admin/crm-channel-access"
+        if parsed.path.startswith("/api/admin/") and not (
+            self.can_admin_portal(self.authenticated_user)
+            or (crm_admin_endpoint and self.can_manage_crm(self.authenticated_user))
+        ):
             return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
         if parsed.path == "/api/admin":
             if not self.can_admin_portal(self.authenticated_user):
                 return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
             return self.get_admin_overview()
         if parsed.path == "/api/admin/crm-channel-access":
-            if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
+            if not self.can_manage_crm(self.authenticated_user):
+                return self.send_json({"error": "Acesso de administrador do CRM necessário"}, HTTPStatus.FORBIDDEN)
             return self.get_admin_crm_channel_access()
         if parsed.path == "/api/admin/audit":
             if not self.can_admin_portal(self.authenticated_user):
@@ -1439,8 +1463,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             self.authenticated_user = self.require_auth()
             if not self.authenticated_user:
                 return
-        if parsed.path.startswith("/api/admin/") and not self.can_admin_portal(self.authenticated_user):
+        crm_admin_endpoint = parsed.path in {
+            "/api/admin/crm-channel-access", "/api/admin/crm-channel-access/test"
+        }
+        if parsed.path.startswith("/api/admin/") and not (
+            self.can_admin_portal(self.authenticated_user)
+            or (crm_admin_endpoint and self.can_manage_crm(self.authenticated_user))
+        ):
             return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+        if parsed.path == "/api/admin/crm-channel-access":
+            return self.save_admin_crm_channel_access(self.read_json())
+        if parsed.path == "/api/admin/crm-channel-access/test":
+            return self.test_admin_crm_channel_access(self.read_json())
         if parsed.path == "/api/crm/channels":
             return self.save_crm_channel(self.read_json())
         if parsed.path == "/api/crm/tags":
@@ -1514,14 +1548,6 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not self.can_admin_portal(self.authenticated_user):
                 return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
             return self.create_admin_professional(self.read_json())
-        if parsed.path == "/api/admin/crm-channel-access":
-            if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
-            return self.save_admin_crm_channel_access(self.read_json())
-        if parsed.path == "/api/admin/crm-channel-access/test":
-            if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
-            return self.test_admin_crm_channel_access(self.read_json())
         if parsed.path == "/api/admin/integrations/clinicorp":
             if not self.can_admin_portal(self.authenticated_user):
                 return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
@@ -2326,6 +2352,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                        linked_pr.name AS linked_professional_name,
                        COALESCE(u.active, 0) AS access_active,
                        COALESCE(u.service_sector,'') AS service_sector,
+                       COALESCE(u.crm_access_level,'attendant') AS crm_access_level,
                        COALESCE(u.crm_channel_scope_enabled,0) AS crm_channel_scope_enabled,
                        (SELECT GROUP_CONCAT(CAST(cuc.channel_id AS TEXT)) FROM crm_user_channels cuc WHERE cuc.user_id=u.id) AS crm_channel_ids,
                        COALESCE(u.crm_manage_automation,0) AS crm_can_manage_automation,
@@ -2369,7 +2396,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_admin_crm_channel_access(self) -> None:
         with connect() as db:
-            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,u.crm_operational_agent,u.crm_manage_automation,
+            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_access_level,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,u.crm_operational_agent,u.crm_manage_automation,
                        COALESCE(GROUP_CONCAT(CAST(cuc.channel_id AS TEXT)),'') AS channel_ids,
                        COALESCE(u.crm_manage_automation,0) AS can_manage_automation,
                        COALESCE((SELECT GROUP_CONCAT(cuf.feature_key) FROM crm_user_features cuf WHERE cuf.user_id=u.id),'') AS feature_keys
@@ -2400,11 +2427,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         operational_agent = 1 if payload.get("operational_agent") is True else 0
         with connect() as db:
             user = db.execute(
-                "SELECT id,name,crm_channel_scope_enabled,crm_feature_scope_enabled,crm_operational_agent,crm_manage_automation "
+                "SELECT id,name,crm_access_level,crm_channel_scope_enabled,crm_feature_scope_enabled,crm_operational_agent,crm_manage_automation "
                 "FROM users WHERE id=? AND access_role='crc'", (user_id,)
             ).fetchone()
             if not user:
                 return self.send_json({"error": "Usuário CRC não encontrado."}, HTTPStatus.NOT_FOUND)
+            if "operational_agent" not in payload:
+                operational_agent = 1 if user["crm_operational_agent"] else 0
+            is_crm_admin = user["crm_access_level"] == "admin"
+            if is_crm_admin:
+                scope_enabled = 0
+                feature_scope_enabled = 0
+                can_manage_automation = 1
+                channel_ids = []
+                feature_keys = []
             if channel_ids:
                 placeholders = ",".join("?" for _ in channel_ids)
                 valid = {row["id"] for row in db.execute(
@@ -2426,6 +2462,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "feature_keys": before_feature_keys,
                 "operational_agent": bool(user["crm_operational_agent"]),
                 "can_manage_automation": bool(user["crm_manage_automation"]),
+                "crm_access_level": user["crm_access_level"],
             }
             after = {
                 "channel_scope_enabled": bool(scope_enabled),
@@ -2434,6 +2471,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "feature_scope_enabled": bool(feature_scope_enabled),
                 "feature_keys": feature_keys,
                 "operational_agent": bool(operational_agent),
+                "crm_access_level": user["crm_access_level"],
             }
 
             db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
@@ -2990,11 +3028,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"updated": True, "photo_url": f"/api/professionals/{professional_id}/photo"})
 
     @staticmethod
-    def replace_crm_user_channels(db, user_id: int, access_role: str, payload: dict) -> None:
+    def replace_crm_user_channels(
+        db, user_id: int, access_role: str, crm_access_level: str, payload: dict
+    ) -> None:
         if access_role != "crc":
             db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
+            db.execute("DELETE FROM crm_user_features WHERE user_id=?", (user_id,))
             db.execute(
-                "UPDATE users SET crm_channel_scope_enabled=0,crm_manage_automation=0,crm_operational_agent=0 WHERE id=?",
+                "UPDATE users SET crm_access_level='attendant',crm_channel_scope_enabled=0,crm_feature_scope_enabled=0,crm_manage_automation=0,crm_operational_agent=0 WHERE id=?",
+                (user_id,),
+            )
+            return
+        db.execute(
+            "UPDATE users SET crm_access_level=?,crm_operational_agent=? WHERE id=?",
+            (crm_access_level, 0 if crm_access_level == "admin" else 1, user_id),
+        )
+        if crm_access_level == "admin":
+            db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
+            db.execute("DELETE FROM crm_user_features WHERE user_id=?", (user_id,))
+            db.execute(
+                "UPDATE users SET crm_channel_scope_enabled=0,crm_feature_scope_enabled=0,crm_manage_automation=1 WHERE id=?",
                 (user_id,),
             )
             return
@@ -3021,16 +3074,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         email = str(payload.get("email") or "").strip().lower()
         role = str(payload.get("role") or "").strip()
         access_role = str(payload.get("access_role") or "professional").strip()
+        crm_access_level = str(payload.get("crm_access_level") or "attendant").strip().lower()
         service_sector = str(payload.get("service_sector") or ("CRC" if access_role == "crc" else "")).strip()
         temporary_password = str(payload.get("temporary_password") or "")
         if not name or not email:
             return self.send_json({"error": "Nome e e-mail são obrigatórios"}, HTTPStatus.BAD_REQUEST)
         if access_role not in {"owner", "professional", "admin", "crc", "asb"}:
             return self.send_json({"error": "Nível de acesso inválido"}, HTTPStatus.BAD_REQUEST)
+        if crm_access_level not in {"attendant", "admin"}:
+            return self.send_json({"error": "Grau de acesso do CRM inválido"}, HTTPStatus.BAD_REQUEST)
         if service_sector not in {"", "CRC", "Recepção"}:
             return self.send_json({"error": "Setor de atendimento inválido"}, HTTPStatus.BAD_REQUEST)
         if access_role != "crc":
             service_sector = ""
+            crm_access_level = "attendant"
         linked_professional_id = int(payload.get("linked_professional_id") or 0) or None
         if access_role == "asb" and not linked_professional_id:
             return self.send_json({"error": "Selecione o dentista responsável pela ASB."}, HTTPStatus.BAD_REQUEST)
@@ -3047,15 +3104,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 ).lastrowid
                 salt = secrets.token_hex(16)
                 user_id = db.execute(
-                    "INSERT INTO users (professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, service_sector) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?)",
-                    (professional_id, name, email, access_role, linked_professional_id, self.password_digest(temporary_password, salt), salt, service_sector),
+                    "INSERT INTO users (professional_id, name, email, access_role, crm_access_level, linked_professional_id, active, password_hash, password_salt, must_change_password, service_sector) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 1, ?)",
+                    (professional_id, name, email, access_role, crm_access_level, linked_professional_id, self.password_digest(temporary_password, salt), salt, service_sector),
                 ).lastrowid
                 if access_role == "asb" and linked_professional_id:
                     db.execute(
                         "INSERT OR IGNORE INTO asb_professional_links (user_id, professional_id) VALUES (?, ?)",
                         (user_id, linked_professional_id),
                     )
-                self.replace_crm_user_channels(db, user_id, access_role, payload)
+                self.replace_crm_user_channels(db, user_id, access_role, crm_access_level, payload)
                 specialty_id = int(payload.get("specialty_id") or 0)
                 office_id = int(payload.get("office_id") or 0)
                 if specialty_id:
@@ -3072,13 +3129,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         name = str(payload.get("name") or "").strip()
         email = str(payload.get("email") or "").strip().lower()
         access_role = str(payload.get("access_role") or "professional").strip()
+        crm_access_level = str(payload.get("crm_access_level") or "attendant").strip().lower()
         service_sector = str(payload.get("service_sector") or ("CRC" if access_role == "crc" else "")).strip()
         if not name or not email or access_role not in {"owner", "professional", "admin", "crc", "asb"}:
             return self.send_json({"error": "Dados do acesso inválidos"}, HTTPStatus.BAD_REQUEST)
+        if crm_access_level not in {"attendant", "admin"}:
+            return self.send_json({"error": "Grau de acesso do CRM inválido"}, HTTPStatus.BAD_REQUEST)
         if service_sector not in {"", "CRC", "Recepção"}:
             return self.send_json({"error": "Setor de atendimento inválido"}, HTTPStatus.BAD_REQUEST)
         if access_role != "crc":
             service_sector = ""
+            crm_access_level = "attendant"
         linked_professional_id = int(payload.get("linked_professional_id") or 0) or None
         if access_role == "asb" and not linked_professional_id:
             return self.send_json({"error": "Selecione o dentista responsável pela ASB."}, HTTPStatus.BAD_REQUEST)
@@ -3094,17 +3155,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 db.execute("UPDATE professionals SET name=?, role=?, active=? WHERE id=?", (name, str(payload.get("role") or "").strip(), active, professional_id))
                 user = db.execute("SELECT id FROM users WHERE professional_id = ?", (professional_id,)).fetchone()
                 if user:
-                    db.execute("UPDATE users SET name=?, email=?, access_role=?, linked_professional_id=?, active=?, service_sector=? WHERE professional_id=?", (name, email, access_role, linked_professional_id, active, service_sector, professional_id))
+                    db.execute("UPDATE users SET name=?, email=?, access_role=?, crm_access_level=?, linked_professional_id=?, active=?, service_sector=? WHERE professional_id=?", (name, email, access_role, crm_access_level, linked_professional_id, active, service_sector, professional_id))
                     user_id = user["id"]
                 else:
-                    user_id = db.execute("INSERT INTO users (professional_id, name, email, access_role, linked_professional_id, active, service_sector) VALUES (?, ?, ?, ?, ?, ?, ?)", (professional_id, name, email, access_role, linked_professional_id, active, service_sector)).lastrowid
+                    user_id = db.execute("INSERT INTO users (professional_id, name, email, access_role, crm_access_level, linked_professional_id, active, service_sector) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (professional_id, name, email, access_role, crm_access_level, linked_professional_id, active, service_sector)).lastrowid
                 db.execute("DELETE FROM asb_professional_links WHERE user_id=?", (user_id,))
                 if access_role == "asb" and linked_professional_id:
                     db.execute(
                         "INSERT INTO asb_professional_links (user_id, professional_id) VALUES (?, ?)",
                         (user_id, linked_professional_id),
                     )
-                self.replace_crm_user_channels(db, user_id, access_role, payload)
+                self.replace_crm_user_channels(db, user_id, access_role, crm_access_level, payload)
                 specialty_id = int(payload.get("specialty_id") or 0)
                 office_id = int(payload.get("office_id") or 0)
                 db.execute("DELETE FROM professional_specialties WHERE professional_id = ?", (professional_id,))
@@ -3494,10 +3555,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return False
         user_id = int(user_id or self.authenticated_user["id"])
         with connect() as db:
-            user = db.execute("SELECT access_role,crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
+            user = db.execute("SELECT access_role,crm_access_level,crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
             if not user:
                 return False
-            if user["access_role"] in {"admin", "owner"} or not user["crm_feature_scope_enabled"]:
+            if user["access_role"] in {"admin", "owner"} or user["crm_access_level"] == "admin" or not user["crm_feature_scope_enabled"]:
                 return True
             return bool(db.execute("SELECT 1 FROM crm_user_features WHERE user_id=? AND feature_key=?", (user_id, feature_key)).fetchone())
 
@@ -3508,12 +3569,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         user_id = int(user_id or self.authenticated_user["id"])
         with connect() as db:
             user = db.execute(
-                "SELECT access_role,crm_feature_scope_enabled FROM users WHERE id=?",
+                "SELECT access_role,crm_access_level,crm_feature_scope_enabled FROM users WHERE id=?",
                 (user_id,),
             ).fetchone()
             if not user:
                 return False
-            if user["access_role"] in {"admin", "owner"} or not user["crm_feature_scope_enabled"]:
+            if user["access_role"] in {"admin", "owner"} or user["crm_access_level"] == "admin" or not user["crm_feature_scope_enabled"]:
                 return True
             placeholders = ",".join("?" for _ in keys)
             return bool(db.execute(
@@ -3526,8 +3587,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         user_id = int(self.authenticated_user["id"])
         with connect() as db:
-            user = db.execute("SELECT crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
-            restricted = bool(user and user["crm_feature_scope_enabled"])
+            user = db.execute("SELECT crm_access_level,crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
+            crm_access_level = (user["crm_access_level"] if user else "attendant") or "attendant"
+            restricted = bool(user and user["crm_feature_scope_enabled"] and crm_access_level != "admin")
             if restricted:
                 selected = {row["feature_key"] for row in db.execute(
                     "SELECT feature_key FROM crm_user_features WHERE user_id=?", (user_id,)
@@ -3535,7 +3597,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 allowed = [key for key in CRM_FEATURE_KEYS if key in selected]
             else:
                 allowed = list(CRM_FEATURE_KEYS)
-        self.send_json({"allowed_features": allowed, "feature_scope_enabled": restricted})
+        self.send_json({
+            "allowed_features": allowed,
+            "feature_scope_enabled": restricted,
+            "crm_access_level": crm_access_level,
+            "can_manage_crm": self.can_manage_crm(self.authenticated_user),
+        })
 
     def require_crm_feature(self, feature_key: str) -> bool:
         if self.crm_feature_allowed(feature_key):
@@ -5829,7 +5896,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         query = query or {}
         month_value = str((query.get("month") or [datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")])[0]).strip()
-        can_configure = self.crm_feature_allowed("settings")
+        can_configure = self.can_manage_crm(self.authenticated_user)
         has_requested_user = bool(query.get("user_id"))
         try:
             requested_user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
@@ -5930,8 +5997,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def save_crm_goals(self, payload: dict) -> None:
         if not self.require_crc_access():
             return
-        if not self.require_crm_feature("settings"):
-            return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json(
+                {"error": "Somente um administrador do CRM pode configurar metas."},
+                HTTPStatus.FORBIDDEN,
+            )
         month_value = str(payload.get("month") or "").strip()
         try:
             user_id = int(payload.get("user_id") or 0)

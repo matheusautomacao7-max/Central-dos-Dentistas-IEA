@@ -98,6 +98,7 @@ def test_schema_and_frontend_contract() -> None:
     assert {"patient_type", "is_recovery"} <= columns
     user_columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
     assert "crm_operational_agent" in user_columns
+    assert "crm_access_level" in user_columns
     tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"crm_goals", "crm_goal_achievements"} <= tables
 
@@ -109,6 +110,55 @@ def test_schema_and_frontend_contract() -> None:
     assert "setInterval" in goal_js and "15000" in goal_js
     assert "patient_type" in resolution_js and "is_recovery" in resolution_js
     assert "/crm-goals.js" in html
+
+
+def test_crm_access_levels_are_separate_from_general_admin() -> None:
+    handler = server.ClinicHandler
+    attendant = {"access_role": "crc", "crm_access_level": "attendant", "permissions_json": "{}"}
+    crm_admin = {"access_role": "crc", "crm_access_level": "admin", "permissions_json": "{}"}
+    general_admin = {"access_role": "admin", "crm_access_level": "attendant", "permissions_json": "{}"}
+    assert handler.can_manage_crm(attendant) is False
+    assert handler.can_manage_crm(crm_admin) is True
+    assert handler.can_admin_portal(crm_admin) is False
+    assert handler.can_manage_crm(general_admin) is True
+
+
+def test_crm_access_level_applies_safe_defaults() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript("""
+        CREATE TABLE users(
+          id INTEGER PRIMARY KEY,access_role TEXT,crm_access_level TEXT,
+          crm_channel_scope_enabled INTEGER,crm_feature_scope_enabled INTEGER,
+          crm_operational_agent INTEGER,crm_manage_automation INTEGER
+        );
+        CREATE TABLE crm_channels(id INTEGER PRIMARY KEY);
+        CREATE TABLE crm_user_channels(
+          user_id INTEGER,channel_id INTEGER,can_reply INTEGER,can_manage_automation INTEGER
+        );
+        CREATE TABLE crm_user_features(user_id INTEGER,feature_key TEXT);
+        INSERT INTO users VALUES(7,'crc','attendant',1,1,1,0);
+        INSERT INTO crm_channels VALUES(3);
+        INSERT INTO crm_user_channels VALUES(7,3,1,0);
+        INSERT INTO crm_user_features VALUES(7,'inbox');
+    """)
+    server.ClinicHandler.replace_crm_user_channels(db, 7, "crc", "admin", {})
+    admin = db.execute("SELECT * FROM users WHERE id=7").fetchone()
+    assert dict(admin) == {
+        "id": 7, "access_role": "crc", "crm_access_level": "admin",
+        "crm_channel_scope_enabled": 0, "crm_feature_scope_enabled": 0,
+        "crm_operational_agent": 0, "crm_manage_automation": 1,
+    }
+    assert db.execute("SELECT COUNT(*) FROM crm_user_channels").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM crm_user_features").fetchone()[0] == 0
+
+    server.ClinicHandler.replace_crm_user_channels(
+        db, 7, "crc", "attendant", {"crm_channel_ids": [3], "crm_can_manage_automation": False}
+    )
+    attendant = db.execute("SELECT * FROM users WHERE id=7").fetchone()
+    assert attendant["crm_access_level"] == "attendant"
+    assert attendant["crm_operational_agent"] == 1
+    assert attendant["crm_channel_scope_enabled"] == 1
 
 
 def test_achievements_are_emitted_once_per_target() -> None:
@@ -164,5 +214,7 @@ if __name__ == "__main__":
     test_goal_math()
     test_goal_actuals_are_individual_and_ignore_internal_contacts()
     test_schema_and_frontend_contract()
+    test_crm_access_levels_are_separate_from_general_admin()
+    test_crm_access_level_applies_safe_defaults()
     test_achievements_are_emitted_once_per_target()
     print("crm-goals-regression-ok")

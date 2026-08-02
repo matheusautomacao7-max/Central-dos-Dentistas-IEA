@@ -74,6 +74,7 @@
               <label>Senha temporária<input id="adminTemporaryPassword" type="password" minlength="10" autocomplete="new-password" placeholder="Mínimo de 10 caracteres"></label>
               <label>Função<input id="adminProfessionalRole" type="text" placeholder="Ex.: Dentista, CRC ou Administrativo"></label>
               <div class="form-grid two"><label>Nível de acesso<select id="adminAccessRole"><option value="professional">Dentista</option><option value="asb">ASB</option><option value="crc">CRC</option><option value="admin">Admin Geral</option><option value="owner">Proprietária</option></select><small class="access-role-help" id="accessRoleHelp"></small></label><label>Especialidade principal<select id="adminProfessionalSpecialty"><option value="">Selecione</option></select></label></div>
+              <label id="adminCrmAccessLevelField" hidden>Grau de acesso no CRM<select id="adminCrmAccessLevel"><option value="attendant">Atendente</option><option value="admin">Administrador</option></select><small id="adminCrmAccessLevelHelp">Atendente participa dos atendimentos e segue as permissões de canais e telas.</small></label>
               <label id="adminServiceSectorField" hidden>Identificação no atendimento<select id="adminServiceSector"><option value="CRC">CRC</option><option value="Recepção">Recepção</option></select><small>Aparecerá ao lado do nome do atendente nas conversas.</small></label>
               <label id="adminLinkedDentistField" hidden>Dentista responsável<select id="adminLinkedDentist"><option value="">Selecione o dentista</option></select><small>A ASB terá acesso somente à carteira deste dentista.</small></label>
               <fieldset id="adminCrmChannelsField" hidden style="border:1px solid #dfe5eb;border-radius:12px;padding:14px;margin:0"><legend style="font-weight:800;padding:0 6px">Números permitidos no CRM</legend><p style="margin:0 0 10px;color:#68778a;font-size:12px">Marque somente os números cujas mensagens esta pessoa poderá visualizar e responder.</p><div id="adminCrmChannelOptions" style="display:grid;gap:8px"></div><label style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e5eaf0"><input id="adminCrmManageAutomation" type="checkbox"><span><strong>Gerenciar canais e automações</strong><small style="display:block;color:#7b8795;margin-top:2px">Permite pausar sincronização, escolher datas e executar importações. Use apenas para supervisores.</small></span></label></fieldset>
@@ -148,6 +149,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/update-notice.js"></script>
-  <script src="/admin.js?v=20260802-crm-permissions-v1"></script>
+  <script src="/admin.js?v=20260802-crm-access-level-v2"></script>
 </body>
 </html>

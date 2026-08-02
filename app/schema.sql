@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS users (
     crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0 CHECK (crm_feature_scope_enabled IN (0, 1)),
     crm_operational_agent INTEGER NOT NULL DEFAULT 1 CHECK (crm_operational_agent IN (0, 1)),
     crm_manage_automation INTEGER NOT NULL DEFAULT 0 CHECK (crm_manage_automation IN (0, 1)),
+    crm_access_level TEXT NOT NULL DEFAULT 'attendant' CHECK (crm_access_level IN ('attendant', 'admin')),
     service_sector TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (professional_id) REFERENCES professionals(id),
     FOREIGN KEY (linked_professional_id) REFERENCES professionals(id)

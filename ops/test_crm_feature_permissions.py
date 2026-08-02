@@ -45,7 +45,6 @@ exact_feature_guards = {
     "claim_crm_conversation": "inbox",
     "get_crm_resolution_reports": "management",
     "get_crm_patient_control": "management",
-    "save_crm_goals": "settings",
     "update_crm_channel": "integrations",
     "save_crm_channel": "integrations",
     "get_crm_integration_health": "integrations",
@@ -56,6 +55,9 @@ for method_name, feature in exact_feature_guards.items():
     source = methods[method_name]
     expected = f'require_crm_feature("{feature}")'
     assert expected in source, f"{method_name} must require {feature}"
+
+assert "can_manage_crm(self.authenticated_user)" in methods["save_crm_goals"]
+assert "can_manage_crm(self.authenticated_user)" in methods["get_crm_goals"]
 
 workspace_guards = {
     "get_crm_contact_profile_photo",
@@ -118,6 +120,7 @@ for constraint in (
     "CHECK (crm_feature_scope_enabled IN (0, 1))",
     "CHECK (crm_operational_agent IN (0, 1))",
     "CHECK (crm_manage_automation IN (0, 1))",
+    "CHECK (crm_access_level IN ('attendant', 'admin'))",
     "CHECK (can_reply IN (0, 1))",
     "CHECK (can_manage_automation IN (0, 1))",
     "CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings'))",
@@ -128,17 +131,23 @@ for migration_constraint in (
     "users_crm_feature_scope_bool",
     "users_crm_operational_agent_bool",
     "users_crm_manage_automation_bool",
+    "users_crm_access_level_valid",
     "crm_user_channels_reply_bool",
     "crm_user_channels_automation_bool",
     "crm_user_features_key_valid",
 ):
     assert migration_constraint in server_source
 assert "CREATE TABLE IF NOT EXISTS crm_permission_audit" in schema
+assert 'crm_access_level TEXT NOT NULL DEFAULT \'attendant\'' in schema
+assert 'def can_manage_crm' in server_source
+assert 'user.get("access_role") == "crc" and user.get("crm_access_level") == "admin"' in server_source
 
 admin_js = ADMIN_JS_PATH.read_text(encoding="utf-8")
 assert "data-crm-operational-agent" in admin_js
 assert "operational_agent:" in admin_js
 assert "crm_manage_automation" in admin_js
+assert "adminCrmAccessLevel" in admin_js
+assert "crm_access_level:" in admin_js
 assert "item.change_summary" in admin_js and "item.ip_address" in admin_js
 
 crm_html = CRM_HTML_PATH.read_text(encoding="utf-8")
