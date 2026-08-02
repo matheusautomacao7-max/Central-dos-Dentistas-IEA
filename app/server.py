@@ -215,6 +215,8 @@ CRM_GOAL_METRICS = {
     "recoveries": "Recuperação de pacientes",
     "attendances": "Atendimentos",
 }
+CRM_PROFILE_ACHIEVEMENT_ICONS = {"trophy", "medal", "star", "heart", "target", "sparkles"}
+CRM_PROFILE_ACHIEVEMENT_COLORS = {"#2563EB", "#7C3AED", "#F59E0B", "#16A34A", "#EF4444", "#0891B2"}
 CRM_PATIENT_TYPES = {"Primeira consulta", "Retorno s/ Tratamento"}
 CRM_MONTH_NAMES = (
     "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -1367,6 +1369,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_n8n_run_detail(int(n8n_run_detail_match.group(1)))
         if parsed.path == "/api/crm/agents":
             return self.get_crm_agents()
+        if parsed.path == "/api/crm/profile":
+            return self.get_crm_collaborator_profile(parse_qs(parsed.query))
         if parsed.path == "/api/crm/permissions":
             return self.get_crm_permissions()
         crm_messages_match = re.fullmatch(r"/api/crm/conversations/(\d+)/messages", parsed.path)
@@ -1483,6 +1487,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.create_crm_quick_reply(self.read_json())
         if parsed.path == "/api/crm/goals":
             return self.save_crm_goals(self.read_json())
+        if parsed.path == "/api/crm/profile/achievements":
+            return self.create_crm_profile_achievement(self.read_json())
         if parsed.path == "/api/crm/evolution/connect":
             return self.connect_evolution_instance(self.read_json())
         if parsed.path == "/api/crm/evolution/config":
@@ -5776,6 +5782,129 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1
                 GROUP BY u.id,u.name,u.email,u.crm_channel_scope_enabled ORDER BY u.name COLLATE NOCASE""".format(scope_sql=scope_sql), scope_params).fetchall()
         self.send_json({"items": [dict(row) for row in rows], "current_user_id": self.authenticated_user["id"]})
+
+    def get_crm_collaborator_profile(self, query: dict | None = None) -> None:
+        if not self.require_crc_access():
+            return
+        query = query or {}
+        can_manage = self.can_manage_crm(self.authenticated_user)
+        try:
+            user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Colaborador inválido."}, HTTPStatus.BAD_REQUEST)
+        if user_id != int(self.authenticated_user["id"]) and not can_manage:
+            return self.send_json({"error": "Você só pode visualizar o próprio perfil."}, HTTPStatus.FORBIDDEN)
+
+        today = datetime.now(CLINIC_TIMEZONE).date()
+        month_start = today.replace(day=1)
+        month_end = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+        with connect() as db:
+            user = db.execute("""SELECT u.id,u.name,u.email,u.crm_access_level,
+                       COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,
+                       u.professional_id,CASE WHEN pr.photo_data IS NULL THEN 0 ELSE 1 END AS has_photo
+                  FROM users u LEFT JOIN professionals pr ON pr.id=u.professional_id
+                 WHERE u.id=? AND u.access_role='crc' AND u.active=1""", (user_id,)).fetchone()
+            if not user:
+                return self.send_json({"error": "Colaborador do CRM não encontrado."}, HTTPStatus.NOT_FOUND)
+            stats = db.execute("""SELECT
+                       COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida'
+                                                AND cv.assigned_user_id=? THEN cv.id END) AS active_count,
+                       COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.resolved_by_user_id=?
+                                                AND date(cv.resolved_at) BETWEEN ? AND ? THEN cv.id END) AS resolved_month
+                  FROM crm_conversations cv LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id""",
+                (user_id, user_id, month_start.isoformat(), month_end.isoformat()),
+            ).fetchone()
+            actuals = self.crm_goal_actuals(db, user_id, month_start, month_end)
+            manual_rows = db.execute("""SELECT a.id,a.title,a.description,a.icon_key,a.accent_color,
+                       a.awarded_at,awarder.name AS awarded_by
+                  FROM crm_profile_achievements a JOIN users awarder ON awarder.id=a.awarded_by_user_id
+                 WHERE a.user_id=? AND a.active=1 ORDER BY datetime(a.awarded_at) DESC,a.id DESC LIMIT 30""",
+                (user_id,),
+            ).fetchall()
+            goal_rows = db.execute("""SELECT id,metric_key,achievement_type,period_key,target_value,
+                       realized_value,message,achieved_at
+                  FROM crm_goal_achievements WHERE user_id=?
+                 ORDER BY datetime(achieved_at) DESC,id DESC LIMIT 30""", (user_id,)).fetchall()
+            collaborators = db.execute("""SELECT id,name,crm_access_level
+                  FROM users WHERE access_role='crc' AND active=1 ORDER BY name COLLATE NOCASE""").fetchall() if can_manage else []
+
+        achievements = [{
+            "id": int(row["id"]), "source": "manual", "title": row["title"],
+            "description": row["description"], "icon_key": row["icon_key"],
+            "accent_color": row["accent_color"], "awarded_at": row["awarded_at"],
+            "awarded_by": row["awarded_by"],
+        } for row in manual_rows]
+        achievements.extend({
+            "id": int(row["id"]), "source": "goal",
+            "title": CRM_GOAL_METRICS.get(row["metric_key"], "Todas as metas"),
+            "description": row["message"],
+            "icon_key": "trophy" if row["metric_key"] == "all_goals" else "target",
+            "accent_color": "#16A34A", "awarded_at": row["achieved_at"],
+            "achievement_type": row["achievement_type"], "period_key": row["period_key"],
+        } for row in goal_rows)
+        achievements.sort(key=lambda item: (str(item.get("awarded_at") or ""), int(item["id"])), reverse=True)
+        profile = dict(user)
+        profile["photo_url"] = (
+            f"/api/professionals/{user['professional_id']}/photo" if user["has_photo"] else None
+        )
+        profile["stats"] = {
+            "active_count": int(stats["active_count"] or 0),
+            "resolved_month": int(stats["resolved_month"] or 0),
+            "attendances_month": int(actuals["attendances"] or 0),
+            "first_consultations": int(actuals["first_consultations"] or 0),
+            "recoveries": int(actuals["recoveries"] or 0),
+        }
+        self.send_json({
+            "profile": profile,
+            "achievements": achievements[:30],
+            "can_manage": can_manage,
+            "collaborators": [dict(row) for row in collaborators],
+        })
+
+    def create_crm_profile_achievement(self, payload: dict) -> None:
+        if not self.require_crc_access():
+            return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json(
+                {"error": "Somente um administrador do CRM pode criar conquistas."},
+                HTTPStatus.FORBIDDEN,
+            )
+        try:
+            user_id = int(payload.get("user_id") or 0)
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Selecione um colaborador."}, HTTPStatus.BAD_REQUEST)
+        title = str(payload.get("title") or "").strip()
+        description = str(payload.get("description") or "").strip()
+        icon_key = str(payload.get("icon_key") or "trophy").strip().lower()
+        accent_color = str(payload.get("accent_color") or "#2563EB").strip().upper()
+        if not 2 <= len(title) <= 80:
+            return self.send_json({"error": "Informe um título entre 2 e 80 caracteres."}, HTTPStatus.BAD_REQUEST)
+        if len(description) > 240:
+            return self.send_json({"error": "A descrição deve ter até 240 caracteres."}, HTTPStatus.BAD_REQUEST)
+        if icon_key not in CRM_PROFILE_ACHIEVEMENT_ICONS:
+            return self.send_json({"error": "Ícone de conquista inválido."}, HTTPStatus.BAD_REQUEST)
+        if accent_color not in CRM_PROFILE_ACHIEVEMENT_COLORS:
+            return self.send_json({"error": "Cor de conquista inválida."}, HTTPStatus.BAD_REQUEST)
+        with connect() as db:
+            target = db.execute(
+                "SELECT id,name FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,)
+            ).fetchone()
+            if not target:
+                return self.send_json({"error": "Colaborador do CRM não encontrado."}, HTTPStatus.NOT_FOUND)
+            achievement_id = db.execute("""INSERT INTO crm_profile_achievements(
+                    user_id,title,description,icon_key,accent_color,awarded_by_user_id)
+                    VALUES(?,?,?,?,?,?)""", (
+                user_id, title, description, icon_key, accent_color, self.authenticated_user["id"],
+            )).lastrowid
+            self.record_security_event(
+                db, "crm_profile_achievement_created", self.request_ip(), self.authenticated_user["id"],
+                f"Conquista '{title}' atribuída a {target['name']} (usuário {user_id}).",
+            )
+            row = db.execute("""SELECT a.id,a.user_id,a.title,a.description,a.icon_key,a.accent_color,
+                       a.awarded_at,awarder.name AS awarded_by
+                  FROM crm_profile_achievements a JOIN users awarder ON awarder.id=a.awarded_by_user_id
+                 WHERE a.id=?""", (achievement_id,)).fetchone()
+        self.send_json({"created": True, "achievement": dict(row)}, HTTPStatus.CREATED)
 
     def get_crm_tags(self) -> None:
         if not self.require_crc_access(): return

@@ -610,6 +610,24 @@ CREATE TABLE IF NOT EXISTS crm_goal_achievements (
 CREATE INDEX IF NOT EXISTS idx_crm_goal_achievements_user
 ON crm_goal_achievements(user_id, achieved_at DESC);
 
+CREATE TABLE IF NOT EXISTS crm_profile_achievements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    icon_key TEXT NOT NULL DEFAULT 'trophy'
+        CHECK (icon_key IN ('trophy','medal','star','heart','target','sparkles')),
+    accent_color TEXT NOT NULL DEFAULT '#2563EB',
+    awarded_by_user_id INTEGER NOT NULL,
+    awarded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (awarded_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_profile_achievements_user
+ON crm_profile_achievements(user_id, active, awarded_at DESC);
+
 CREATE TABLE IF NOT EXISTS crm_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id INTEGER NOT NULL,
