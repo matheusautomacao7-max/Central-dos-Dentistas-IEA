@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 import tempfile
+import types
 from contextlib import contextmanager
 from http import HTTPStatus
 from pathlib import Path
@@ -8,6 +9,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app"))
 sys.path.insert(0, str(ROOT))
+
+qrcode = types.ModuleType("qrcode")
+qrcode_image = types.ModuleType("qrcode.image")
+qrcode_svg = types.ModuleType("qrcode.image.svg")
+qrcode_svg.SvgPathImage = object
+qrcode.image = qrcode_image
+openpyxl = types.ModuleType("openpyxl")
+openpyxl.load_workbook = lambda *args, **kwargs: None
+psycopg = types.ModuleType("psycopg")
+psycopg_sql = types.ModuleType("psycopg.sql")
+psycopg_errors = types.ModuleType("psycopg.errors")
+psycopg.Error = Exception
+psycopg.connect = lambda *args, **kwargs: None
+psycopg.sql = psycopg_sql
+psycopg_errors.IntegrityError = sqlite3.IntegrityError
+sys.modules.update({
+    "qrcode": qrcode, "qrcode.image": qrcode_image, "qrcode.image.svg": qrcode_svg,
+    "openpyxl": openpyxl, "psycopg": psycopg, "psycopg.sql": psycopg_sql,
+    "psycopg.errors": psycopg_errors,
+})
 
 from app import server
 
@@ -43,12 +64,22 @@ with tempfile.TemporaryDirectory() as directory:
     db.commit()
     db.close()
 
+    class SQLiteAdapter:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def execute(self, query, params=()):
+            return self.connection.execute(query.replace(" FOR UPDATE", ""), params)
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
     @contextmanager
     def test_connect():
         connection = sqlite3.connect(database)
         connection.row_factory = sqlite3.Row
         try:
-            yield connection
+            yield SQLiteAdapter(connection)
             connection.commit()
         finally:
             connection.close()
@@ -62,6 +93,7 @@ with tempfile.TemporaryDirectory() as directory:
             "crm_channel_scope_enabled": 0,
         }
         handler.require_crc_access = lambda: True
+        handler.require_crm_feature = lambda feature_key: True
         handler.crm_channel_allowed = lambda *_args: True
         handler.responses = []
         handler.send_json = lambda payload, status=HTTPStatus.OK: handler.responses.append((int(status), payload))
@@ -94,7 +126,7 @@ with tempfile.TemporaryDirectory() as directory:
         })
         status, payload = handler.responses[-1]
         assert status == 409
-        assert payload["code"] == "CONVERSATION_ASSIGNED_TO_ANOTHER_USER"
+        assert payload["code"] == "PATIENT_ASSIGNED_TO_ANOTHER_USER"
         assert payload["assigned_to"] == "Matheus Defende"
         with test_connect() as check:
             assert check.execute("SELECT assigned_user_id FROM crm_conversations WHERE id=1").fetchone()[0] == 21

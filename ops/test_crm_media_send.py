@@ -124,6 +124,7 @@ with tempfile.TemporaryDirectory() as directory:
     handler = server.ClinicHandler.__new__(server.ClinicHandler)
     handler.authenticated_user = {"id": 9, "name": "Atendente Teste", "access_role": "crc", "service_sector": "CRC"}
     handler.require_crc_access = lambda: True
+    handler.require_crm_feature = lambda feature_key: True
     handler.crm_channel_allowed = lambda *args, **kwargs: True
     handler.crm_evolution_connection_state = lambda *args, **kwargs: "open"
     handler.crm_record_event = lambda *args, **kwargs: None

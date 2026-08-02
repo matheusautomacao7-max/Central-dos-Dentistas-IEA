@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
@@ -68,7 +69,13 @@ const server = http.createServer(async (request, response) => {
 
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
-const browser = await chromium.launch({ headless: true });
+const installedBrowsers = [
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+].filter(Boolean);
+const executablePath = installedBrowsers.find(path => existsSync(path));
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(`http://127.0.0.1:${address.port}/`);

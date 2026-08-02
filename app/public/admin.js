@@ -71,7 +71,8 @@ async function testCrmTransfer() {
   try {
     const result = await api("/api/admin/crm-channel-access/test", {method:"POST", body:JSON.stringify({user_id, channel_id})});
     const box = $("#crmTransferTestResult"); box.hidden = false; box.classList.toggle("allowed", result.transfer_allowed); box.classList.toggle("blocked", !result.transfer_allowed);
-    box.innerHTML = `<strong>${result.transfer_allowed ? "Transferência liberada" : "Transferência bloqueada"}</strong><span>${escapeHtml(result.message)}</span><small>Visualizar: ${result.can_view ? "sim" : "não"} · Responder: ${result.can_reply ? "sim" : "não"} · Automações: ${result.can_manage_automation ? "sim" : "não"}</small>`;
+    const featureSummary = Object.entries(result.feature_permissions || {}).map(([key, allowed]) => `${escapeHtml(crmFeatureLabels[key] || key)}: ${allowed ? "sim" : "não"}`).join(" · ");
+    box.innerHTML = `<strong>${result.transfer_allowed ? "Transferência liberada" : "Transferência bloqueada"}</strong><span>${escapeHtml(result.message)}</span><small>Visualizar: ${result.can_view ? "sim" : "não"} · Responder: ${result.can_reply ? "sim" : "não"} · Automações: ${result.can_manage_automation ? "sim" : "não"}</small><small>${featureSummary}</small>`;
   } catch (error) { showToast(error.message, true); }
 }
 

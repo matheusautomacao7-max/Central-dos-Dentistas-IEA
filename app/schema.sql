@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS users (
     two_factor_enabled INTEGER NOT NULL DEFAULT 0,
     two_factor_enrolled_at TEXT,
     two_factor_exempt INTEGER NOT NULL DEFAULT 0,
-    crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0,
-    crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0,
-    crm_operational_agent INTEGER NOT NULL DEFAULT 1,
+    crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0 CHECK (crm_channel_scope_enabled IN (0, 1)),
+    crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0 CHECK (crm_feature_scope_enabled IN (0, 1)),
+    crm_operational_agent INTEGER NOT NULL DEFAULT 1 CHECK (crm_operational_agent IN (0, 1)),
     service_sector TEXT NOT NULL DEFAULT '',
     FOREIGN KEY (professional_id) REFERENCES professionals(id),
     FOREIGN KEY (linked_professional_id) REFERENCES professionals(id)
@@ -457,8 +457,8 @@ CREATE TABLE IF NOT EXISTS crm_contacts (
 CREATE TABLE IF NOT EXISTS crm_user_channels (
     user_id INTEGER NOT NULL,
     channel_id INTEGER NOT NULL,
-    can_reply INTEGER NOT NULL DEFAULT 1,
-    can_manage_automation INTEGER NOT NULL DEFAULT 0,
+    can_reply INTEGER NOT NULL DEFAULT 1 CHECK (can_reply IN (0, 1)),
+    can_manage_automation INTEGER NOT NULL DEFAULT 0 CHECK (can_manage_automation IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, channel_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -467,11 +467,26 @@ CREATE TABLE IF NOT EXISTS crm_user_channels (
 
 CREATE TABLE IF NOT EXISTS crm_user_features (
     user_id INTEGER NOT NULL,
-    feature_key TEXT NOT NULL,
+    feature_key TEXT NOT NULL CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, feature_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS crm_permission_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    changed_by_user_id INTEGER,
+    target_user_id INTEGER,
+    before_json TEXT NOT NULL,
+    after_json TEXT NOT NULL,
+    ip_address TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (changed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_permission_audit_created
+ON crm_permission_audit(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS crm_conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -19,13 +19,24 @@ if "openpyxl" not in sys.modules:
     openpyxl = types.ModuleType("openpyxl")
     openpyxl.load_workbook = lambda *args, **kwargs: None
     sys.modules["openpyxl"] = openpyxl
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if "psycopg" not in sys.modules:
+    psycopg = types.ModuleType("psycopg")
+    psycopg_sql = types.ModuleType("psycopg.sql")
+    psycopg_errors = types.ModuleType("psycopg.errors")
+    psycopg.Error = Exception
+    psycopg.connect = lambda *args, **kwargs: None
+    psycopg.sql = psycopg_sql
+    psycopg_errors.IntegrityError = sqlite3.IntegrityError
+    sys.modules.update({"psycopg": psycopg, "psycopg.sql": psycopg_sql, "psycopg.errors": psycopg_errors})
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "app"))
 from app import server
 
 
-def handler_for(user_id: int, name: str):
+def handler_for(user_id: int, name: str, access_role: str = "crc"):
     handler = server.ClinicHandler.__new__(server.ClinicHandler)
-    handler.authenticated_user = {"id": user_id, "name": name, "access_role": "crc"}
+    handler.authenticated_user = {"id": user_id, "name": name, "access_role": access_role}
     handler.require_crc_access = lambda: True
     handler.headers = {}
     handler.responses = []
@@ -34,10 +45,45 @@ def handler_for(user_id: int, name: str):
 
 
 with tempfile.TemporaryDirectory() as directory:
-    original_db = server.DB_PATH
+    original_connect = server.connect
     original_media_dir = server.CRM_MEDIA_DIR
     server.DB_PATH = Path(directory) / "clinic.db"
     server.CRM_MEDIA_DIR = Path(directory) / "crm-media"
+    class SQLiteTestConnection:
+        """Mirror the production connection context and always close SQLite handles."""
+
+        backend = "sqlite"
+
+        def __init__(self):
+            self._db = sqlite3.connect(server.DB_PATH)
+            self._db.row_factory = sqlite3.Row
+            self._db.create_function("GREATEST", -1, lambda *values: max(value for value in values if value is not None))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            try:
+                if exc_type is None:
+                    self._db.commit()
+                else:
+                    self._db.rollback()
+            finally:
+                self._db.close()
+            return False
+
+        def execute(self, query, params=()):
+            return self._db.execute(query.replace(" FOR UPDATE", ""), params)
+
+        def executemany(self, query, params):
+            return self._db.executemany(query.replace(" FOR UPDATE", ""), params)
+
+        def __getattr__(self, name):
+            return getattr(self._db, name)
+
+    def sqlite_connect():
+        return SQLiteTestConnection()
+    server.connect = sqlite_connect
     try:
         rfc_secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
         assert server.ClinicHandler.totp_code(rfc_secret, 59) == "287082"
@@ -50,6 +96,7 @@ with tempfile.TemporaryDirectory() as directory:
             db.executescript(Path("app/schema.sql").read_text(encoding="utf-8"))
             db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Isabela','isabela@instituto.local','crc',1)")
             db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Natalia','natalia@instituto.local','crc',1)")
+            db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Admin','admin@instituto.local','admin',1)")
             db.execute("INSERT INTO crm_channels(instance_name,display_name,active,evolution_base_url,evolution_api_key) VALUES('teste','Zero Cárie',1,'https://evolution.test','test-key')")
             db.execute("INSERT INTO crm_contacts(name,phone) VALUES('Paciente Teste','65999999999')")
             db.execute("""INSERT INTO crm_conversations
@@ -72,7 +119,8 @@ with tempfile.TemporaryDirectory() as directory:
         isabela = handler_for(1, "Isabela")
         isabela.get_crm_conversations({"view": ["active"], "search": ["Paciente Teste"]})
         assert isabela.responses[-1][1]["total"] == 1
-        isabela.get_crm_metrics()
+        metric_period = {"period": ["custom"], "start": ["2026-07-21"], "end": ["2026-07-21"]}
+        isabela.get_crm_metrics(metric_period)
         assert isabela.responses[-1][1]["summary"]["waiting"] == 1
         assert isabela.responses[-1][1]["summary"]["active"] == 1
         assert isabela.responses[-1][1]["summary"]["unread"] == 1
@@ -100,7 +148,7 @@ with tempfile.TemporaryDirectory() as directory:
             db.execute("""INSERT INTO crm_conversations
                 (channel_id,contact_id,unread_count,last_direction,last_message_at)
                 VALUES(999,4,1,'inbound','2026-07-21 09:04:00')""")
-        isabela.get_crm_metrics()
+        isabela.get_crm_metrics(metric_period)
         assert isabela.responses[-1][1]["summary"]["waiting"] == 1
         isabela.get_crm_conversations({"view": ["queue"]})
         assert isabela.responses[-1][1]["total"] == 1
@@ -187,7 +235,11 @@ with tempfile.TemporaryDirectory() as directory:
 
         isabela.get_crm_conversations({"view": ["mine"]})
         assert isabela.responses[-1][1]["total"] == 1
-        isabela.resolve_crm_conversation(1)
+        isabela.resolve_crm_conversation(1, {
+            "category": "Controle",
+            "patient_type": "Retorno s/ Tratamento",
+            "outcome": "Novo Contato IA",
+        })
         assert isabela.responses[-1][1]["resolved"] is True
 
         with sqlite3.connect(server.DB_PATH) as db:
@@ -224,6 +276,8 @@ with tempfile.TemporaryDirectory() as directory:
         def fake_evolution(path, method="GET", payload=None, **kwargs):
             if path == "/instance/fetchInstances":
                 return [{"instance": {"instanceName": "teste", "connectionStatus": "open", "ownerJid": "teste@s.whatsapp.net"}}]
+            if path.startswith("/instance/connectionState/"):
+                return {"instance": {"state": "open"}}
             if path == "/chat/findChats/teste":
                 return [
                     {"remoteJid": "123456789012345@lid", "unreadCount": 19,
@@ -239,7 +293,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert sync_result["unread_conversations"] == 2
         assert sync_result["pending_conversations"] == 1
         assert sync_result["unmatched_conversations"] == 0
-        isabela.get_crm_metrics()
+        isabela.get_crm_metrics(metric_period)
         assert isabela.responses[-1][1]["summary"]["waiting"] == 1
         assert isabela.responses[-1][1]["summary"]["unread"] == 1
         assert isabela.responses[-1][1]["summary"]["unread_messages"] == 19
@@ -265,7 +319,7 @@ with tempfile.TemporaryDirectory() as directory:
                 started = db.execute("""SELECT cv.status,cv.pipeline_stage,cv.assigned_user_id,m.author_type,m.author_label
                                       FROM crm_conversations cv JOIN crm_messages m ON m.conversation_id=cv.id
                                       WHERE m.external_message_id='nova-1'""").fetchone()
-                assert started == ("Aberta", "Em atendimento", 1, "human", "Isabela")
+                assert started == ("Aberta", "Em atendimento", 1, "human", "Isabela · CRC"), tuple(started)
         finally:
             server.urlopen = original_urlopen
 
@@ -277,7 +331,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert isabela.responses[-1][0] == 200
         assert isabela.responses[-1][1]["is_internal"] is True
         isabela.get_crm_conversations({"view": ["queue"]})
-        assert isabela.responses[-1][1]["items"][0]["is_internal"] == 1
+        assert isabela.responses[-1][1]["total"] == 0
         class FakeAudioResponse:
             def __enter__(self): return self
             def __exit__(self, *args): return False
@@ -343,6 +397,18 @@ with tempfile.TemporaryDirectory() as directory:
         assert natalia.responses[-1][1]["allowed_features"] == ["inbox", "queue"]
         assert natalia.crm_feature_allowed("integrations") is False
         assert natalia.crm_feature_allowed("inbox") is True
+        natalia.get_crm_contacts()
+        assert natalia.responses[-1][0] == 403
+        natalia.cleanup_crm_imported_contacts()
+        assert natalia.responses[-1][0] == 403
+        natalia.get_crm_campaigns({})
+        assert natalia.responses[-1][0] == 403
+        natalia.get_crm_resolution_reports({})
+        assert natalia.responses[-1][0] == 403
+        natalia.get_crm_conversations({"view": ["operational"]})
+        assert natalia.responses[-1][0] == 403
+        natalia.get_crm_conversations({"view": ["queue"]})
+        assert natalia.responses[-1][0] == 200
         isabela.get_crm_permissions()
         assert set(isabela.responses[-1][1]["allowed_features"]) == {"inbox","queue","funnel","management","contacts","campaigns","integrations","settings"}
 
@@ -353,10 +419,38 @@ with tempfile.TemporaryDirectory() as directory:
         isabela.update_crm_conversation(10, {"assigned_user_id": 2})
         assert isabela.responses[-1][0] == 409
         assert "n\u00e3o possui acesso" in isabela.responses[-1][1]["error"]
+
+        # A gravação administrativa valida o payload inteiro antes de escrever
+        # e mantém um histórico imutável de antes/depois para auditoria.
+        admin = handler_for(3, "Admin", "admin")
+        admin.request_ip = lambda: "127.0.0.1"
+        permission_payload = {
+            "user_id": 2, "scope_enabled": True, "channel_ids": [1],
+            "can_manage_automation": False, "feature_scope_enabled": True,
+            "feature_keys": ["inbox", "queue"],
+        }
+        admin.save_admin_crm_channel_access(permission_payload)
+        assert admin.responses[-1][0] == 200
+        with sqlite3.connect(server.DB_PATH) as db:
+            audit_count = db.execute("SELECT COUNT(*) FROM crm_permission_audit WHERE target_user_id=2").fetchone()[0]
+            assert audit_count == 1
+            before_state = db.execute(
+                "SELECT channel_id,can_reply,can_manage_automation FROM crm_user_channels WHERE user_id=2"
+            ).fetchall()
+        admin.save_admin_crm_channel_access({**permission_payload, "channel_ids": [10], "feature_keys": ["not-a-screen"]})
+        assert admin.responses[-1][0] == 400
+        with sqlite3.connect(server.DB_PATH) as db:
+            assert db.execute("SELECT COUNT(*) FROM crm_permission_audit WHERE target_user_id=2").fetchone()[0] == audit_count
+            assert db.execute(
+                "SELECT channel_id,can_reply,can_manage_automation FROM crm_user_channels WHERE user_id=2"
+            ).fetchall() == before_state
         server.INTEGRATION_TOKEN = original_token
         print("crm-assignment-tests-ok")
     finally:
-        server.DB_PATH = original_db
+        server.connect = original_connect
+        delattr(server, "DB_PATH")
         server.CRM_MEDIA_DIR = original_media_dir
-        del db, isabela, natalia
+        for local_name in ("db", "isabela", "natalia", "admin"):
+            if local_name in locals():
+                del locals()[local_name]
         gc.collect()

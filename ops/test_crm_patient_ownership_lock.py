@@ -129,6 +129,8 @@ def make_handler():
     handler = server.ClinicHandler.__new__(server.ClinicHandler)
     handler.authenticated_user = {"id": 20, "name": "Matheus Henrique", "access_role": "crc"}
     handler.require_crc_access = lambda: True
+    handler.require_crm_feature = lambda feature_key: True
+    handler.require_crm_any_feature = lambda feature_keys: True
     handler.crm_channel_allowed = lambda *args, **kwargs: True
     handler.responses = []
     handler.send_json = lambda payload, status=HTTPStatus.OK: handler.responses.append((int(status), payload))

@@ -106,6 +106,12 @@ N8N_OVERVIEW_CACHE: dict[str, object] = {
 CRM_PROFILE_PHOTO_MISS_LOCK = threading.Lock()
 CRM_PROFILE_PHOTO_MISS: dict[int, float] = {}
 
+CRM_FEATURE_KEYS = (
+    "inbox", "queue", "funnel", "management", "contacts", "campaigns",
+    "integrations", "settings",
+)
+CRM_WORKSPACE_FEATURES = ("inbox", "queue", "funnel")
+
 CRM_GOAL_METRICS = {
     "first_consultations": "Primeiras consultas",
     "recoveries": "Recuperação de pacientes",
@@ -221,12 +227,32 @@ def migrate_crm_timezone(db) -> None:
     db.execute("INSERT INTO app_migrations(migration_key) VALUES(?)", (timezone_migration,))
 
 
+def ensure_crm_permission_constraints(db) -> None:
+    """Enforce valid permission values on new writes without rewriting legacy rows."""
+    if getattr(db, "backend", "") != "postgres":
+        return
+    constraints = (
+        ("users", "users_crm_channel_scope_bool", "crm_channel_scope_enabled IN (0,1)"),
+        ("users", "users_crm_feature_scope_bool", "crm_feature_scope_enabled IN (0,1)"),
+        ("users", "users_crm_operational_agent_bool", "crm_operational_agent IN (0,1)"),
+        ("crm_user_channels", "crm_user_channels_reply_bool", "can_reply IN (0,1)"),
+        ("crm_user_channels", "crm_user_channels_automation_bool", "can_manage_automation IN (0,1)"),
+        ("crm_user_features", "crm_user_features_key_valid",
+         "feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')"),
+    )
+    for table, constraint_name, expression in constraints:
+        exists = db.execute("SELECT 1 FROM pg_constraint WHERE conname=?", (constraint_name,)).fetchone()
+        if not exists:
+            db.execute(f"ALTER TABLE {table} ADD CONSTRAINT {constraint_name} CHECK ({expression}) NOT VALID")
+
+
 def initialize_database() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     schema = (ROOT / "schema.sql").read_text(encoding="utf-8")
     with connect() as db:
         db.executescript(schema)
+        ensure_crm_permission_constraints(db)
         login_challenge_columns = {row[1] for row in db.execute("PRAGMA table_info(login_challenges)").fetchall()}
         if "attempts" not in login_challenge_columns:
             db.execute("ALTER TABLE login_challenges ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
@@ -859,13 +885,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         """Serve fotos do WhatsApp pelo pr\u00f3prio CRM, sem expor a URL externa ao navegador."""
         if not self.require_crc_access():
             return
+        if not self.require_crm_any_feature((*CRM_WORKSPACE_FEATURES, "contacts")):
+            return
+        scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             row = db.execute("""SELECT ct.profile_picture_url,ct.phone,ch.instance_name
                 FROM crm_contacts ct
                 LEFT JOIN crm_conversations cv ON cv.contact_id=ct.id
                 LEFT JOIN crm_channels ch ON ch.id=cv.channel_id
-                WHERE ct.id=?
-                ORDER BY datetime(cv.last_message_at) DESC,cv.id DESC LIMIT 1""", (contact_id,)).fetchone()
+                WHERE ct.id=? AND (COALESCE(ct.is_internal,0)=1 OR {scope_sql})
+                ORDER BY datetime(cv.last_message_at) DESC,cv.id DESC LIMIT 1""".format(scope_sql=scope_sql),
+                (contact_id, *scope_params)).fetchone()
         picture_url = str(row["profile_picture_url"] or "").strip() if row else ""
         if not picture_url and row and row["phone"] and row["instance_name"]:
             with CRM_PROFILE_PHOTO_MISS_LOCK:
@@ -2105,31 +2135,83 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             user_id = int(payload.get("user_id") or 0)
             raw_channel_ids = payload.get("channel_ids") or []
             channel_ids = list(dict.fromkeys(int(value) for value in raw_channel_ids))
-            feature_keys = list(dict.fromkeys(str(value).strip().lower() for value in (payload.get("feature_keys") or []) if str(value).strip()))
+            feature_keys = list(dict.fromkeys(
+                str(value).strip().lower() for value in (payload.get("feature_keys") or []) if str(value).strip()
+            ))
         except (TypeError, ValueError):
-            return self.send_json({"error":"Usuário ou canais inválidos."},HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Usuário ou canais inválidos."}, HTTPStatus.BAD_REQUEST)
         if not user_id:
-            return self.send_json({"error":"Selecione o usuário do CRC."},HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o usuário do CRC."}, HTTPStatus.BAD_REQUEST)
+        if set(feature_keys) - set(CRM_FEATURE_KEYS):
+            return self.send_json({"error": "Uma das telas informadas não existe."}, HTTPStatus.BAD_REQUEST)
+
+        scope_enabled = 1 if payload.get("scope_enabled") is True else 0
+        feature_scope_enabled = 1 if payload.get("feature_scope_enabled") is True else 0
+        can_manage_automation = 1 if payload.get("can_manage_automation") is True else 0
         with connect() as db:
-            user = db.execute("SELECT id FROM users WHERE id=? AND access_role='crc'",(user_id,)).fetchone()
+            user = db.execute(
+                "SELECT id,name,crm_channel_scope_enabled,crm_feature_scope_enabled "
+                "FROM users WHERE id=? AND access_role='crc'", (user_id,)
+            ).fetchone()
             if not user:
-                return self.send_json({"error":"Usuário CRC não encontrado."},HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Usuário CRC não encontrado."}, HTTPStatus.NOT_FOUND)
             if channel_ids:
                 placeholders = ",".join("?" for _ in channel_ids)
-                valid = {row["id"] for row in db.execute(f"SELECT id FROM crm_channels WHERE id IN ({placeholders})",channel_ids).fetchall()}
+                valid = {row["id"] for row in db.execute(
+                    f"SELECT id FROM crm_channels WHERE id IN ({placeholders})", channel_ids
+                ).fetchall()}
                 if valid != set(channel_ids):
-                    return self.send_json({"error":"Um dos canais informados não existe."},HTTPStatus.BAD_REQUEST)
-            db.execute("DELETE FROM crm_user_channels WHERE user_id=?",(user_id,))
-            db.executemany("""INSERT INTO crm_user_channels(user_id,channel_id,can_reply,can_manage_automation)
-                                VALUES(?,?,?,?)""",[(user_id,channel_id,1,1 if payload.get("can_manage_automation") else 0) for channel_id in channel_ids])
-            db.execute("UPDATE users SET crm_channel_scope_enabled=? WHERE id=?",(1 if payload.get("scope_enabled",True) else 0,user_id))
-            valid_features = {"inbox","queue","funnel","management","contacts","campaigns","integrations","settings"}
-            if set(feature_keys) - valid_features:
-                return self.send_json({"error":"Uma das telas informadas nÃ£o existe."},HTTPStatus.BAD_REQUEST)
-            db.execute("DELETE FROM crm_user_features WHERE user_id=?",(user_id,))
-            db.executemany("INSERT INTO crm_user_features(user_id,feature_key) VALUES(?,?)",[(user_id,key) for key in feature_keys])
-            db.execute("UPDATE users SET crm_feature_scope_enabled=? WHERE id=?",(1 if payload.get("feature_scope_enabled",True) else 0,user_id))
-        self.send_json({"updated":True,"user_id":user_id,"channel_ids":channel_ids,"feature_keys":feature_keys})
+                    return self.send_json({"error": "Um dos canais informados não existe."}, HTTPStatus.BAD_REQUEST)
+
+            before_channel_ids = [int(row["channel_id"]) for row in db.execute(
+                "SELECT channel_id FROM crm_user_channels WHERE user_id=? ORDER BY channel_id", (user_id,)
+            ).fetchall()]
+            before_feature_keys = [str(row["feature_key"]) for row in db.execute(
+                "SELECT feature_key FROM crm_user_features WHERE user_id=? ORDER BY feature_key", (user_id,)
+            ).fetchall()]
+            before = {
+                "channel_scope_enabled": bool(user["crm_channel_scope_enabled"]),
+                "channel_ids": before_channel_ids,
+                "can_manage_automation": bool(db.execute(
+                    "SELECT 1 FROM crm_user_channels WHERE user_id=? AND can_manage_automation=1 LIMIT 1", (user_id,)
+                ).fetchone()),
+                "feature_scope_enabled": bool(user["crm_feature_scope_enabled"]),
+                "feature_keys": before_feature_keys,
+            }
+            after = {
+                "channel_scope_enabled": bool(scope_enabled),
+                "channel_ids": channel_ids,
+                "can_manage_automation": bool(can_manage_automation),
+                "feature_scope_enabled": bool(feature_scope_enabled),
+                "feature_keys": feature_keys,
+            }
+
+            db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
+            db.executemany(
+                "INSERT INTO crm_user_channels(user_id,channel_id,can_reply,can_manage_automation) VALUES(?,?,?,?)",
+                [(user_id, channel_id, 1, can_manage_automation) for channel_id in channel_ids],
+            )
+            db.execute("UPDATE users SET crm_channel_scope_enabled=? WHERE id=?", (scope_enabled, user_id))
+            db.execute("DELETE FROM crm_user_features WHERE user_id=?", (user_id,))
+            db.executemany(
+                "INSERT INTO crm_user_features(user_id,feature_key) VALUES(?,?)",
+                [(user_id, key) for key in feature_keys],
+            )
+            db.execute("UPDATE users SET crm_feature_scope_enabled=? WHERE id=?", (feature_scope_enabled, user_id))
+            db.execute(
+                "INSERT INTO crm_permission_audit "
+                "(changed_by_user_id,target_user_id,before_json,after_json,ip_address) VALUES(?,?,?,?,?)",
+                (
+                    self.authenticated_user["id"], user_id,
+                    json.dumps(before, ensure_ascii=False, sort_keys=True),
+                    json.dumps(after, ensure_ascii=False, sort_keys=True), self.request_ip(),
+                ),
+            )
+            self.record_security_event(
+                db, "crm_permissions_updated", self.request_ip(), self.authenticated_user["id"],
+                f"Permissões de {user['name']} (usuário {user_id}) atualizadas.",
+            )
+        self.send_json({"updated": True, "user_id": user_id, "channel_ids": channel_ids, "feature_keys": feature_keys})
 
     def test_admin_crm_channel_access(self, payload: dict) -> None:
         try:
@@ -2145,10 +2227,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             can_view = self.crm_channel_allowed(db, channel_id, user_id=user_id)
             can_reply = self.crm_channel_allowed(db, channel_id, "reply", user_id=user_id)
             can_manage = self.crm_channel_allowed(db, channel_id, "automation", user_id=user_id)
+        feature_permissions = {key: self.crm_feature_allowed(key, user_id=user_id) for key in CRM_FEATURE_KEYS}
         transfer_allowed = bool(user["active"] and channel["active"] and channel["sync_enabled"] and can_reply)
         self.send_json({
             "user": dict(user), "channel": dict(channel), "can_view": can_view,
             "can_reply": can_reply, "can_manage_automation": can_manage,
+            "feature_permissions": feature_permissions,
             "transfer_allowed": transfer_allowed,
             "message": ("TransferÃªncia liberada para esta atendente neste nÃºmero."
                         if transfer_allowed else "TransferÃªncia bloqueada pela permissÃ£o ou pelo estado do canal."),
@@ -2178,6 +2262,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            pda.deleted_at AS created_at,
                            pda.patient_name AS patient_name
                     FROM patient_deletion_audit pda
+                    UNION ALL
+                    SELECT 2000000000 + cpa.id AS id,
+                           'Permissões do CRM alteradas' AS event_type,
+                           'Alterado por ' || COALESCE(actor.name,'Usuário removido') ||
+                           ' para ' || COALESCE(target.name,'Usuário removido') AS description,
+                           cpa.created_at AS created_at,
+                           NULL AS patient_name
+                    FROM crm_permission_audit cpa
+                    LEFT JOIN users actor ON actor.id=cpa.changed_by_user_id
+                    LEFT JOIN users target ON target.id=cpa.target_user_id
                 )
                 ORDER BY created_at DESC, id DESC LIMIT ?
             """, (limit,)).fetchall()
@@ -2992,15 +3086,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_contacts(self) -> None:
         if self.authenticated_user["access_role"] != "crc":
             return self.send_json({"error": "Acesso exclusivo da Central CRC."}, HTTPStatus.FORBIDDEN)
+        if not self.require_crm_feature("contacts"):
+            return
+        scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             crm_rows = db.execute("""SELECT ct.id,ct.patient_id,ct.name,ct.phone,ct.is_internal,ct.profile_picture_url,
                                       GROUP_CONCAT(DISTINCT ch.display_name) AS channels
                                       FROM crm_contacts ct
                                       LEFT JOIN crm_conversations cv ON cv.contact_id=ct.id
-                                      LEFT JOIN crm_channels ch ON ch.id=cv.channel_id
+                                      LEFT JOIN crm_channels ch ON ch.id=cv.channel_id AND {scope_sql}
                                       WHERE COALESCE(ct.is_internal,0)=1
-                                         OR EXISTS (SELECT 1 FROM crm_conversations existing_cv WHERE existing_cv.contact_id=ct.id)
-                                      GROUP BY ct.id ORDER BY ct.name COLLATE NOCASE""").fetchall()
+                                         OR ch.id IS NOT NULL
+                                      GROUP BY ct.id ORDER BY ct.name COLLATE NOCASE""".format(scope_sql=scope_sql), scope_params).fetchall()
         contacts, seen_phones = [], set()
         channels_by_phone = {self.crm_phone(row["phone"]): [item.strip() for item in str(row["channels"] or "").split(",") if item.strip()] for row in crm_rows}
         internal_by_phone = {self.crm_phone(row["phone"]): bool(row["is_internal"]) for row in crm_rows}
@@ -3030,6 +3127,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         all history intact while removing the passive Evolution address book.
         """
         if not self.require_crc_access():
+            return
+        if not self.require_crm_feature("contacts"):
             return
         with connect() as db:
             removable = db.execute("""SELECT COUNT(*) AS total
@@ -3088,6 +3187,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return False
 
     def crm_feature_allowed(self, feature_key: str, user_id: int | None = None) -> bool:
+        if feature_key not in CRM_FEATURE_KEYS:
+            return False
         user_id = int(user_id or self.authenticated_user["id"])
         with connect() as db:
             user = db.execute("SELECT access_role,crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
@@ -3097,12 +3198,41 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return True
             return bool(db.execute("SELECT 1 FROM crm_user_features WHERE user_id=? AND feature_key=?", (user_id, feature_key)).fetchone())
 
+    def crm_any_feature_allowed(self, feature_keys, user_id: int | None = None) -> bool:
+        keys = tuple(dict.fromkeys(key for key in feature_keys if key in CRM_FEATURE_KEYS))
+        if not keys:
+            return False
+        user_id = int(user_id or self.authenticated_user["id"])
+        with connect() as db:
+            user = db.execute(
+                "SELECT access_role,crm_feature_scope_enabled FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            if not user:
+                return False
+            if user["access_role"] in {"admin", "owner"} or not user["crm_feature_scope_enabled"]:
+                return True
+            placeholders = ",".join("?" for _ in keys)
+            return bool(db.execute(
+                f"SELECT 1 FROM crm_user_features WHERE user_id=? AND feature_key IN ({placeholders}) LIMIT 1",
+                (user_id, *keys),
+            ).fetchone())
+
     def get_crm_permissions(self) -> None:
         if not self.require_crc_access():
             return
-        all_features = ["inbox","queue","funnel","management","contacts","campaigns","integrations","settings"]
-        allowed = [key for key in all_features if self.crm_feature_allowed(key)]
-        self.send_json({"allowed_features": allowed, "feature_scope_enabled": len(allowed) != len(all_features)})
+        user_id = int(self.authenticated_user["id"])
+        with connect() as db:
+            user = db.execute("SELECT crm_feature_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
+            restricted = bool(user and user["crm_feature_scope_enabled"])
+            if restricted:
+                selected = {row["feature_key"] for row in db.execute(
+                    "SELECT feature_key FROM crm_user_features WHERE user_id=?", (user_id,)
+                ).fetchall()}
+                allowed = [key for key in CRM_FEATURE_KEYS if key in selected]
+            else:
+                allowed = list(CRM_FEATURE_KEYS)
+        self.send_json({"allowed_features": allowed, "feature_scope_enabled": restricted})
 
     def require_crm_feature(self, feature_key: str) -> bool:
         if self.crm_feature_allowed(feature_key):
@@ -3110,12 +3240,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"error": "Esta tela nÃ£o estÃ¡ liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
         return False
 
-    def crm_channel_scope_clause(self, channel_alias: str = "ch", capability: str | None = None) -> tuple[str, list]:
-        """Escopo SQL retrocompatível: usuários antigos continuam vendo todos os canais.
+    def require_crm_any_feature(self, feature_keys) -> bool:
+        if self.crm_any_feature_allowed(feature_keys):
+            return True
+        self.send_json({"error": "Esta funcionalidade não está liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
+        return False
 
-        Quando o administrador ativa o escopo, somente os canais explicitamente
-        vinculados ao usuário ficam disponíveis. A permissão é aplicada no backend.
-        """
+    @staticmethod
+    def crm_conversation_view_feature(view: str) -> str:
+        if view == "queue":
+            return "queue"
+        if view == "operational":
+            return "funnel"
+        return "inbox"
+
+    def crm_channel_id_scope_clause(self, channel_expression: str, capability: str | None = None) -> tuple[str, list]:
         user_id = int(self.authenticated_user["id"])
         permission = ""
         if capability == "reply":
@@ -3125,9 +3264,30 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return (
             f"(COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 "
             f"OR EXISTS (SELECT 1 FROM crm_user_channels cuc WHERE cuc.user_id=? "
-            f"AND cuc.channel_id={channel_alias}.id{permission}))",
+            f"AND cuc.channel_id={channel_expression}{permission}))",
             [user_id, user_id],
         )
+
+    def crm_event_channel_scope_clause(self, event_alias: str = "e") -> tuple[str, list]:
+        user_id = int(self.authenticated_user["id"])
+        return (
+            f"(COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 OR EXISTS ("
+            f"SELECT 1 FROM crm_user_channels scoped_access "
+            f"LEFT JOIN crm_conversations scoped_cv ON scoped_cv.id={event_alias}.conversation_id "
+            f"LEFT JOIN crm_channels scoped_ch ON scoped_ch.id=scoped_access.channel_id "
+            f"WHERE scoped_access.user_id=? AND (scoped_access.channel_id=scoped_cv.channel_id "
+            f"OR LOWER(COALESCE(scoped_ch.instance_name,''))=LOWER(COALESCE({event_alias}.channel_name,'')) "
+            f"OR LOWER(COALESCE(scoped_ch.display_name,''))=LOWER(COALESCE({event_alias}.channel_name,'')))))",
+            [user_id, user_id],
+        )
+
+    def crm_channel_scope_clause(self, channel_alias: str = "ch", capability: str | None = None) -> tuple[str, list]:
+        """Escopo SQL retrocompatível: usuários antigos continuam vendo todos os canais.
+
+        Quando o administrador ativa o escopo, somente os canais explicitamente
+        vinculados ao usuário ficam disponíveis. A permissão é aplicada no backend.
+        """
+        return self.crm_channel_id_scope_clause(f"{channel_alias}.id", capability)
 
     def crm_channel_allowed(self, db, channel_id: int, capability: str | None = None, user_id: int | None = None) -> bool:
         user_id = int(user_id or self.authenticated_user["id"])
@@ -3158,6 +3318,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_channels(self) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_FEATURE_KEYS):
+            return
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             rows = db.execute(f"""SELECT ch.id,ch.instance_name,ch.display_name,ch.phone,ch.active,ch.sync_enabled,ch.sync_from_date,ch.sla_minutes,
@@ -3982,6 +4144,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_quick_replies(self) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         with connect() as db:
             rows = db.execute("""SELECT id,title,content,category,active,created_at,updated_at
                                  FROM crm_quick_replies WHERE active=1 ORDER BY category,title COLLATE NOCASE""").fetchall()
@@ -3989,6 +4153,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def create_crm_quick_reply(self, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         title = str(payload.get("title") or "").strip()[:80]
         content = str(payload.get("content") or "").strip()[:2000]
         category = str(payload.get("category") or "Geral").strip()[:50] or "Geral"
@@ -4002,6 +4168,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def update_crm_quick_reply(self, reply_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         with connect() as db:
             current = db.execute("SELECT * FROM crm_quick_replies WHERE id=?", (reply_id,)).fetchone()
             if not current: return self.send_json({"error": "Resposta rápida não encontrada."}, HTTPStatus.NOT_FOUND)
@@ -4016,6 +4184,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def delete_crm_quick_reply(self, reply_id: int) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         with connect() as db:
             changed = db.execute("DELETE FROM crm_quick_replies WHERE id=?", (reply_id,)).rowcount
         if not changed: return self.send_json({"error": "Resposta rápida não encontrada."}, HTTPStatus.NOT_FOUND)
@@ -4023,6 +4193,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_conversation_timeline(self, conversation_id: int) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
+        scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             current = db.execute("SELECT contact_id,channel_id FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
             if not current: return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
@@ -4031,11 +4204,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             conversations = db.execute("""SELECT cv.id,cv.status,cv.resolution_reason,cv.scheduled_return_at,
                                       cv.created_at,cv.resolved_at,ch.display_name AS channel_name
                                       FROM crm_conversations cv JOIN crm_channels ch ON ch.id=cv.channel_id
-                                      WHERE cv.contact_id=? ORDER BY cv.updated_at DESC""", (current["contact_id"],)).fetchall()
+                                      WHERE cv.contact_id=? AND {scope_sql}
+                                      ORDER BY cv.updated_at DESC""".format(scope_sql=scope_sql),
+                                      (current["contact_id"], *scope_params)).fetchall()
             events = db.execute("""SELECT ev.id,ev.conversation_id,ev.event_type,ev.actor_name,ev.details_json,ev.created_at,
                                ch.display_name AS channel_name FROM crm_conversation_events ev
                                JOIN crm_conversations cv ON cv.id=ev.conversation_id JOIN crm_channels ch ON ch.id=cv.channel_id
-                               WHERE cv.contact_id=? ORDER BY ev.id DESC LIMIT 300""", (current["contact_id"],)).fetchall()
+                               WHERE cv.contact_id=? AND {scope_sql}
+                               ORDER BY ev.id DESC LIMIT 300""".format(scope_sql=scope_sql),
+                               (current["contact_id"], *scope_params)).fetchall()
         self.send_json({"conversations": [dict(r) for r in conversations], "events": [dict(r) for r in events]})
 
     def require_crm_n8n_manager(self) -> bool:
@@ -4861,10 +5038,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         """Visão operacional, alimentada apenas pelos eventos reais dos workflows."""
         if not self.require_crc_access():
             return
+        if not self.require_crm_feature("campaigns"):
+            return
         try:
             days = max(1, min(180, int(query.get("days", ["30"])[0] or 30)))
         except (TypeError, ValueError):
             days = 30
+        event_scope_sql, event_scope_params = self.crm_event_channel_scope_clause("e")
         with connect() as db:
             rows = db.execute(
                 """SELECT COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'Automação sem campanha') AS campaign,
@@ -4890,11 +5070,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                               THEN COALESCE(NULLIF(phone,''),event_key) END) AS appointments_unclassified,
                           SUM(CASE WHEN event_type LIKE '%fail%' OR lower(COALESCE(outcome,''))='failed' THEN 1 ELSE 0 END) AS failures,
                           MAX(COALESCE(occurred_at,received_at)) AS last_event_at
-                   FROM crm_n8n_patient_events
-                   WHERE datetime(COALESCE(occurred_at,received_at)) >= datetime('now','localtime', ?)
+                   FROM crm_n8n_patient_events e
+                   WHERE {event_scope_sql}
+                     AND datetime(COALESCE(occurred_at,received_at)) >= datetime('now','localtime', ?)
                    GROUP BY COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'Automação sem campanha')
-                   ORDER BY last_event_at DESC""",
-                (f"-{days} days",),
+                   ORDER BY last_event_at DESC""".format(event_scope_sql=event_scope_sql),
+                (*event_scope_params, f"-{days} days"),
             ).fetchall()
         campaigns = []
         for row in rows:
@@ -5102,6 +5283,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         status = str(query.get("status", [""])[0]).strip()
         search = str(query.get("search", [""])[0]).strip()
         view = str(query.get("view", ["workspace"])[0]).strip().lower()
+        if not self.require_crm_feature(self.crm_conversation_view_feature(view)):
+            return
         channel_id = str(query.get("channel_id", [""])[0]).strip()
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         conditions, params = ["ch.active=1", "ch.sync_enabled=1", scope_sql], list(scope_params)
@@ -5194,25 +5377,32 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_agents(self) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature((*CRM_WORKSPACE_FEATURES, "management")):
+            return
+        scope_sql, scope_params = self.crm_channel_id_scope_clause("cv.channel_id")
         with connect() as db:
             rows = db.execute("""SELECT u.id,u.name,u.email,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,COALESCE(u.crm_channel_scope_enabled,0) AS crm_channel_scope_enabled,
                     (SELECT STRING_AGG(cuc.channel_id::text, ',' ORDER BY cuc.channel_id) FROM crm_user_channels cuc WHERE cuc.user_id=u.id AND cuc.can_reply=1) AS crm_channel_ids,
                     COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida' THEN ct.id END) AS active_count,
                     COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=CURRENT_DATE THEN ct.id END) AS resolved_today
-                FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id
+                FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id AND {scope_sql}
                 LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
                 WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1
-                GROUP BY u.id,u.name,u.email,u.crm_channel_scope_enabled ORDER BY u.name COLLATE NOCASE""").fetchall()
+                GROUP BY u.id,u.name,u.email,u.crm_channel_scope_enabled ORDER BY u.name COLLATE NOCASE""".format(scope_sql=scope_sql), scope_params).fetchall()
         self.send_json({"items": [dict(row) for row in rows], "current_user_id": self.authenticated_user["id"]})
 
     def get_crm_tags(self) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
         with connect() as db:
             rows = db.execute("SELECT id,name,color FROM crm_tags ORDER BY name COLLATE NOCASE").fetchall()
         self.send_json({"items": [dict(row) for row in rows]})
 
     def create_crm_tag(self, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
         name = str(payload.get("name") or "").strip()
         color = str(payload.get("color") or "#8696a0").strip()
         if not name or len(name) > 40:
@@ -5475,6 +5665,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_metrics(self, query: dict | None = None) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(("inbox", "queue", "management")):
+            return
         query = query or {}
         period = str(query.get("period", ["today"])[0] or "today").strip().lower()
         today = datetime.now().date()
@@ -5532,6 +5724,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
               FROM crm_conversations cv JOIN crm_contacts ct ON ct.id=cv.contact_id
               JOIN crm_channels ch ON ch.id=cv.channel_id
               WHERE {metric_where}""", (start_date.isoformat(), end_date.isoformat(), *metric_params)).fetchone()
+            agent_scope_sql, agent_scope_params = self.crm_channel_id_scope_clause("cv.channel_id")
             agent_performance = db.execute(f"""SELECT u.id,u.name,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,
                 COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND date(COALESCE(cv.last_message_at,cv.created_at)) BETWEEN ? AND ? THEN ct.id END) AS active,
                 COUNT(DISTINCT CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN ct.id END) AS resolved_today,
@@ -5539,16 +5732,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                   AND date(cv.first_response_at) BETWEEN ? AND ?
                   AND datetime(cv.first_response_at)>=datetime(cv.queue_entered_at)
                   THEN (julianday(cv.first_response_at)-julianday(cv.queue_entered_at))*1440 END),0),1) AS avg_first_response_minutes
-              FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id
+              FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id AND {agent_scope_sql}
               LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
               LEFT JOIN crm_channels ch ON ch.id=cv.channel_id
               WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1 AND (cv.id IS NULL OR ct.is_internal=0)
                 AND (?=0 OR ch.id=?)
               GROUP BY u.id,u.name,u.service_sector ORDER BY resolved_today DESC,u.name""",
               (start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat(),
-               start_date.isoformat(), end_date.isoformat(), channel_id, channel_id)).fetchall()
+               start_date.isoformat(), end_date.isoformat(), *agent_scope_params, channel_id, channel_id)).fetchall()
+            volume_scope_sql, volume_scope_params = self.crm_channel_id_scope_clause("cv.channel_id")
             volume_channel_sql = ""
-            volume_params: list = [start_date.isoformat(), end_date.isoformat()]
+            volume_params: list = [start_date.isoformat(), end_date.isoformat(), *volume_scope_params]
             if channel_id:
                 volume_channel_sql = " AND cv.channel_id=?"
                 volume_params.append(channel_id)
@@ -5556,13 +5750,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 volume = db.execute(f"""SELECT strftime('%H',m.message_at) AS bucket,
                                       strftime('%Hh',m.message_at) AS label,COUNT(*) AS total
                                       FROM crm_messages m JOIN crm_conversations cv ON cv.id=m.conversation_id
-                                      WHERE m.direction='inbound' AND date(m.message_at) BETWEEN ? AND ? {volume_channel_sql}
+                                      WHERE m.direction='inbound' AND date(m.message_at) BETWEEN ? AND ?
+                                        AND {volume_scope_sql} {volume_channel_sql}
                                       GROUP BY 1,2 ORDER BY bucket""", volume_params).fetchall()
             else:
                 volume = db.execute(f"""SELECT date(m.message_at) AS bucket,
                                       strftime('%d/%m',m.message_at) AS label,COUNT(*) AS total
                                       FROM crm_messages m JOIN crm_conversations cv ON cv.id=m.conversation_id
-                                      WHERE m.direction='inbound' AND date(m.message_at) BETWEEN ? AND ? {volume_channel_sql}
+                                      WHERE m.direction='inbound' AND date(m.message_at) BETWEEN ? AND ?
+                                        AND {volume_scope_sql} {volume_channel_sql}
                                       GROUP BY 1,2 ORDER BY bucket""", volume_params).fetchall()
         with EVOLUTION_CHAT_SYNC_LOCK:
             sync_status = dict(EVOLUTION_CHAT_SYNC_STATUS)
@@ -5574,6 +5770,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_messages(self, conversation_id: int, query: dict | None = None) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
         query = query or {}
         try:
             after_id = max(0, int(query.get("after_id", ["0"])[0] or 0))
@@ -5643,6 +5841,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_crm_message_media(self, message_id: int) -> None:
         if not self.require_crc_access():
+            return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
             return
         with connect() as db:
             row = db.execute("""SELECT m.id,m.external_message_id,m.media_url,m.mime_type,m.direction,
@@ -5732,8 +5932,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_media(self, file_name: str) -> None:
         if not self.require_crc_access():
             return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
         if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin)", file_name):
             return self.send_json({"error": "Arquivo de mídia inválido."}, HTTPStatus.BAD_REQUEST)
+        with connect() as db:
+            media_channels = db.execute("""SELECT DISTINCT cv.channel_id
+                FROM crm_messages m
+                JOIN crm_conversations cv ON cv.id=m.conversation_id
+                WHERE m.media_url=?""", (f"/api/crm/media/{file_name}",)).fetchall()
+            if not media_channels:
+                return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
+            if not any(self.crm_channel_allowed(db, row["channel_id"]) for row in media_channels):
+                return self.send_json({"error": "Você não possui acesso a esta mídia."}, HTTPStatus.FORBIDDEN)
         target = (CRM_MEDIA_DIR / file_name).resolve()
         if target.parent != CRM_MEDIA_DIR.resolve() or not target.is_file():
             return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
@@ -6138,6 +6349,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def send_crm_message(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         message_type = str(payload.get("message_type") or "text").strip().lower()
         body = str(payload.get("text") or "").strip()
         audio_bytes = b""
@@ -6323,6 +6536,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def update_crm_contact(self, contact_id: int, payload: dict) -> None:
         if not self.require_crc_access():
             return
+        if not self.require_crm_feature("contacts"):
+            return
         if "is_internal" not in payload:
             return self.send_json({"error": "Informe se este e um contato interno."}, HTTPStatus.BAD_REQUEST)
         is_internal = 1 if payload.get("is_internal") else 0
@@ -6340,6 +6555,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def start_crm_conversation(self, payload: dict) -> None:
         """Open (or reopen) a conversation, optionally without sending a message."""
         if not self.require_crc_access():
+            return
+        if not self.require_crm_feature("contacts"):
             return
         name = str(payload.get("name") or "").strip()[:160]
         phone = self.crm_phone(payload.get("phone"))
@@ -6430,6 +6647,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def resolve_crm_conversation(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_feature("inbox"):
+            return
         allowed_categories = {"Primeira consulta", "Controle", "Tratamento", "Orçamento"}
         legacy_outcome_aliases = {
             "Pediu para reagendar": "Retorno",
@@ -6560,6 +6779,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_resolution_reports(self, query: dict) -> None:
         if not self.require_crc_access():
             return
+        if not self.require_crm_feature("management"):
+            return
         legacy_outcome_aliases = {
             "Pediu para reagendar": "Retorno",
             "Data específica": "Retorno",
@@ -6586,7 +6807,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         origin = str((query.get("origin") or [""])[0]).strip()
         start = str((query.get("start") or [""])[0]).strip()
         end = str((query.get("end") or [""])[0]).strip()
-        where, params = [], []
+        scope_sql, scope_params = self.crm_channel_id_scope_clause("r.channel_id")
+        where, params = [scope_sql], list(scope_params)
         if period == "today":
             where.append("date(r.resolved_at)=CURRENT_DATE")
         elif period == "7d":
@@ -6679,8 +6901,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         sorted(values.items(), key=lambda item: (-item[1], item[0]))]
             agents = db.execute("""SELECT id,name FROM users
                                    WHERE access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1 ORDER BY name""").fetchall()
-            channels = db.execute("""SELECT id,display_name FROM crm_channels
-                                     ORDER BY display_name""").fetchall()
+            channel_scope_sql, channel_scope_params = self.crm_channel_scope_clause("ch")
+            channels = db.execute(f"""SELECT ch.id,ch.display_name FROM crm_channels ch
+                                     WHERE {channel_scope_sql} ORDER BY ch.display_name""", channel_scope_params).fetchall()
         self.send_json({
             "summary": summary,
             "by_category": grouped("category"),
@@ -6737,7 +6960,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             per_page = min(500, max(10, int((query.get("per_page") or ["50"])[0])))
         except (TypeError, ValueError):
             page, per_page = 1, 50
-        where, params = [], []
+        scope_sql, scope_params = self.crm_channel_id_scope_clause("r.channel_id")
+        where, params = [scope_sql], list(scope_params)
         if period == "today":
             where.append("date(r.resolved_at)=CURRENT_DATE")
         elif period == "7d":
@@ -6797,19 +7021,22 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     COUNT(*) FILTER (WHERE r.final_actor='Humano') AS human_finalized
                 FROM crm_service_resolutions r
                 LEFT JOIN crm_contacts ct ON ct.id=r.contact_id {clause}""", params).fetchone()
-            agents = db.execute("""SELECT DISTINCT resolved_by_user_id AS id,resolved_by_name AS name
-                                   FROM crm_service_resolutions ORDER BY resolved_by_name""").fetchall()
-            channels = db.execute("""SELECT DISTINCT ch.id,ch.display_name
+            agents = db.execute(f"""SELECT DISTINCT r.resolved_by_user_id AS id,r.resolved_by_name AS name
+                                   FROM crm_service_resolutions r WHERE {scope_sql}
+                                   ORDER BY r.resolved_by_name""", scope_params).fetchall()
+            channel_scope_sql, channel_scope_params = self.crm_channel_scope_clause("ch")
+            channels = db.execute(f"""SELECT DISTINCT ch.id,ch.display_name
                                      FROM crm_service_resolutions r JOIN crm_channels ch ON ch.id=r.channel_id
-                                     ORDER BY ch.display_name""").fetchall()
+                                     WHERE {channel_scope_sql} ORDER BY ch.display_name""", channel_scope_params).fetchall()
             dimensions = {}
             for key, column in (
                 ("categories", "category"), ("outcomes", "outcome"), ("interests", "interest"),
                 ("origins", "origin"), ("professionals", "responsible_professional"),
             ):
                 values = db.execute(
-                    f"""SELECT DISTINCT {column} AS value FROM crm_service_resolutions
-                        WHERE NULLIF(TRIM(COALESCE({column},'')),'') IS NOT NULL ORDER BY {column}"""
+                    f"""SELECT DISTINCT r.{column} AS value FROM crm_service_resolutions r
+                        WHERE {scope_sql} AND NULLIF(TRIM(COALESCE(r.{column},'')),'') IS NOT NULL
+                        ORDER BY r.{column}""", scope_params
                 ).fetchall()
                 dimensions[key] = [aliases.get(row["value"], row["value"]) for row in values]
                 dimensions[key] = sorted(set(dimensions[key]))
@@ -6837,6 +7064,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def update_crm_conversation(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
         with connect() as db:
             current = db.execute("SELECT * FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
             if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
@@ -6931,6 +7160,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def claim_crm_conversation(self, conversation_id: int) -> None:
         """Atomically assign an open external conversation to the current CRC user."""
         if not self.require_crc_access():
+            return
+        if not self.require_crm_feature("inbox"):
             return
         with connect() as db:
             current = db.execute("""SELECT cv.channel_id,cv.contact_id,cv.assigned_user_id,cv.status,ct.is_internal,u.name AS assigned_to

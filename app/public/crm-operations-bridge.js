@@ -143,12 +143,13 @@
 
   function userCard(user, channels) {
     const features = csv(user.feature_keys);
+    const featureScopeEnabled = Number(user.crm_feature_scope_enabled) === 1;
     const selectedChannels = new Set(csv(user.channel_ids));
     return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)}</small>
       <label style="display:flex;gap:8px;margin:14px 0 8px;font-size:13px"><input type="checkbox" data-channel-scope ${user.crm_channel_scope_enabled ? "checked" : ""}> Restringir aos canais selecionados</label>
       <div class="iea-checks">${channels.map(channel => `<label><input type="checkbox" data-channel="${Number(channel.id)}" ${selectedChannels.has(String(channel.id)) ? "checked" : ""}> ${esc(channel.name || channel.instance_name || `Canal ${channel.id}`)}</label>`).join("")}</div>
-      <strong style="display:block;margin:16px 0 8px;font-size:13px">Telas disponíveis</strong>
-      <div class="iea-checks">${FEATURES.map(([key, label]) => `<label><input type="checkbox" data-feature="${key}" ${features.includes(key) ? "checked" : ""}> ${label}</label>`).join("")}</div>
+      <label style="display:flex;gap:8px;margin:16px 0 8px;font-size:13px"><input type="checkbox" data-feature-scope ${featureScopeEnabled ? "checked" : ""}> Personalizar telas disponíveis</label>
+      <div class="iea-checks">${FEATURES.map(([key, label]) => `<label><input type="checkbox" data-feature="${key}" ${features.includes(key) || !featureScopeEnabled ? "checked" : ""}> ${label}</label>`).join("")}</div>
       <label style="display:flex;gap:8px;margin:14px 0;font-size:13px"><input type="checkbox" data-automation ${user.can_manage_automation ? "checked" : ""}> Gerenciar automações</label>
       <button class="iea-btn iea-btn-dark" data-save-user>Salvar permissões</button><span data-status style="margin-left:8px;font-size:12px"></span></article>`;
   }
@@ -166,7 +167,7 @@
           feature_keys: [...card.querySelectorAll("[data-feature]:checked")].map(input => input.dataset.feature),
           can_manage_automation: card.querySelector("[data-automation]").checked,
           scope_enabled: card.querySelector("[data-channel-scope]").checked,
-          feature_scope_enabled: true
+          feature_scope_enabled: card.querySelector("[data-feature-scope]").checked
         })
       });
       status.textContent = "Salvo";
@@ -229,17 +230,23 @@
   }
 
   function renderPermissions() {
-    if (!permissionState || !permissionState.feature_scope_enabled) return;
+    if (!permissionState) return;
+    const restricted = Boolean(permissionState.feature_scope_enabled);
     const allowed = new Set(permissionState.allowed_features || []);
     const aliases = [
       ["inbox", "inbox"], ["fila", "queue"], ["funil", "funnel"],
       ["gestao", "management"], ["paciente", "contacts"], ["controle", "contacts"],
       ["campanha", "campaigns"], ["integra", "integrations"], ["config", "settings"]
     ];
-    document.querySelectorAll("aside a,aside button,aside [role=button]").forEach(nav => {
+    document.querySelectorAll("aside a,aside button,aside [role=button],aside div").forEach(nav => {
       const label = normalize(nav.textContent);
-      const match = aliases.find(([name]) => label.includes(name));
-      if (match) nav.style.display = allowed.has(match[1]) ? "" : "none";
+      const featureMatches = [...new Set(aliases.filter(([name]) => label.includes(name)).map(([, feature]) => feature))];
+      // Containers da barra lateral contêm o texto de várias opções. Alterar
+      // o display deles ocultaria também telas autorizadas; só trate o nó que
+      // representa uma única funcionalidade.
+      if (featureMatches.length === 1) {
+        nav.style.display = !restricted || allowed.has(featureMatches[0]) ? "" : "none";
+      }
     });
   }
 
@@ -255,7 +262,7 @@
         renderPermissions();
         return data;
       })
-      .catch(() => null)
+      .catch(() => { permissionState={feature_scope_enabled:true,allowed_features:[]};renderPermissions();return permissionState; })
       .finally(() => { permissionRequest = null; });
     return permissionRequest;
   }
