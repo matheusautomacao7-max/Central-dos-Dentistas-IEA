@@ -243,6 +243,9 @@
     section.querySelectorAll("select,input").forEach(el => el.addEventListener("change", () => { updateDates(); loadReport(section); }));
     loadReport(section);
   }
+  function controlNavigationMarkup() {
+    return '<svg aria-hidden="true" focusable="false" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex:0 0 22px;margin:0 auto"><circle cx="12" cy="7" r="4"></circle><path d="M20 21a8 8 0 0 0-16 0"></path></svg><span style="display:block;width:100%;text-align:center;line-height:1.1">Controle</span>';
+  }
   function mountPatientControlLink() {
     if (document.querySelector("[data-iea-patient-control]")) return;
     const management = Array.from(document.querySelectorAll("aside div,aside span"))
@@ -253,8 +256,9 @@
     item.dataset.ieaPatientControl = "1";
     item.href = "/central-crc/whatsapp?screen=patient-control";
     item.title = "Controle";
+    item.setAttribute("aria-label", "Controle");
     item.style.cssText = "width:56px;min-height:58px;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.72);text-decoration:none;font:700 9.5px Manrope,system-ui,sans-serif;gap:5px;margin:2px 0";
-    item.innerHTML = '<span style="font-size:22px;line-height:1">◎</span><span style="text-align:center">Pacientes</span>';
+    item.innerHTML = controlNavigationMarkup();
     item.addEventListener("mouseenter", () => item.style.background = "rgba(255,255,255,.08)");
     item.addEventListener("mouseleave", () => item.style.background = "transparent");
     item.addEventListener("click", event => {
@@ -289,7 +293,8 @@
     if (shortcut && shortcut.dataset.ieaRenamed !== "1") {
       shortcut.dataset.ieaRenamed = "1";
       shortcut.title = "Controle";
-      shortcut.innerHTML = '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"></circle><path d="M3 21v-2a6 6 0 0 1 12 0v2"></path><path d="M16 11a3 3 0 1 0 0-6"></path><path d="M21 21v-2a6 6 0 0 0-4-5.65"></path></svg><span style="text-align:center">Controle</span>';
+      shortcut.setAttribute("aria-label", "Controle");
+      shortcut.innerHTML = controlNavigationMarkup();
     }
   }
   function openPatientControl() {

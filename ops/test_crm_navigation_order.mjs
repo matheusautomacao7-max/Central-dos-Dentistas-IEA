@@ -5,15 +5,24 @@ import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
 
 const navigationScript = await readFile(new URL("../app/public/crm-navigation-order.js", import.meta.url), "utf8");
+const resolutionScript = await readFile(new URL("../app/public/crm-resolution-flow.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
 assert.match(htmlSource, /crm-navigation-order\.js\?v=20260802-navigation-v1/);
+assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-control-icon-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
+assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
+assert.match(resolutionScript, /style="display:block;flex:0 0 22px;margin:0 auto"/);
+assert.doesNotMatch(resolutionScript, /<circle cx="9" cy="7" r="3"><\/circle>/);
 
 const server = http.createServer((request, response) => {
   if (request.url.startsWith("/crm-navigation-order.js")) {
     response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
     return response.end(navigationScript);
+  }
+  if (request.url.startsWith("/crm-resolution-flow.js")) {
+    response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
+    return response.end(resolutionScript);
   }
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   response.end(`<!doctype html><html><body>
@@ -25,13 +34,13 @@ const server = http.createServer((request, response) => {
       <div data-nav><span>Gestão</span></div>
       <div data-nav data-iea-patients-nav><span>Pacientes</span></div>
       <div data-nav><span>Campanhas</span></div>
-      <div data-nav data-iea-patient-control><span>Controle</span></div>
       <div data-nav><span>Integra</span></div>
       <div data-nav><span>Config</span></div>
       <a data-nav data-iea-goals-nav><span>Metas</span></a>
       <div style="flex:1"></div>
     </aside>
     <script>window.clicks=0;document.querySelectorAll('[data-nav]')[2].addEventListener('click',()=>window.clicks++);</script>
+    <script src="/crm-resolution-flow.js?v=20260802-control-icon-v1"></script>
     <script src="/crm-navigation-order.js?v=20260802-navigation-v1"></script>
   </body></html>`);
 });
@@ -49,11 +58,25 @@ const browser = await chromium.launch({ headless: true, ...(executablePath ? { e
 try {
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${address.port}/`);
+  await page.locator("[data-iea-patient-control]").waitFor();
   await page.waitForFunction(() => document.querySelector("[data-iea-admin-navigation-divider]"));
-  const order = await page.locator("aside > [data-nav], aside > [data-iea-admin-navigation-divider]").evaluateAll((nodes) =>
+  const order = await page.locator("aside > [data-nav], aside > [data-iea-patient-control], aside > [data-iea-admin-navigation-divider]").evaluateAll((nodes) =>
     nodes.map((node) => node.dataset.ieaAdminNavigationDivider ? "ADMIN" : node.textContent.trim())
   );
   assert.deepEqual(order, ["Inbox", "Funil", "Filas", "Metas", "Pacientes", "Controle", "ADMIN", "Gestão", "Campanhas", "Integração", "Configuração"]);
+
+  const controlGeometry = await page.locator("[data-iea-patient-control]").evaluate((control) => {
+    const item = control.getBoundingClientRect();
+    const icon = control.querySelector("svg").getBoundingClientRect();
+    return {
+      deltaX: Math.abs((item.left + item.width / 2) - (icon.left + icon.width / 2)),
+      width: icon.width,
+      height: icon.height,
+      label: control.getAttribute("aria-label"),
+    };
+  });
+  assert.ok(controlGeometry.deltaX <= 0.5, `control icon must be centered; delta=${controlGeometry.deltaX}`);
+  assert.deepEqual(controlGeometry, { deltaX: 0, width: 22, height: 22, label: "Controle" });
 
   await page.getByText("Funil", { exact: true }).click();
   assert.equal(await page.evaluate(() => window.clicks), 1, "reordering must preserve existing event listeners");
