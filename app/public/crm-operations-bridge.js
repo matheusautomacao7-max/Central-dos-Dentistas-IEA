@@ -290,7 +290,10 @@
   }
 
   function isSidebarTarget(target) {
-    return Boolean(target.closest("aside,nav,[class*='sidebar'],[class*='side-bar']"));
+    const sidebar = target.closest("aside,[class*='sidebar'],[class*='side-bar']");
+    if (!sidebar) return false;
+    const width = sidebar.getBoundingClientRect().width;
+    return width > 0 && width <= 140;
   }
 
   document.addEventListener("click", event => {
