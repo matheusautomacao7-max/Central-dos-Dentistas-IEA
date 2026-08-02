@@ -94,7 +94,9 @@ with tempfile.TemporaryDirectory() as directory:
         assert server.ClinicHandler.evolution_message_time("2026-07-21T09:01:00Z") == "2026-07-21 05:01:00"
         with sqlite3.connect(server.DB_PATH) as db:
             db.executescript(Path("app/schema.sql").read_text(encoding="utf-8"))
-            db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Isabela','isabela@instituto.local','crc',1)")
+            db.execute("""INSERT INTO users
+                (name,email,access_role,active,crm_manage_automation)
+                VALUES('Isabela','isabela@instituto.local','crc',1,1)""")
             db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Natalia','natalia@instituto.local','crc',1)")
             db.execute("INSERT INTO users(name,email,access_role,active) VALUES('Admin','admin@instituto.local','admin',1)")
             db.execute("INSERT INTO crm_channels(instance_name,display_name,active,evolution_base_url,evolution_api_key) VALUES('teste','Zero Cárie',1,'https://evolution.test','test-key')")
@@ -217,17 +219,20 @@ with tempfile.TemporaryDirectory() as directory:
         isabela.evolution_api_request = original_evolution_request
 
         original_token = server.INTEGRATION_TOKEN
+        original_webhook_token = server.EVOLUTION_WEBHOOK_TOKEN
         server.INTEGRATION_TOKEN = "test-token"
+        server.EVOLUTION_WEBHOOK_TOKEN = "test-webhook-token"
         isabela.mark_crm_ai_message({"external_message_id": "ia-1", "agent_name": "Assistente IEA"}, {"token": ["test-token"]})
         assert isabela.responses[-1][1]["attributed"] is True
         with sqlite3.connect(server.DB_PATH) as db:
             assert db.execute("SELECT author_type,author_label FROM crm_messages WHERE external_message_id='ia-1'").fetchone() == ("ai", "Assistente IEA")
         isabela.get_crm_messages(1, {"after_id": ["1"], "limit": ["20"]})
         assert all(item["id"] > 1 for item in isabela.responses[-1][1]["items"])
-        isabela.receive_evolution_webhook({"event": "messages.update", "instance": "teste", "data": {"keyId": "ia-1", "status": "READ"}}, {"token": ["test-token"]})
+        isabela.receive_evolution_webhook({"event": "messages.update", "instance": "teste", "data": {"keyId": "ia-1", "status": "READ"}}, {"webhook_key": ["test-webhook-token"]})
         with sqlite3.connect(server.DB_PATH) as db:
             assert db.execute("SELECT delivery_status FROM crm_messages WHERE external_message_id='ia-1'").fetchone()[0] == "Read"
         server.INTEGRATION_TOKEN = original_token
+        server.EVOLUTION_WEBHOOK_TOKEN = original_webhook_token
 
         natalia = handler_for(2, "Natalia")
         natalia.claim_crm_conversation(1)
@@ -427,13 +432,17 @@ with tempfile.TemporaryDirectory() as directory:
         permission_payload = {
             "user_id": 2, "scope_enabled": True, "channel_ids": [1],
             "can_manage_automation": False, "feature_scope_enabled": True,
-            "feature_keys": ["inbox", "queue"],
+            "feature_keys": ["inbox", "queue"], "operational_agent": False,
         }
         admin.save_admin_crm_channel_access(permission_payload)
         assert admin.responses[-1][0] == 200
         with sqlite3.connect(server.DB_PATH) as db:
             audit_count = db.execute("SELECT COUNT(*) FROM crm_permission_audit WHERE target_user_id=2").fetchone()[0]
             assert audit_count == 1
+            permission_flags = db.execute(
+                "SELECT crm_operational_agent,crm_manage_automation FROM users WHERE id=2"
+            ).fetchone()
+            assert tuple(permission_flags) == (0, 0)
             before_state = db.execute(
                 "SELECT channel_id,can_reply,can_manage_automation FROM crm_user_channels WHERE user_id=2"
             ).fetchall()

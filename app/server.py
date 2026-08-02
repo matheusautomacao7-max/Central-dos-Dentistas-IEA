@@ -18,6 +18,7 @@ import threading
 import time
 import math
 import unicodedata
+import zipfile
 import qrcode
 from qrcode.image.svg import SvgPathImage
 from datetime import date, datetime, timedelta, timezone
@@ -54,6 +55,7 @@ TOTP_ENC_PREFIX = "encv1:"
 _app_secret_key_raw = os.environ.get("APP_SECRET_KEY", "").strip()
 APP_SECRET_KEY = base64.b64decode(_app_secret_key_raw) if _app_secret_key_raw else None
 INTEGRATION_TOKEN = os.environ.get("INTEGRATION_TOKEN", "")
+EVOLUTION_WEBHOOK_TOKEN = os.environ.get("EVOLUTION_WEBHOOK_TOKEN", "")
 EVOLUTION_API_URL = os.environ.get("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.environ.get("EVOLUTION_API_KEY", "")
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
@@ -67,6 +69,8 @@ if hasattr(time, "tzset"):
     time.tzset()
 EVOLUTION_HISTORY_CUTOFF = "2026-07-20 00:00:00"
 EVOLUTION_CHAT_SYNC_INTERVAL = max(30, int(os.environ.get("EVOLUTION_CHAT_SYNC_INTERVAL", "60")))
+WEBHOOK_PAYLOAD_RETENTION_DAYS = max(7, int(os.environ.get("WEBHOOK_PAYLOAD_RETENTION_DAYS", "90")))
+SECURITY_EVENT_RETENTION_DAYS = max(90, int(os.environ.get("SECURITY_EVENT_RETENTION_DAYS", "365")))
 API_SYNC_LOCK = threading.Lock()
 API_SYNC_THREADS: dict[int, threading.Thread] = {}
 EVOLUTION_HISTORY_SYNC_LOCK = threading.Lock()
@@ -228,13 +232,24 @@ def migrate_crm_timezone(db) -> None:
 
 
 def ensure_crm_permission_constraints(db) -> None:
-    """Enforce valid permission values on new writes without rewriting legacy rows."""
+    """Normaliza valores legados e valida integralmente as permissões no PostgreSQL."""
     if getattr(db, "backend", "") != "postgres":
         return
+    db.execute("""UPDATE users SET
+        crm_channel_scope_enabled=CASE WHEN crm_channel_scope_enabled IN (0,1) THEN crm_channel_scope_enabled ELSE 0 END,
+        crm_feature_scope_enabled=CASE WHEN crm_feature_scope_enabled IN (0,1) THEN crm_feature_scope_enabled ELSE 0 END,
+        crm_operational_agent=CASE WHEN crm_operational_agent IN (0,1) THEN crm_operational_agent ELSE 0 END,
+        crm_manage_automation=CASE WHEN crm_manage_automation IN (0,1) THEN crm_manage_automation ELSE 0 END""")
+    db.execute("""UPDATE crm_user_channels SET
+        can_reply=CASE WHEN can_reply IN (0,1) THEN can_reply ELSE 0 END,
+        can_manage_automation=CASE WHEN can_manage_automation IN (0,1) THEN can_manage_automation ELSE 0 END""")
+    db.execute("""DELETE FROM crm_user_features WHERE feature_key NOT IN
+        ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')""")
     constraints = (
         ("users", "users_crm_channel_scope_bool", "crm_channel_scope_enabled IN (0,1)"),
         ("users", "users_crm_feature_scope_bool", "crm_feature_scope_enabled IN (0,1)"),
         ("users", "users_crm_operational_agent_bool", "crm_operational_agent IN (0,1)"),
+        ("users", "users_crm_manage_automation_bool", "crm_manage_automation IN (0,1)"),
         ("crm_user_channels", "crm_user_channels_reply_bool", "can_reply IN (0,1)"),
         ("crm_user_channels", "crm_user_channels_automation_bool", "can_manage_automation IN (0,1)"),
         ("crm_user_features", "crm_user_features_key_valid",
@@ -244,6 +259,31 @@ def ensure_crm_permission_constraints(db) -> None:
         exists = db.execute("SELECT 1 FROM pg_constraint WHERE conname=?", (constraint_name,)).fetchone()
         if not exists:
             db.execute(f"ALTER TABLE {table} ADD CONSTRAINT {constraint_name} CHECK ({expression}) NOT VALID")
+        validated = db.execute(
+            "SELECT convalidated FROM pg_constraint WHERE conname=?",
+            (constraint_name,),
+        ).fetchone()
+        if validated and not bool(validated["convalidated"]):
+            db.execute(f"ALTER TABLE {table} VALIDATE CONSTRAINT {constraint_name}")
+
+
+def cleanup_retention_data(db) -> None:
+    """Reduz PII técnica sem apagar o histórico clínico e operacional necessário."""
+    webhook_cutoff = f"-{WEBHOOK_PAYLOAD_RETENTION_DAYS} days"
+    security_cutoff = f"-{SECURITY_EVENT_RETENTION_DAYS} days"
+    redacted_payload = '{"retention":"redacted"}'
+    db.execute("DELETE FROM import_batches WHERE expires_at <= datetime('now')")
+    db.execute("DELETE FROM login_challenges WHERE expires_at <= datetime('now')")
+    db.execute("DELETE FROM login_attempts WHERE attempted_at < datetime('now', ?)", (security_cutoff,))
+    db.execute("DELETE FROM security_events WHERE created_at < datetime('now', ?)", (security_cutoff,))
+    db.execute(
+        "UPDATE crm_webhook_events SET payload_json=? WHERE received_at < datetime('now', ?) AND payload_json<>?",
+        (redacted_payload, webhook_cutoff, redacted_payload),
+    )
+    db.execute(
+        "UPDATE crm_automation_events SET payload_json=? WHERE received_at < datetime('now', ?) AND payload_json<>?",
+        (redacted_payload, webhook_cutoff, redacted_payload),
+    )
 
 
 def initialize_database() -> None:
@@ -252,7 +292,6 @@ def initialize_database() -> None:
     schema = (ROOT / "schema.sql").read_text(encoding="utf-8")
     with connect() as db:
         db.executescript(schema)
-        ensure_crm_permission_constraints(db)
         login_challenge_columns = {row[1] for row in db.execute("PRAGMA table_info(login_challenges)").fetchall()}
         if "attempts" not in login_challenge_columns:
             db.execute("ALTER TABLE login_challenges ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
@@ -300,9 +339,12 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE users ADD COLUMN crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0")
         if "crm_operational_agent" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN crm_operational_agent INTEGER NOT NULL DEFAULT 1")
+        if "crm_manage_automation" not in user_columns:
+            db.execute("ALTER TABLE users ADD COLUMN crm_manage_automation INTEGER NOT NULL DEFAULT 0")
         if "service_sector" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
+        ensure_crm_permission_constraints(db)
         crm_resolution_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
         }
@@ -514,10 +556,16 @@ def initialize_database() -> None:
                 must_change_password INTEGER NOT NULL DEFAULT 1,
                 permissions_json TEXT NOT NULL DEFAULT '{}', last_login_at TEXT,
                 two_factor_secret TEXT, two_factor_enabled INTEGER NOT NULL DEFAULT 0, two_factor_enrolled_at TEXT,
+                two_factor_exempt INTEGER NOT NULL DEFAULT 0,
+                crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0,
+                crm_feature_scope_enabled INTEGER NOT NULL DEFAULT 0,
+                crm_operational_agent INTEGER NOT NULL DEFAULT 1,
+                crm_manage_automation INTEGER NOT NULL DEFAULT 0,
+                service_sector TEXT NOT NULL DEFAULT '',
                 FOREIGN KEY (professional_id) REFERENCES professionals(id), FOREIGN KEY (linked_professional_id) REFERENCES professionals(id))""")
             db.execute("""INSERT INTO users_crc_migration
-                (id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at)
-                SELECT id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at FROM users""")
+                (id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, service_sector)
+                SELECT id, professional_id, name, email, access_role, linked_professional_id, active, password_hash, password_salt, must_change_password, permissions_json, last_login_at, two_factor_secret, two_factor_enabled, two_factor_enrolled_at, two_factor_exempt, crm_channel_scope_enabled, crm_feature_scope_enabled, crm_operational_agent, crm_manage_automation, service_sector FROM users""")
             db.execute("DROP TABLE users")
             db.execute("ALTER TABLE users_crc_migration RENAME TO users")
             db.commit()
@@ -551,6 +599,7 @@ def initialize_database() -> None:
                 ("OUTROS", "Outros"),
             ],
         )
+        cleanup_retention_data(db)
         office_id = db.execute(
             "INSERT OR IGNORE INTO offices (code, name) VALUES ('CONSULTORIO_3', 'Consultório 3') RETURNING id"
         ).fetchone()
@@ -657,8 +706,18 @@ def patient_select() -> str:
 class ClinicHandler(SimpleHTTPRequestHandler):
     server_version = "InstitutoAyubPilot/1.0"
 
+    @staticmethod
+    def redact_log_value(value) -> str:
+        text = str(value)
+        return re.sub(
+            r"(?i)([?&](?:token|webhook_key|key|secret|api_key)=)[^&\s]+",
+            r"\1[REDACTED]",
+            text,
+        )
+
     def log_message(self, fmt: str, *args) -> None:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {fmt % args}")
+        safe_args = tuple(self.redact_log_value(value) for value in args)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {fmt % safe_args}")
 
     def send_security_headers(self, allow_bundled_ui: bool = False, allow_same_origin_frame: bool = False, bundled_ui_nonce: str | None = None) -> None:
         self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -763,8 +822,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def encrypt_totp_secret(secret: str) -> str:
-        if not secret or not APP_SECRET_KEY or AESGCM is None:
+        if not secret:
             return secret
+        if not APP_SECRET_KEY or AESGCM is None:
+            raise RuntimeError("Criptografia do 2FA indisponível. Configure APP_SECRET_KEY antes de ativar o recurso.")
         aesgcm = AESGCM(APP_SECRET_KEY)
         nonce = secrets.token_bytes(12)
         ciphertext = aesgcm.encrypt(nonce, secret.encode("utf-8"), None)
@@ -1036,10 +1097,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             raise ConnectionAbortedError("payload too large")
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
+    def get_health(self) -> None:
+        try:
+            with connect() as db:
+                db.execute("SELECT 1").fetchone()
+        except Exception:
+            return self.send_json(
+                {"status": "degraded", "database": "unavailable", "release": RELEASE_ID},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        self.send_json({"status": "ok", "database": "ok", "api_version": 5, "release": RELEASE_ID})
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
-            return self.send_json({"status": "ok", "api_version": 5})
+            return self.get_health()
         if parsed.path == "/api/release":
             return self.send_json({"release": RELEASE_ID})
         if parsed.path == "/api/auth/status":
@@ -1662,8 +1734,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if user.get("two_factor_enabled"):
             return self.send_json({"error": "A autenticação em duas etapas já está ativa."}, HTTPStatus.CONFLICT)
         secret = self.new_totp_secret()
+        try:
+            encrypted_secret = self.encrypt_totp_secret(secret)
+        except RuntimeError:
+            return self.send_json(
+                {"error": "A proteção do 2FA ainda não está configurada. Contate o administrador."},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
         with connect() as db:
-            db.execute("UPDATE users SET two_factor_secret=? WHERE id=?", (self.encrypt_totp_secret(secret), user["id"]))
+            db.execute("UPDATE users SET two_factor_secret=? WHERE id=?", (encrypted_secret, user["id"]))
         self.send_json({"secret": secret, "otpauth_uri": self.otp_uri(user["email"], secret), "issuer": "Instituto Eduardo Ayub"})
 
     def confirm_two_factor_setup(self, user: dict, payload: dict) -> None:
@@ -1738,8 +1817,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if len(password) < 10:
             return self.send_json({"error": "A senha precisa ter ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
         salt = secrets.token_hex(16)
+        cookies = SimpleCookie()
+        cookies.load(self.headers.get("Cookie", ""))
+        current_session = cookies.get("iea_session")
+        current_token_hash = (
+            hashlib.sha256(current_session.value.encode("utf-8")).hexdigest()
+            if current_session else ""
+        )
         with connect() as db:
             db.execute("UPDATE users SET password_hash=?, password_salt=?, must_change_password=0 WHERE id=?", (self.password_digest(password, salt), salt, user["id"]))
+            if current_token_hash:
+                db.execute(
+                    "DELETE FROM auth_sessions WHERE user_id=? AND token_hash<>?",
+                    (user["id"], current_token_hash),
+                )
+            else:
+                db.execute("DELETE FROM auth_sessions WHERE user_id=?", (user["id"],))
+            self.record_security_event(db, "password_changed", self.request_ip(), user["id"], "Demais sessões revogadas")
         self.send_json({"changed": True})
 
     def request_password_reset(self, payload: dict) -> None:
@@ -1778,6 +1872,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         data = dict(row)
         self.send_json({"configured": bool(data["api_token"]), "api_base_url": data["api_base_url"] or "", "subscriber_id": data["subscriber_id"] or "", "api_user": data["api_user"] or "", "updated_at": data["updated_at"]})
 
+    @staticmethod
+    def valid_clinicorp_url(value: str) -> bool:
+        parsed = urlparse(str(value or "").strip())
+        host = (parsed.hostname or "").rstrip(".").lower()
+        try:
+            port = parsed.port
+        except ValueError:
+            return False
+        return bool(
+            parsed.scheme == "https"
+            and host
+            and (host == "clinicorp.com" or host.endswith(".clinicorp.com"))
+            and parsed.username is None
+            and parsed.password is None
+            and port in (None, 443)
+        )
+
     def save_clinicorp_config(self, payload: dict) -> None:
         api_base_url_input = str(payload.get("api_base_url") or "").strip()
         parsed_base_url = urlparse(api_base_url_input)
@@ -1789,10 +1900,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         subscriber_id = str(payload.get("subscriber_id") or "").strip()
         api_user = str(payload.get("api_user") or "").strip()
         api_token = str(payload.get("api_token") or "").strip()
-        active = 1 if payload.get("active", True) else 0
-        active = 1 if payload.get("active", True) else 0
-        if not api_base_url.startswith("https://") or not subscriber_id or not api_user:
-            return self.send_json({"error": "Informe URL HTTPS, ID do assinante e usuário API."}, HTTPStatus.BAD_REQUEST)
+        if not self.valid_clinicorp_url(api_base_url) or not subscriber_id or not api_user:
+            return self.send_json({"error": "Informe uma URL HTTPS oficial da Clinicorp, ID do assinante e usuário API."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             existing = db.execute("SELECT api_token FROM integration_configs WHERE name='clinicorp'").fetchone()
             if not api_token and not existing:
@@ -1831,6 +1940,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Informe um intervalo de sincronização válido."}, HTTPStatus.BAD_REQUEST)
         if not name or not description:
             return self.send_json({"error": "Informe o nome e a finalidade da API."}, HTTPStatus.BAD_REQUEST)
+        if name.casefold().startswith("clinicorp") and not self.valid_clinicorp_url(api_base_url):
+            return self.send_json({"error": "A integração Clinicorp aceita somente um endereço HTTPS oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             existing = db.execute("SELECT id, api_token FROM api_integrations WHERE lower(name)=lower(?)", (name,)).fetchone()
             if existing:
@@ -1877,6 +1988,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "Ative a API antes de sincronizar."}, HTTPStatus.BAD_REQUEST)
             if not config["name"].strip().lower().startswith("clinicorp"):
                 return self.send_json({"error": "A sincronização automática de telefone está disponível somente para a API Clinicorp."}, HTTPStatus.BAD_REQUEST)
+            if not self.valid_clinicorp_url(config["api_base_url"]):
+                return self.send_json({"error": "A URL salva não pertence ao domínio oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
             if not config["api_base_url"] or not config["api_user"] or not config["api_token"]:
                 return self.send_json({"error": "Complete URL base, usuário API e token antes de sincronizar."}, HTTPStatus.BAD_REQUEST)
             # Clinicorp identifies the account with the subscriber id. In some
@@ -1959,6 +2072,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @classmethod
     def clinicorp_patient(cls, config: dict, patient_name: str) -> dict:
+        if not cls.valid_clinicorp_url(config.get("api_base_url")):
+            raise RuntimeError("A URL da Clinicorp não pertence ao domínio oficial permitido.")
         parsed_url = urlparse(str(config["api_base_url"]))
         if parsed_url.netloc.endswith("clinicorp.com"):
             base_url = f"{parsed_url.scheme or 'https'}://{parsed_url.netloc}/rest/v1"
@@ -2079,7 +2194,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                        COALESCE(u.service_sector,'') AS service_sector,
                        COALESCE(u.crm_channel_scope_enabled,0) AS crm_channel_scope_enabled,
                        (SELECT GROUP_CONCAT(CAST(cuc.channel_id AS TEXT)) FROM crm_user_channels cuc WHERE cuc.user_id=u.id) AS crm_channel_ids,
-                       COALESCE((SELECT MAX(cuc.can_manage_automation) FROM crm_user_channels cuc WHERE cuc.user_id=u.id),0) AS crm_can_manage_automation,
+                       COALESCE(u.crm_manage_automation,0) AS crm_can_manage_automation,
                        (SELECT GROUP_CONCAT(s.name, ', ') FROM professional_specialties ps JOIN specialties s ON s.id = ps.specialty_id WHERE ps.professional_id = pr.id) AS specialties,
                        (SELECT GROUP_CONCAT(o.name, ', ') FROM professional_offices po JOIN offices o ON o.id = po.office_id WHERE po.professional_id = pr.id) AS offices,
                        (SELECT ps.specialty_id FROM professional_specialties ps WHERE ps.professional_id = pr.id ORDER BY ps.is_primary DESC, ps.specialty_id LIMIT 1) AS specialty_id,
@@ -2120,9 +2235,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def get_admin_crm_channel_access(self) -> None:
         with connect() as db:
-            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,u.crm_operational_agent,
+            users = db.execute("""SELECT u.id,u.name,u.email,u.active,u.crm_channel_scope_enabled,u.crm_feature_scope_enabled,u.crm_operational_agent,u.crm_manage_automation,
                        COALESCE(GROUP_CONCAT(CAST(cuc.channel_id AS TEXT)),'') AS channel_ids,
-                       COALESCE(MAX(cuc.can_manage_automation),0) AS can_manage_automation,
+                       COALESCE(u.crm_manage_automation,0) AS can_manage_automation,
                        COALESCE((SELECT GROUP_CONCAT(cuf.feature_key) FROM crm_user_features cuf WHERE cuf.user_id=u.id),'') AS feature_keys
                        FROM users u LEFT JOIN crm_user_channels cuc ON cuc.user_id=u.id
                        WHERE u.access_role='crc' GROUP BY u.id ORDER BY u.name COLLATE NOCASE""").fetchall()
@@ -2148,9 +2263,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         scope_enabled = 1 if payload.get("scope_enabled") is True else 0
         feature_scope_enabled = 1 if payload.get("feature_scope_enabled") is True else 0
         can_manage_automation = 1 if payload.get("can_manage_automation") is True else 0
+        operational_agent = 1 if payload.get("operational_agent") is True else 0
         with connect() as db:
             user = db.execute(
-                "SELECT id,name,crm_channel_scope_enabled,crm_feature_scope_enabled "
+                "SELECT id,name,crm_channel_scope_enabled,crm_feature_scope_enabled,crm_operational_agent,crm_manage_automation "
                 "FROM users WHERE id=? AND access_role='crc'", (user_id,)
             ).fetchone()
             if not user:
@@ -2172,11 +2288,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             before = {
                 "channel_scope_enabled": bool(user["crm_channel_scope_enabled"]),
                 "channel_ids": before_channel_ids,
-                "can_manage_automation": bool(db.execute(
-                    "SELECT 1 FROM crm_user_channels WHERE user_id=? AND can_manage_automation=1 LIMIT 1", (user_id,)
-                ).fetchone()),
                 "feature_scope_enabled": bool(user["crm_feature_scope_enabled"]),
                 "feature_keys": before_feature_keys,
+                "operational_agent": bool(user["crm_operational_agent"]),
+                "can_manage_automation": bool(user["crm_manage_automation"]),
             }
             after = {
                 "channel_scope_enabled": bool(scope_enabled),
@@ -2184,6 +2299,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "can_manage_automation": bool(can_manage_automation),
                 "feature_scope_enabled": bool(feature_scope_enabled),
                 "feature_keys": feature_keys,
+                "operational_agent": bool(operational_agent),
             }
 
             db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
@@ -2191,7 +2307,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "INSERT INTO crm_user_channels(user_id,channel_id,can_reply,can_manage_automation) VALUES(?,?,?,?)",
                 [(user_id, channel_id, 1, can_manage_automation) for channel_id in channel_ids],
             )
-            db.execute("UPDATE users SET crm_channel_scope_enabled=? WHERE id=?", (scope_enabled, user_id))
+            db.execute(
+                "UPDATE users SET crm_channel_scope_enabled=?,crm_manage_automation=?,crm_operational_agent=? WHERE id=?",
+                (scope_enabled, can_manage_automation, operational_agent, user_id),
+            )
             db.execute("DELETE FROM crm_user_features WHERE user_id=?", (user_id,))
             db.executemany(
                 "INSERT INTO crm_user_features(user_id,feature_key) VALUES(?,?)",
@@ -2211,7 +2330,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 db, "crm_permissions_updated", self.request_ip(), self.authenticated_user["id"],
                 f"Permissões de {user['name']} (usuário {user_id}) atualizadas.",
             )
-        self.send_json({"updated": True, "user_id": user_id, "channel_ids": channel_ids, "feature_keys": feature_keys})
+        self.send_json({
+            "updated": True, "user_id": user_id, "channel_ids": channel_ids,
+            "feature_keys": feature_keys, "operational_agent": bool(operational_agent),
+            "can_manage_automation": bool(can_manage_automation),
+        })
 
     def test_admin_crm_channel_access(self, payload: dict) -> None:
         try:
@@ -2238,6 +2361,27 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         if transfer_allowed else "TransferÃªncia bloqueada pela permissÃ£o ou pelo estado do canal."),
         })
 
+    @staticmethod
+    def permission_change_summary(before: dict, after: dict) -> str:
+        labels = {
+            "scope_enabled": "Restrição por canal",
+            "feature_scope_enabled": "Personalização de telas",
+            "can_manage_automation": "Supervisão de automações",
+            "operational_agent": "Participação nos atendimentos",
+        }
+        changes = []
+        for key, label in labels.items():
+            if before.get(key) != after.get(key):
+                old = "Sim" if before.get(key) else "Não"
+                new = "Sim" if after.get(key) else "Não"
+                changes.append(f"{label}: {old} → {new}")
+        for key, label in (("channel_ids", "Canais"), ("feature_keys", "Telas")):
+            old_values = before.get(key) or []
+            new_values = after.get(key) or []
+            if old_values != new_values:
+                changes.append(f"{label}: {len(old_values)} → {len(new_values)}")
+        return " · ".join(changes) or "Configuração salva sem alteração efetiva"
+
     def get_admin_audit(self, query: dict) -> None:
         try:
             limit = min(200, max(10, int(query.get("limit", ["80"])[0])))
@@ -2245,11 +2389,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             limit = 80
         with connect() as db:
             rows = db.execute("""
-                SELECT id, event_type, description, created_at, patient_name
+                SELECT id, event_type, description, created_at, patient_name,
+                       details_before, details_after, ip_address
                 FROM (
                     SELECT pe.id AS id, pe.event_type AS event_type,
                            pe.description AS description, pe.created_at AS created_at,
-                           p.name AS patient_name
+                           p.name AS patient_name, NULL AS details_before,
+                           NULL AS details_after, NULL AS ip_address
                     FROM patient_events pe
                     JOIN patients p ON p.id = pe.patient_id
                     UNION ALL
@@ -2260,7 +2406,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            CASE WHEN pda.professional_name IS NOT NULL
                                 THEN ' · Carteira: ' || pda.professional_name ELSE '' END AS description,
                            pda.deleted_at AS created_at,
-                           pda.patient_name AS patient_name
+                           pda.patient_name AS patient_name, NULL AS details_before,
+                           NULL AS details_after, NULL AS ip_address
                     FROM patient_deletion_audit pda
                     UNION ALL
                     SELECT 2000000000 + cpa.id AS id,
@@ -2268,14 +2415,30 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            'Alterado por ' || COALESCE(actor.name,'Usuário removido') ||
                            ' para ' || COALESCE(target.name,'Usuário removido') AS description,
                            cpa.created_at AS created_at,
-                           NULL AS patient_name
+                           NULL AS patient_name, cpa.before_json AS details_before,
+                           cpa.after_json AS details_after, cpa.ip_address AS ip_address
                     FROM crm_permission_audit cpa
                     LEFT JOIN users actor ON actor.id=cpa.changed_by_user_id
                     LEFT JOIN users target ON target.id=cpa.target_user_id
                 )
                 ORDER BY created_at DESC, id DESC LIMIT ?
             """, (limit,)).fetchall()
-        self.send_json({"items": [dict(row) for row in rows]})
+        items = []
+        for row in rows:
+            item = dict(row)
+            if item.get("details_before") or item.get("details_after"):
+                try:
+                    before = json.loads(item.pop("details_before") or "{}")
+                    after = json.loads(item.pop("details_after") or "{}")
+                    item["change_summary"] = self.permission_change_summary(before, after)
+                except (TypeError, json.JSONDecodeError):
+                    item["change_summary"] = "Detalhes de permissão indisponíveis"
+            else:
+                item.pop("details_before", None)
+                item.pop("details_after", None)
+                item["change_summary"] = ""
+            items.append(item)
+        self.send_json({"items": items})
 
     def normalized_code(self, value: str) -> str:
         plain = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
@@ -2696,7 +2859,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def replace_crm_user_channels(db, user_id: int, access_role: str, payload: dict) -> None:
         if access_role != "crc":
             db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
-            db.execute("UPDATE users SET crm_channel_scope_enabled=0 WHERE id=?", (user_id,))
+            db.execute(
+                "UPDATE users SET crm_channel_scope_enabled=0,crm_manage_automation=0,crm_operational_agent=0 WHERE id=?",
+                (user_id,),
+            )
             return
         if "crm_channel_ids" not in payload:
             return
@@ -2711,7 +2877,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         can_manage = 1 if payload.get("crm_can_manage_automation") else 0
         db.executemany("""INSERT INTO crm_user_channels(user_id,channel_id,can_reply,can_manage_automation)
                            VALUES(?,?,1,?)""", [(user_id, channel_id, can_manage) for channel_id in channel_ids])
-        db.execute("UPDATE users SET crm_channel_scope_enabled=1 WHERE id=?", (user_id,))
+        db.execute(
+            "UPDATE users SET crm_channel_scope_enabled=1,crm_manage_automation=? WHERE id=?",
+            (can_manage, user_id),
+        )
 
     def create_admin_professional(self, payload: dict) -> None:
         name = str(payload.get("name") or "").strip()
@@ -3291,8 +3460,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def crm_channel_allowed(self, db, channel_id: int, capability: str | None = None, user_id: int | None = None) -> bool:
         user_id = int(user_id or self.authenticated_user["id"])
-        user = db.execute("SELECT crm_channel_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
+        user = db.execute(
+            "SELECT crm_channel_scope_enabled,crm_manage_automation FROM users WHERE id=?",
+            (user_id,),
+        ).fetchone()
         if not user:
+            return False
+        if capability == "automation" and not user["crm_manage_automation"]:
             return False
         if not user["crm_channel_scope_enabled"]:
             return True
@@ -3306,15 +3480,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def crm_can_manage_automation(self, db, user_id: int | None = None) -> bool:
         user_id = int(user_id or self.authenticated_user["id"])
-        user = db.execute("SELECT crm_channel_scope_enabled FROM users WHERE id=?", (user_id,)).fetchone()
-        if not user:
-            return False
-        if not user["crm_channel_scope_enabled"]:
-            return True
-        return bool(db.execute(
-            "SELECT 1 FROM crm_user_channels WHERE user_id=? AND can_manage_automation=1 LIMIT 1",
-            (user_id,),
-        ).fetchone())
+        user = db.execute("SELECT crm_manage_automation FROM users WHERE id=?", (user_id,)).fetchone()
+        return bool(user and user["crm_manage_automation"])
 
     def get_crm_channels(self) -> None:
         if not self.require_crc_access(): return
@@ -3768,9 +3935,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def configure_existing_evolution_webhook(self, instance_name: str) -> None:
-        if not INTEGRATION_TOKEN:
+        if not EVOLUTION_WEBHOOK_TOKEN:
             return
-        webhook_url = f"{PUBLIC_APP_URL}/api/integrations/evolution/webhook?token={INTEGRATION_TOKEN}"
+        webhook_url = f"{PUBLIC_APP_URL}/api/integrations/evolution/webhook?webhook_key={EVOLUTION_WEBHOOK_TOKEN}"
         self.evolution_api_request(f"/webhook/set/{quote(instance_name, safe='')}", "POST", {"webhook": {
             "enabled": True,
             "url": webhook_url,
@@ -4061,7 +4228,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 connected = self.evolution_api_request(
                     f"/instance/connect/{instance_name}", base_url=channel_base_url, api_key=channel_api_key
                 )
-            webhook_url = f"{PUBLIC_APP_URL}/api/integrations/evolution/webhook?token={INTEGRATION_TOKEN}"
+            if not EVOLUTION_WEBHOOK_TOKEN:
+                return self.send_json({"error": "Configure o segredo exclusivo do webhook Evolution antes de conectar o canal."}, HTTPStatus.SERVICE_UNAVAILABLE)
+            webhook_url = f"{PUBLIC_APP_URL}/api/integrations/evolution/webhook?webhook_key={EVOLUTION_WEBHOOK_TOKEN}"
             def configure_webhook() -> None:
                 try:
                     self.evolution_api_request(f"/webhook/set/{instance_name}", "POST", {"webhook": {
@@ -4220,6 +4389,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return False
         if not self.require_crm_feature("integrations"):
             return False
+        with connect() as db:
+            if not self.crm_can_manage_automation(db):
+                self.send_json(
+                    {"error": "A supervisão de automações não está liberada para o seu acesso."},
+                    HTTPStatus.FORBIDDEN,
+                )
+                return False
         return True
 
     def crm_n8n_config(self) -> dict | None:
@@ -5839,6 +6015,53 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         }
         return known.get(clean_mime, "bin")
 
+    @staticmethod
+    def crm_media_content_valid(mime_type: str, content: bytes) -> bool:
+        """Confere o conteúdo real antes de retransmitir um anexo pelo WhatsApp."""
+        if not content:
+            return False
+        signatures = {
+            "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+            "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/webp": lambda data: len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+            "video/mp4": lambda data: len(data) >= 12 and data[4:8] == b"ftyp",
+            "application/pdf": lambda data: data.startswith(b"%PDF-"),
+            "application/msword": lambda data: data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+            "application/vnd.ms-excel": lambda data: data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+            "application/vnd.ms-powerpoint": lambda data: data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+        }
+        if mime_type in signatures:
+            return signatures[mime_type](content)
+        if mime_type == "text/plain":
+            try:
+                content.decode("utf-8-sig")
+                return b"\x00" not in content
+            except UnicodeDecodeError:
+                return False
+        zip_requirements = {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "word/document.xml",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xl/workbook.xml",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": "ppt/presentation.xml",
+        }
+        if mime_type in {*zip_requirements, "application/zip", "application/x-zip-compressed"}:
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as archive:
+                    members = archive.infolist()
+                    names = {member.filename.replace("\\", "/") for member in members}
+                    if not members or len(members) > 1000:
+                        return False
+                    if any(name.startswith("/") or ".." in Path(name).parts for name in names):
+                        return False
+                    uncompressed = sum(member.file_size for member in members)
+                    compressed = max(1, sum(member.compress_size for member in members))
+                    if uncompressed > 50 * 1024 * 1024 or (uncompressed > 5 * 1024 * 1024 and uncompressed / compressed > 100):
+                        return False
+                    required = zip_requirements.get(mime_type)
+                    return not required or ("[Content_Types].xml" in names and required in names)
+            except (zipfile.BadZipFile, OSError, ValueError):
+                return False
+        return False
+
     def get_crm_message_media(self, message_id: int) -> None:
         if not self.require_crc_access():
             return
@@ -5959,7 +6182,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.wfile.write(content)
 
     def evolution_webhook_authorized(self, query: dict) -> bool:
-        supplied = self.headers.get("X-Webhook-Token") or self.headers.get("Authorization", "").removeprefix("Bearer ") or str(query.get("token", [""])[0])
+        supplied = self.headers.get("X-Webhook-Token") or self.headers.get("Authorization", "").removeprefix("Bearer ") or str(query.get("webhook_key", [""])[0])
+        return bool(EVOLUTION_WEBHOOK_TOKEN and supplied and hmac.compare_digest(str(supplied), EVOLUTION_WEBHOOK_TOKEN))
+
+    def shared_integration_authorized(self, query: dict) -> bool:
+        supplied = self.headers.get("X-Integration-Key") or self.headers.get("Authorization", "").removeprefix("Bearer ") or str(query.get("token", [""])[0])
         return bool(INTEGRATION_TOKEN and supplied and hmac.compare_digest(str(supplied), INTEGRATION_TOKEN))
 
     def crm_n8n_run_event_authorized(self, payload: dict) -> bool:
@@ -6010,7 +6237,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         mesmo ID externo retornado pela API. Se o webhook da mensagem ainda
         não chegou, a atribuição fica aguardando e será aplicada na importação.
         """
-        if not self.evolution_webhook_authorized(query):
+        if not self.shared_integration_authorized(query):
             return self.send_json({"error": "Integração não autorizada."}, HTTPStatus.UNAUTHORIZED)
         external_id = str(payload.get("external_message_id") or payload.get("message_id") or payload.get("id") or "").strip()
         label = str(payload.get("author_label") or payload.get("agent_name") or "Assistente IA").strip()[:80]
@@ -6026,7 +6253,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def receive_crm_handoff(self, payload: dict, query: dict) -> None:
         """Recebe do n8n/IA uma transferência explícita para a fila humana."""
-        if not self.evolution_webhook_authorized(query):
+        if not self.shared_integration_authorized(query):
             return self.send_json({"error": "Integração não autorizada."}, HTTPStatus.UNAUTHORIZED)
         instance = str(payload.get("instance") or payload.get("instance_name") or "").strip()
         phone = self.crm_phone(payload.get("phone") or payload.get("number"))
@@ -6050,7 +6277,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def receive_crm_automation_event(self, payload: dict, query: dict) -> None:
         """Entrada idempotente para monitorar campanhas e decisões do n8n/IA."""
         if not (
-            self.evolution_webhook_authorized(query)
+            self.shared_integration_authorized(query)
             or self.crm_n8n_run_event_authorized(payload)
             or self.crm_n8n_callback_authorized()
         ):
@@ -6407,6 +6634,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "Selecione um arquivo antes de enviar."}, HTTPStatus.BAD_REQUEST)
             if len(media_bytes) > 12 * 1024 * 1024:
                 return self.send_json({"error": "O arquivo ultrapassa o limite de 12 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            if not self.crm_media_content_valid(mime_type, media_bytes):
+                return self.send_json(
+                    {"error": "O conteúdo do arquivo não corresponde ao formato informado."},
+                    HTTPStatus.BAD_REQUEST,
+                )
             if not original_file_name:
                 original_file_name = {
                     "image/jpeg": "imagem.jpg", "image/png": "imagem.png", "image/webp": "imagem.webp",

@@ -26,6 +26,11 @@ services:
       SESSION_SECURE: "1"
       AUTH_SETUP_TOKEN: ${AUTH_SETUP_TOKEN:-}
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
+      EVOLUTION_WEBHOOK_TOKEN: ${EVOLUTION_WEBHOOK_TOKEN}
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      APP_RELEASE_ID: ${APP_RELEASE_ID:-dev}
+      WEBHOOK_PAYLOAD_RETENTION_DAYS: ${WEBHOOK_PAYLOAD_RETENTION_DAYS:-90}
+      SECURITY_EVENT_RETENTION_DAYS: ${SECURITY_EVENT_RETENTION_DAYS:-365}
       EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution-api-1myd-api-1:8080}
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
       N8N_INTERNAL_URL: ${N8N_INTERNAL_URL:-http://n8n-czmx-n8n-1:5678}
@@ -33,6 +38,12 @@ services:
       TZ: America/Cuiaba
     ports:
       - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.instituto-ayub.rule=Host(`dentistas.automacaocentraliea.me`)"

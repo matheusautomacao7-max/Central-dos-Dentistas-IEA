@@ -54,7 +54,8 @@ with tempfile.TemporaryDirectory() as directory:
             name TEXT NOT NULL,
             access_role TEXT NOT NULL,
             active INTEGER NOT NULL DEFAULT 1,
-            crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0
+            crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0,
+            crm_manage_automation INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE crm_channels (id INTEGER PRIMARY KEY);
         CREATE TABLE crm_user_channels (user_id INTEGER, channel_id INTEGER, can_reply INTEGER DEFAULT 1);

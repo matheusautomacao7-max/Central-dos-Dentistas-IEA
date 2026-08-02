@@ -43,11 +43,13 @@ function renderCrmAccess() {
     const selectedFeatures = new Set(String(user.feature_keys || "").split(",").filter(Boolean));
     const restricted = Number(user.crm_channel_scope_enabled) === 1;
     const featuresRestricted = Number(user.crm_feature_scope_enabled) === 1;
+    const operationalAgent = Number(user.crm_operational_agent) === 1;
     return `<article class="crm-access-card" data-crm-access-user="${user.id}">
       <div class="crm-access-card-head"><div class="admin-overview-avatar">${escapeHtml(initials(user.name))}</div><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email || "")}</small></div><span class="access-badge ${user.active ? "" : "off"}">${user.active ? "Ativo" : "Bloqueado"}</span></div>
+      <label class="crm-manager-toggle"><input type="checkbox" data-crm-operational-agent ${operationalAgent ? "checked" : ""}><span><strong>Participa dos atendimentos</strong><small>Desmarque para contas de supervisão e testes: não recebe conversas nem entra nas métricas individuais.</small></span></label>
       <label class="crm-scope-toggle"><input type="checkbox" data-crm-scope ${restricted ? "checked" : ""}><span><strong>Restringir aos números marcados</strong><small>Desmarcado: visualiza todos os canais.</small></span></label>
       <div class="crm-channel-checks">${channels.map(channel => `<label><input type="checkbox" data-crm-channel value="${channel.id}" ${selected.has(String(channel.id)) ? "checked" : ""}><span><strong>${escapeHtml(crmChannelLabel(channel))}</strong><small>${escapeHtml(channel.phone || channel.instance_name || "Sem telefone")} · ${channel.sync_enabled ? "Sincronizando" : "Pausado"}</small></span></label>`).join("") || '<p class="empty-state">Nenhum canal conectado.</p>'}</div>
-      <label class="crm-manager-toggle"><input type="checkbox" data-crm-manager ${Number(user.can_manage_automation) ? "checked" : ""}><span><strong>Supervisão de canais e automações</strong><small>Pode pausar sincronização e executar importações.</small></span></label>
+      <label class="crm-manager-toggle"><input type="checkbox" data-crm-manager ${Number(user.crm_manage_automation ?? user.can_manage_automation) ? "checked" : ""}><span><strong>Supervisão de canais e automações</strong><small>Pode pausar sincronização, configurar o n8n e executar importações.</small></span></label>
       <div class="crm-feature-permissions"><div class="crm-feature-title"><strong>Telas disponíveis</strong><label><input type="checkbox" data-crm-feature-scope ${featuresRestricted ? "checked" : ""}> Personalizar</label></div><div class="crm-feature-checks">${Object.entries(crmFeatureLabels).map(([key,label]) => `<label><input type="checkbox" data-crm-feature value="${key}" ${selectedFeatures.has(key) || !featuresRestricted ? "checked" : ""}><span>${label}</span></label>`).join("")}</div><small>Com “Personalizar” desmarcado, todas as telas permanecem liberadas.</small></div>
       <button class="primary-button" type="button" data-save-crm-access="${user.id}">Salvar permissões</button>
     </article>`;
@@ -59,7 +61,7 @@ function renderCrmAccess() {
 
 async function saveCrmAccess(userId) {
   const card = $(`[data-crm-access-user="${userId}"]`);
-  const payload = {user_id: Number(userId), scope_enabled: card.querySelector('[data-crm-scope]').checked, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: [...card.querySelectorAll('[data-crm-channel]:checked')].map(input => Number(input.value)), feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked, feature_keys: [...card.querySelectorAll('[data-crm-feature]:checked')].map(input => input.value)};
+  const payload = {user_id: Number(userId), operational_agent: card.querySelector('[data-crm-operational-agent]').checked, scope_enabled: card.querySelector('[data-crm-scope]').checked, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: [...card.querySelectorAll('[data-crm-channel]:checked')].map(input => Number(input.value)), feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked, feature_keys: [...card.querySelectorAll('[data-crm-feature]:checked')].map(input => input.value)};
   if (payload.scope_enabled && !payload.channel_ids.length && !confirm("Esta atendente ficará sem acesso a nenhum número. Continuar?")) return;
   if (payload.feature_scope_enabled && !payload.feature_keys.length && !confirm("Esta atendente ficará sem nenhuma tela do CRM. Continuar?")) return;
   try { await api("/api/admin/crm-channel-access", {method:"POST", body:JSON.stringify(payload)}); await loadCrmAccess(); showToast("Permissões do CRM salvas."); } catch (error) { showToast(error.message, true); }
@@ -267,7 +269,7 @@ function editProfessional(id) {
 async function loadAudit() {
   try {
     const data = await api("/api/admin/audit?limit=100");
-    $("#adminAuditTable").innerHTML = data.items.length ? data.items.map(item => `<tr><td>${escapeHtml(new Date(item.created_at.replace(" ", "T") + "-04:00").toLocaleString("pt-BR"))}</td><td>${escapeHtml(item.patient_name)}</td><td><span class="status-badge status-controle">${escapeHtml(item.event_type)}</span></td><td>${escapeHtml(item.description || "—")}</td></tr>`).join("") : `<tr class="loading-row"><td colspan="4">Nenhuma movimentação registrada.</td></tr>`;
+    $("#adminAuditTable").innerHTML = data.items.length ? data.items.map(item => { const details=[item.description,item.change_summary,item.ip_address?`IP: ${item.ip_address}`:""].filter(Boolean).join(" · "); return `<tr><td>${escapeHtml(new Date(item.created_at.replace(" ", "T") + "-04:00").toLocaleString("pt-BR"))}</td><td>${escapeHtml(item.patient_name)}</td><td><span class="status-badge status-controle">${escapeHtml(item.event_type)}</span></td><td>${escapeHtml(details || "—")}</td></tr>`; }).join("") : `<tr class="loading-row"><td colspan="4">Nenhuma movimentação registrada.</td></tr>`;
   } catch (error) { showToast(error.message, true); }
 }
 let apiMonitorTimer=null;

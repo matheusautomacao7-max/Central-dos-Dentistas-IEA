@@ -13,6 +13,7 @@ SERVER_PATH = ROOT / "app" / "server.py"
 SCHEMA_PATH = ROOT / "app" / "schema.sql"
 CRM_HTML_PATH = ROOT / "app" / "public" / "crm-whatsapp.html"
 BRIDGE_PATH = ROOT / "app" / "public" / "crm-operations-bridge.js"
+ADMIN_JS_PATH = ROOT / "app" / "public" / "admin.js"
 
 
 def method_sources(source: str) -> dict[str, str]:
@@ -100,12 +101,22 @@ assert validation_position < transaction_position, "validate the full payload be
 assert "INSERT INTO crm_permission_audit" in permission_save
 assert "before_json" in permission_save and "after_json" in permission_save
 assert permission_save.count(" is True") >= 3, "permission writes must use strict booleans"
+assert "crm_manage_automation" in permission_save
+assert "crm_operational_agent" in permission_save
+
+n8n_manager = methods["require_crm_n8n_manager"]
+assert "crm_can_manage_automation" in n8n_manager, "n8n management must require the explicit automation capability"
+
+admin_audit = methods["get_admin_audit"]
+assert "details_before" in admin_audit and "details_after" in admin_audit
+assert "ip_address" in admin_audit and "permission_change_summary" in admin_audit
 
 schema = SCHEMA_PATH.read_text(encoding="utf-8")
 for constraint in (
     "CHECK (crm_channel_scope_enabled IN (0, 1))",
     "CHECK (crm_feature_scope_enabled IN (0, 1))",
     "CHECK (crm_operational_agent IN (0, 1))",
+    "CHECK (crm_manage_automation IN (0, 1))",
     "CHECK (can_reply IN (0, 1))",
     "CHECK (can_manage_automation IN (0, 1))",
     "CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings'))",
@@ -115,12 +126,19 @@ for migration_constraint in (
     "users_crm_channel_scope_bool",
     "users_crm_feature_scope_bool",
     "users_crm_operational_agent_bool",
+    "users_crm_manage_automation_bool",
     "crm_user_channels_reply_bool",
     "crm_user_channels_automation_bool",
     "crm_user_features_key_valid",
 ):
     assert migration_constraint in server_source
 assert "CREATE TABLE IF NOT EXISTS crm_permission_audit" in schema
+
+admin_js = ADMIN_JS_PATH.read_text(encoding="utf-8")
+assert "data-crm-operational-agent" in admin_js
+assert "operational_agent:" in admin_js
+assert "crm_manage_automation" in admin_js
+assert "item.change_summary" in admin_js and "item.ip_address" in admin_js
 
 crm_html = CRM_HTML_PATH.read_text(encoding="utf-8")
 assert "allowedFeatures:[],permissionsReady:false" in crm_html

@@ -1,0 +1,50 @@
+name: Qualidade e segurança
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+      - name: Validar sintaxe Python
+        run: python -m compileall -q app ops
+      - name: Executar regressões Python
+        run: |
+          python ops/test_crm_admin_observer.py
+          python ops/test_crm_assignment.py
+          python ops/test_crm_claim.py
+          python ops/test_crm_feature_permissions.py
+          python ops/test_crm_goals.py
+          python ops/test_crm_manual_start.py
+          python ops/test_crm_media_send.py
+          python ops/test_crm_operations_schema.py
+          python ops/test_crm_patient_ownership_lock.py
+          python ops/test_security_hardening.py
+      - name: Validar sintaxe JavaScript
+        run: find app ops -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
+      - name: Executar regressões do CRM no navegador
+        run: |
+          node ops/test_crm_composer_tools.mjs
+          node ops/test_crm_goals_frontend.mjs
+          node ops/test_crm_internal_team_filter.mjs
+          node ops/test_crm_media_bridge_audio_loop.mjs
+          node ops/test_crm_persistent_cache.mjs
+          node ops/validate_crm_bundle.mjs
+          node ops/validate_crm_template.mjs

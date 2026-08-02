@@ -5,9 +5,9 @@ from urllib.request import Request, urlopen
 
 base_url = os.environ["EVOLUTION_API_URL"].rstrip("/")
 api_key = os.environ["EVOLUTION_API_KEY"]
-webhook_token = os.environ["INTEGRATION_TOKEN"]
+webhook_token = os.environ["EVOLUTION_WEBHOOK_TOKEN"]
 public_url = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
-webhook_url = f"{public_url}/api/integrations/evolution/webhook?token={webhook_token}"
+webhook_url = f"{public_url}/api/integrations/evolution/webhook?webhook_key={webhook_token}"
 
 
 def request(path, *, method="GET", payload=None):

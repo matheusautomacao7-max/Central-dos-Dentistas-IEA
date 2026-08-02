@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import types
+import zipfile
 from http import HTTPStatus
 from pathlib import Path
 
@@ -34,6 +35,14 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "app"))
 from app import server
+
+
+def ooxml_bytes(folder: str, file_name: str) -> bytes:
+    buffer = __import__("io").BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", "<Types />")
+        archive.writestr(f"{folder}/{file_name}", "<document />")
+    return buffer.getvalue()
 
 
 class FakeCursor:
@@ -133,10 +142,10 @@ with tempfile.TemporaryDirectory() as directory:
 
     try:
         samples = (
-            ("image", "image/png", "imagem.png", b"png-test", "png"),
-            ("video", "video/mp4", "video.mp4", b"mp4-test", "mp4"),
-            ("document", "application/pdf", "documento.pdf", b"pdf-test", "pdf"),
-            ("document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "documento.docx", b"docx-test", "docx"),
+            ("image", "image/png", "imagem.png", b"\x89PNG\r\n\x1a\nvalid", "png"),
+            ("video", "video/mp4", "video.mp4", b"\x00\x00\x00\x18ftypmp42valid", "mp4"),
+            ("document", "application/pdf", "documento.pdf", b"%PDF-1.7\nvalid", "pdf"),
+            ("document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "documento.docx", ooxml_bytes("word", "document.xml"), "docx"),
         )
         for message_type, mime_type, file_name, content, extension in samples:
             handler.send_crm_message(1, {
@@ -153,6 +162,17 @@ with tempfile.TemporaryDirectory() as directory:
             assert payload["fileName"] == file_name
             stored = list(Path(directory).glob(f"*.{extension}"))[-1]
             assert stored.read_bytes() == content
+
+        request_count = len(requests)
+        handler.send_crm_message(1, {
+            "message_type": "image",
+            "media_base64": base64.b64encode(b"arquivo-falso").decode("ascii"),
+            "mime_type": "image/png",
+            "file_name": "imagem.png",
+        })
+        assert handler.responses[-1][0] == HTTPStatus.BAD_REQUEST
+        assert "conteúdo" in handler.responses[-1][1]["error"].lower()
+        assert len(requests) == request_count
     finally:
         server.connect = original_connect
         server.urlopen = original_urlopen

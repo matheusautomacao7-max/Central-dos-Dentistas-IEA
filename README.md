@@ -1,21 +1,56 @@
-# Carteira de Pacientes — Instituto Eduardo Ayub
+# Instituto Eduardo Ayub — CRM e carteira de pacientes
 
-Piloto web local da carteira da Dra. Dulce, com dados armazenados em SQLite.
+Aplicação web interna para carteira de pacientes, atendimento omnichannel, fila do CRC, metas, funil, automações e gestão de acessos.
 
-## Como abrir
+## Arquitetura atual
 
-Dê dois cliques em `INICIAR SISTEMA.bat`. O sistema inicia e abre automaticamente no navegador.
+- aplicação Python 3.12 servida em container Docker;
+- PostgreSQL 16 como banco obrigatório;
+- Evolution API para os canais de WhatsApp;
+- n8n para automações autorizadas;
+- Traefik/TLS na publicação da VPS;
+- frontend do CRM servido pela própria aplicação.
 
-## Recursos do piloto
+## Configuração
 
-- carteira com busca, filtros, ordenação e ficha editável;
-- múltiplos procedimentos por paciente, com valor, desconto, etapa e potencial líquido;
-- próximas ações reutilizáveis entre fichas: ao salvar uma nova descrição, ela passa a aparecer como sugestão nos demais pacientes;
-- catálogo reutilizável de procedimentos, com criação, edição e exclusão protegida por confirmação;
-- marcação de pacientes resolvidos no dia, com bloqueio da ficha e reabertura explícita para voltar a editar;
-- Registro Diário com totais de hoje, ontem, últimos sete dias e histórico de 30 dias;
-- contador diário reiniciado automaticamente à meia-noite, preservando o histórico anterior.
+O `compose.yaml` espera as variáveis abaixo no ambiente de implantação:
 
-O banco fica em `app/data/clinic.db`.
+- `POSTGRES_PASSWORD`;
+- `AUTH_SETUP_TOKEN`;
+- `INTEGRATION_TOKEN` — integrações internas e exportações;
+- `EVOLUTION_WEBHOOK_TOKEN` — segredo exclusivo dos webhooks da Evolution;
+- `APP_SECRET_KEY` — chave AES em base64 para proteger os segredos de 2FA;
+- `EVOLUTION_API_KEY` e, opcionalmente, `EVOLUTION_API_URL`;
+- `APP_RELEASE_ID` — identificador do commit/release publicado.
+- `WEBHOOK_PAYLOAD_RETENTION_DAYS` e `SECURITY_EVENT_RETENTION_DAYS` — prazos de retenção técnica (padrões: 90 e 365 dias).
 
-Para validar as regras críticas com restauração automática dos dados, execute `app/qa_smoke.py` enquanto o sistema estiver aberto.
+Nunca grave valores reais dessas variáveis no repositório.
+
+## Execução local com Docker
+
+```bash
+docker compose up --build
+```
+
+A API fica vinculada somente a `127.0.0.1:8000`. A sonda `GET /api/health` valida também a conexão com o PostgreSQL.
+
+## Testes
+
+O workflow `.github/workflows/quality.yml` executa, em cada push e pull request:
+
+- compilação de todos os arquivos Python;
+- testes de permissões, atribuição, metas, mídia, bloqueio de pacientes e segurança;
+- validação de sintaxe JavaScript;
+- regressões do bundle e dos fluxos principais do CRM.
+
+Para uma verificação local completa, execute os mesmos comandos descritos no workflow antes de publicar.
+
+## Operação
+
+- backups automatizados: `ops/backup-instituto-ayub.sh`;
+- configuração de webhooks: `ops/configure_evolution_webhooks.py`;
+- verificações pós-deploy: scripts `ops/verify_*_prod.py`;
+- mídia persistente: volume `/opt/instituto-ayub/data/crm-media`;
+- banco persistente: volume Docker `postgres_data`.
+
+Mudanças de autenticação, permissões, esquema ou integrações devem ser publicadas somente após backup, regressão completa e validação pós-deploy.
