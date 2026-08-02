@@ -144,6 +144,7 @@
 
   function openProfile() {
     if (!currentUser || overlay) return;
+    injectStyle();
     overlay = document.createElement("div");
     overlay.className = "iea-cp-overlay";
     overlay.innerHTML = '<section class="iea-cp-dialog" role="dialog" aria-modal="true" aria-labelledby="iea-cp-dialog-title"><header class="iea-cp-top"><strong id="iea-cp-dialog-title">Perfil do colaborador</strong><button class="iea-cp-close" type="button" aria-label="Fechar perfil">×</button></header><div data-iea-cp-content></div></section>';
@@ -251,7 +252,7 @@
     openProfile();
   }
 
-  function enhance() { scheduled = false; enhanceTheme(); enhanceAvatar(); }
+  function enhance() { scheduled = false; injectStyle(); enhanceTheme(); enhanceAvatar(); }
   function schedule() { if (scheduled) return; scheduled = true; window.requestAnimationFrame(enhance); }
 
   document.addEventListener("click", interceptProfileTrigger, true);

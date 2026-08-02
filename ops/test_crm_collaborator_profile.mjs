@@ -69,12 +69,29 @@ try {
   await page.waitForFunction(() => document.body.dataset.omtheme === "dark");
   assert.equal(await page.evaluate(() => localStorage.getItem("iea.crm.theme")), "dark");
 
+  // The embedded CRM can rebuild <head>. The profile must recover its own
+  // stylesheet before opening instead of rendering as raw, clipped markup.
+  await page.locator("#iea-collaborator-profile-style").evaluate(element => element.remove());
+
   await avatar.evaluate(element => {
     const replacement = element.cloneNode(true);
     element.replaceWith(replacement);
     replacement.click();
   });
   await page.getByRole("heading", {name:"Matheus Henrique"}).waitFor();
+  assert.equal(await page.locator("#iea-collaborator-profile-style").count(), 1);
+  const overlayGeometry = await page.locator(".iea-cp-overlay").evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {position:style.position,width:Math.round(box.width),height:Math.round(box.height),zIndex:style.zIndex};
+  });
+  assert.deepEqual(overlayGeometry, {position:"fixed",width:1440,height:900,zIndex:"10050"});
+  const desktopBox = await page.getByRole("dialog").boundingBox();
+  assert.ok(desktopBox.width >= 880 && desktopBox.width <= 930);
+  assert.ok(desktopBox.x >= 250, "dialog must be centered outside the 80px sidebar");
+  if (process.env.CRM_PROFILE_SCREENSHOT) {
+    await page.screenshot({path:process.env.CRM_PROFILE_SCREENSHOT,fullPage:true});
+  }
   assert.equal(await page.evaluate(() => document.body.dataset.legacyStatusMenuOpened || "false"), "false");
   assert.equal(await page.getByRole("dialog").count(), 1);
   assert.equal(await page.getByText("Administrador do CRM", {exact:true}).count(), 1);
@@ -93,6 +110,9 @@ try {
   const box = await page.getByRole("dialog").boundingBox();
   assert.equal(Math.round(box.width), 390);
   assert.equal(Math.round(box.height), 844);
+  if (process.env.CRM_PROFILE_SCREENSHOT) {
+    await page.screenshot({path:process.env.CRM_PROFILE_SCREENSHOT.replace(/\.png$/i,"-mobile.png"),fullPage:true});
+  }
   console.log("crm-collaborator-profile-e2e-ok");
 } finally {
   await browser.close();
