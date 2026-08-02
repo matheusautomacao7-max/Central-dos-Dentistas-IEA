@@ -1,0 +1,179 @@
+(function () {
+  "use strict";
+
+  if (window.__IEA_CRM_NAVIGATION_ORDER_INSTALLED__) return;
+  window.__IEA_CRM_NAVIGATION_ORDER_INSTALLED__ = true;
+
+  const OPERATIONAL_ORDER = ["inbox", "funil", "filas", "metas", "pacientes", "controle"];
+  const ADMIN_ORDER = ["gestao", "campanhas", "integracao", "configuracao"];
+  const FULL_ORDER = [...OPERATIONAL_ORDER, ...ADMIN_ORDER];
+
+  function normalized(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function exactLabels(item) {
+    const values = [item.title, item.getAttribute("aria-label")];
+    item.querySelectorAll("span,div").forEach((node) => {
+      if (!node.children.length) values.push(node.textContent);
+    });
+    return values.map(normalized).filter(Boolean);
+  }
+
+  function navigationKey(item) {
+    if (!(item instanceof HTMLElement)) return "";
+    if (item.matches("[data-iea-goals-nav]") || item.querySelector("[data-iea-goals-nav]")) return "metas";
+    if (item.matches("[data-iea-patient-control]") || item.querySelector("[data-iea-patient-control]")) return "controle";
+    if (item.matches("[data-iea-patients-nav]") || item.querySelector("[data-iea-patients-nav]")) return "pacientes";
+
+    const labels = exactLabels(item);
+    const aliases = {
+      inbox: "inbox",
+      funil: "funil",
+      filas: "filas",
+      fila: "filas",
+      metas: "metas",
+      pacientes: "pacientes",
+      contatos: "pacientes",
+      controle: "controle",
+      gestao: "gestao",
+      campanhas: "campanhas",
+      integracao: "integracao",
+      integracoes: "integracao",
+      integra: "integracao",
+      configuracao: "configuracao",
+      config: "configuracao",
+    };
+    for (const label of labels) {
+      if (aliases[label]) return aliases[label];
+    }
+    return "";
+  }
+
+  function leafWithLabel(item, accepted) {
+    return Array.from(item.querySelectorAll("span,div")).find((node) =>
+      !node.children.length && accepted.includes(normalized(node.textContent))
+    );
+  }
+
+  function useCompleteAdminLabels(items) {
+    const integration = items.get("integracao");
+    const integrationLabel = integration && leafWithLabel(integration, ["integra", "integracao", "integracoes"]);
+    if (integrationLabel && integrationLabel.textContent !== "Integração") integrationLabel.textContent = "Integração";
+    if (integration) {
+      integration.title = "Integração";
+      integration.setAttribute("aria-label", "Integração");
+    }
+
+    const settings = items.get("configuracao");
+    const settingsLabel = settings && leafWithLabel(settings, ["config", "configuracao"]);
+    if (settingsLabel && settingsLabel.textContent !== "Configuração") settingsLabel.textContent = "Configuração";
+    if (settings) {
+      settings.title = "Configuração";
+      settings.setAttribute("aria-label", "Configuração");
+    }
+  }
+
+  function adminDivider(aside) {
+    let divider = aside.querySelector(":scope > [data-iea-admin-navigation-divider]");
+    if (divider) return divider;
+    divider = document.createElement("div");
+    divider.dataset.ieaAdminNavigationDivider = "1";
+    divider.setAttribute("role", "separator");
+    divider.setAttribute("aria-label", "Navegação administrativa");
+    divider.title = "Administração";
+    divider.textContent = "ADMIN";
+    divider.style.cssText = "width:52px;min-height:15px;display:flex;align-items:center;justify-content:center;margin:5px 0 1px;border-top:1px solid rgba(255,255,255,.18);padding-top:5px;color:rgba(255,255,255,.5);font:800 7px/1 Manrope,system-ui,sans-serif;letter-spacing:.12em;cursor:default;flex:0 0 auto";
+    return divider;
+  }
+
+  function isDisplayed(item) {
+    return Boolean(item && !item.hidden && item.style.display !== "none" && getComputedStyle(item).display !== "none");
+  }
+
+  function reorder(aside) {
+    const children = Array.from(aside.children);
+    const items = new Map();
+    children.forEach((item) => {
+      const key = navigationKey(item);
+      if (key && !items.has(key)) items.set(key, item);
+    });
+    if (!items.has("inbox")) return;
+
+    useCompleteAdminLabels(items);
+    const divider = adminDivider(aside);
+    const hasVisibleAdmin = ADMIN_ORDER.some((key) => isDisplayed(items.get(key)));
+    if (divider.hidden === hasVisibleAdmin) divider.hidden = !hasVisibleAdmin;
+    const dividerDisplay = hasVisibleAdmin ? "flex" : "none";
+    if (divider.style.display !== dividerDisplay) divider.style.display = dividerDisplay;
+
+    const existingNavigation = Array.from(aside.children)
+      .map((item) => item === divider ? "admin-divider" : navigationKey(item))
+      .filter(Boolean);
+    const desiredNavigation = [
+      ...OPERATIONAL_ORDER.filter((key) => items.has(key)),
+      ...(items.size && ADMIN_ORDER.some((key) => items.has(key)) ? ["admin-divider"] : []),
+      ...ADMIN_ORDER.filter((key) => items.has(key)),
+    ];
+    if (existingNavigation.join("|") === desiredNavigation.join("|")) return;
+
+    const firstNavigation = Array.from(aside.children).find((item) => navigationKey(item));
+    if (!firstNavigation) return;
+    const marker = document.createComment("iea-navigation-order");
+    aside.insertBefore(marker, firstNavigation);
+    OPERATIONAL_ORDER.forEach((key) => {
+      const item = items.get(key);
+      if (item) aside.insertBefore(item, marker);
+    });
+    if (ADMIN_ORDER.some((key) => items.has(key))) aside.insertBefore(divider, marker);
+    ADMIN_ORDER.forEach((key) => {
+      const item = items.get(key);
+      if (item) aside.insertBefore(item, marker);
+    });
+    marker.remove();
+  }
+
+  function findNavigationAside() {
+    return Array.from(document.querySelectorAll("aside")).find((aside) =>
+      Array.from(aside.children).some((item) => navigationKey(item) === "inbox")
+    );
+  }
+
+  let scheduled = false;
+  let observedAside = null;
+  const permissionObserver = new MutationObserver(maintainOrder);
+  function observePermissionChanges(aside) {
+    if (observedAside === aside) return;
+    permissionObserver.disconnect();
+    observedAside = aside;
+    permissionObserver.observe(aside, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ["style", "hidden"],
+    });
+  }
+
+  function maintainOrder() {
+    if (scheduled || document.hidden) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      const aside = findNavigationAside();
+      if (aside) {
+        observePermissionChanges(aside);
+        reorder(aside);
+      }
+    });
+  }
+
+  new MutationObserver(maintainOrder).observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+  maintainOrder();
+  window.IEACrmNavigationOrder = { maintain: maintainOrder, operational: OPERATIONAL_ORDER, admin: ADMIN_ORDER, full: FULL_ORDER };
+})();
