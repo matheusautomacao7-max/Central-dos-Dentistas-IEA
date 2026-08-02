@@ -19,10 +19,11 @@ O `compose.yaml` espera as variáveis abaixo no ambiente de implantação:
 - `AUTH_SETUP_TOKEN`;
 - `INTEGRATION_TOKEN` — integrações internas e exportações;
 - `EVOLUTION_WEBHOOK_TOKEN` — segredo exclusivo dos webhooks da Evolution;
-- `APP_SECRET_KEY` — chave AES em base64 para proteger os segredos de 2FA;
+- `APP_SECRET_KEY` — chave AES em base64 para proteger 2FA e credenciais persistidas das integrações;
 - `EVOLUTION_API_KEY` e, opcionalmente, `EVOLUTION_API_URL`;
 - `APP_RELEASE_ID` — identificador do commit/release publicado.
 - `WEBHOOK_PAYLOAD_RETENTION_DAYS` e `SECURITY_EVENT_RETENTION_DAYS` — prazos de retenção técnica (padrões: 90 e 365 dias).
+- `DB_POOL_MIN`, `DB_POOL_MAX` e `DB_POOL_TIMEOUT_SECONDS` — limites opcionais do pool PostgreSQL (padrões: 2, 12 e 8 segundos).
 
 Nunca grave valores reais dessas variáveis no repositório.
 

@@ -33,8 +33,10 @@ from openpyxl import load_workbook
 from db_backend import IntegrityError, configure as configure_database, connect
 
 try:
+    from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 except ImportError:  # dependência de SEC-011 ainda não instalada neste ambiente
+    InvalidTag = ValueError
     AESGCM = None
 
 
@@ -52,6 +54,8 @@ STANDARD_PATIENT_STATUSES = {"Consulta", "Controle", "Tratamento", "Inativo"}
 RELEASE_ID = os.environ.get("APP_RELEASE_ID") or datetime.utcnow().strftime("%Y%m%d%H%M%S")
 MAX_BODY_BYTES = 60 * 1024 * 1024  # 60 MB: acomoda mídia de CRM em base64 (limite decodificado de 40 MB)
 TOTP_ENC_PREFIX = "encv1:"
+INTEGRATION_SECRET_PREFIX = "secv1:"
+INTEGRATION_SECRET_AAD = b"iea-integration-secret-v1"
 _app_secret_key_raw = os.environ.get("APP_SECRET_KEY", "").strip()
 APP_SECRET_KEY = base64.b64decode(_app_secret_key_raw) if _app_secret_key_raw else None
 INTEGRATION_TOKEN = os.environ.get("INTEGRATION_TOKEN", "")
@@ -99,6 +103,96 @@ EVOLUTION_HISTORY_SYNC_STATUS = {
     "started_at": None,
     "finished_at": None,
 }
+
+
+def encrypt_integration_secret(value: str | None) -> str | None:
+    """Encrypt a persisted integration credential while keeping empty values intact."""
+    if not value or value.startswith(INTEGRATION_SECRET_PREFIX):
+        return value
+    if not APP_SECRET_KEY or AESGCM is None:
+        raise RuntimeError("APP_SECRET_KEY ausente: não é possível proteger a credencial da integração")
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(APP_SECRET_KEY).encrypt(
+        nonce, value.encode("utf-8"), INTEGRATION_SECRET_AAD
+    )
+    return INTEGRATION_SECRET_PREFIX + base64.b64encode(nonce + ciphertext).decode("ascii")
+
+
+def decrypt_integration_secret(value: str | None) -> str | None:
+    """Decrypt a credential only at its point of use; accept plaintext solely for migration."""
+    if not value or not value.startswith(INTEGRATION_SECRET_PREFIX):
+        return value
+    if not APP_SECRET_KEY or AESGCM is None:
+        raise RuntimeError("APP_SECRET_KEY ausente: não é possível decifrar a credencial da integração")
+    try:
+        raw = base64.b64decode(value[len(INTEGRATION_SECRET_PREFIX):], validate=True)
+        if len(raw) <= 12:
+            raise ValueError("credencial cifrada incompleta")
+        plaintext = AESGCM(APP_SECRET_KEY).decrypt(
+            raw[:12], raw[12:], INTEGRATION_SECRET_AAD
+        )
+        return plaintext.decode("utf-8")
+    except (ValueError, UnicodeDecodeError, InvalidTag) as error:
+        raise RuntimeError("Credencial de integração cifrada inválida") from error
+
+
+def migrate_integration_secrets(db) -> int:
+    """Upgrade legacy plaintext credentials after the schema is available."""
+    if not APP_SECRET_KEY or AESGCM is None:
+        return 0
+    sensitive_columns = (
+        ("integration_configs", "api_token"),
+        ("api_integrations", "api_token"),
+        ("api_integration_backups", "api_token"),
+        ("crm_n8n_config", "api_token"),
+        ("crm_channels", "evolution_api_key"),
+    )
+    key_columns = {
+        "integration_configs": "name",
+        "api_integrations": "id",
+        "api_integration_backups": "integration_id",
+        "crm_n8n_config": "id",
+        "crm_channels": "id",
+    }
+    migrated = 0
+    for table, column in sensitive_columns:
+        key_column = key_columns[table]
+        rows = db.execute(
+            f"SELECT {key_column} AS secret_row_key,{column} AS secret_value "
+            f"FROM {table} WHERE {column} IS NOT NULL AND {column}<>'' AND {column} NOT LIKE ?",
+            (INTEGRATION_SECRET_PREFIX + "%",),
+        ).fetchall()
+        for row in rows:
+            db.execute(
+                f"UPDATE {table} SET {column}=? WHERE {key_column}=?",
+                (encrypt_integration_secret(str(row["secret_value"])), row["secret_row_key"]),
+            )
+            migrated += 1
+    return migrated
+
+
+def migrate_n8n_config_file() -> bool:
+    if not APP_SECRET_KEY or AESGCM is None or not N8N_CONFIG_PATH.exists():
+        return False
+    try:
+        stored = json.loads(N8N_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False
+    token = str(stored.get("api_token") or "") if isinstance(stored, dict) else ""
+    if not token or token.startswith(INTEGRATION_SECRET_PREFIX):
+        return False
+    encrypted_token = encrypt_integration_secret(token)
+    stored = {**stored, "api_token": encrypted_token}
+    temporary_path = N8N_CONFIG_PATH.with_suffix(".tmp")
+    temporary_path.write_text(
+        json.dumps(stored, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    try:
+        os.chmod(temporary_path, 0o600)
+    except OSError:
+        pass
+    os.replace(temporary_path, N8N_CONFIG_PATH)
+    return True
 # A tela de integrações é aberta e reconstruída várias vezes pelo CRM. Manter a
 # última auditoria válida em memória evita que uma troca de aba deixe a tela
 # dependente de uma nova consulta externa ao n8n.
@@ -303,6 +397,7 @@ def initialize_database() -> None:
             for legacy_row in legacy_secrets:
                 encrypted = ClinicHandler.encrypt_totp_secret(legacy_row["two_factor_secret"])
                 db.execute("UPDATE users SET two_factor_secret=? WHERE id=?", (encrypted, legacy_row["id"]))
+            migrate_integration_secrets(db)
         crm_conversation_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_conversations)").fetchall()}
         for column, definition in {
             "pipeline_stage": "TEXT NOT NULL DEFAULT 'Novo'",
@@ -604,6 +699,7 @@ def initialize_database() -> None:
             ],
         )
         cleanup_retention_data(db)
+        migrate_n8n_config_file()
         office_id = db.execute(
             "INSERT OR IGNORE INTO offices (code, name) VALUES ('CONSULTORIO_3', 'Consultório 3') RETURNING id"
         ).fetchone()
@@ -710,18 +806,44 @@ def patient_select() -> str:
 class ClinicHandler(SimpleHTTPRequestHandler):
     server_version = "InstitutoAyubPilot/1.0"
 
+    def setup(self) -> None:
+        super().setup()
+        self.request_id = secrets.token_hex(12)
+        self.request_started_at = time.monotonic()
+
     @staticmethod
     def redact_log_value(value) -> str:
         text = str(value)
-        return re.sub(
+        text = re.sub(
             r"(?i)([?&](?:token|webhook_key|key|secret|api_key)=)[^&\s]+",
+            r"\1[REDACTED]",
+            text,
+        )
+        return re.sub(
+            r'(?i)("?(?:api_token|api_key|secret|authorization)"?\s*[:=]\s*"?)[^",\s]+',
             r"\1[REDACTED]",
             text,
         )
 
     def log_message(self, fmt: str, *args) -> None:
         safe_args = tuple(self.redact_log_value(value) for value in args)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] {fmt % safe_args}")
+        started_at = getattr(self, "request_started_at", time.monotonic())
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            "level": "info",
+            "event": "http_request",
+            "request_id": getattr(self, "request_id", "unavailable"),
+            "method": getattr(self, "command", None),
+            "path": self.redact_log_value(getattr(self, "path", "")),
+            "remote_ip": (getattr(self, "client_address", (None,))[0]),
+            "duration_ms": round((time.monotonic() - started_at) * 1000),
+            "message": self.redact_log_value(fmt % safe_args),
+        }
+        print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
+
+    def end_headers(self) -> None:
+        self.send_header("X-Request-ID", getattr(self, "request_id", "unavailable"))
+        super().end_headers()
 
     def send_security_headers(self, allow_bundled_ui: bool = False, allow_same_origin_frame: bool = False, bundled_ui_nonce: str | None = None) -> None:
         self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -799,7 +921,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 600_000).hex()
 
     def request_ip(self) -> str:
-        forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        # Nginx anexa o IP observado ao fim da cadeia. Usar o primeiro valor
+        # permitiria que um cliente forjasse o IP empregado em limites e auditoria.
+        forwarded_chain = [
+            item.strip() for item in self.headers.get("X-Forwarded-For", "").split(",") if item.strip()
+        ]
+        forwarded = forwarded_chain[-1] if forwarded_chain else ""
         return forwarded or self.client_address[0]
 
     @staticmethod
@@ -1910,7 +2037,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             existing = db.execute("SELECT api_token FROM integration_configs WHERE name='clinicorp'").fetchone()
             if not api_token and not existing:
                 return self.send_json({"error": "Informe o token API na primeira configuração."}, HTTPStatus.BAD_REQUEST)
-            token = api_token or existing["api_token"]
+            token = encrypt_integration_secret(api_token) if api_token else existing["api_token"]
             db.execute("""INSERT INTO integration_configs (name, api_base_url, subscriber_id, api_user, api_token, updated_at, updated_by)
                          VALUES ('clinicorp', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
                          ON CONFLICT(name) DO UPDATE SET api_base_url=excluded.api_base_url, subscriber_id=excluded.subscriber_id,
@@ -1958,9 +2085,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               api_token=excluded.api_token, active=excluded.active, sync_interval_seconds=excluded.sync_interval_seconds,
                               saved_at=CURRENT_TIMESTAMP""",
                            (current["id"], current["name"], current["description"], current["api_base_url"], current["subscriber_id"], current["api_user"], current["api_token"], current["active"], current["sync_interval_seconds"]))
-                db.execute("UPDATE api_integrations SET description=?, api_base_url=?, subscriber_id=?, api_user=?, api_token=?, active=?, sync_interval_seconds=?, updated_at=CURRENT_TIMESTAMP, updated_by=? WHERE id=?", (description, api_base_url or None, subscriber_id or None, api_user or None, api_token or existing["api_token"], active, sync_interval_seconds, self.authenticated_user["id"], existing["id"]))
+                stored_token = encrypt_integration_secret(api_token) if api_token else existing["api_token"]
+                db.execute("UPDATE api_integrations SET description=?, api_base_url=?, subscriber_id=?, api_user=?, api_token=?, active=?, sync_interval_seconds=?, updated_at=CURRENT_TIMESTAMP, updated_by=? WHERE id=?", (description, api_base_url or None, subscriber_id or None, api_user or None, stored_token, active, sync_interval_seconds, self.authenticated_user["id"], existing["id"]))
             else:
-                db.execute("INSERT INTO api_integrations (name, description, api_base_url, subscriber_id, api_user, api_token, active, sync_interval_seconds, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, description, api_base_url or None, subscriber_id or None, api_user or None, api_token or None, active, sync_interval_seconds, self.authenticated_user["id"]))
+                stored_token = encrypt_integration_secret(api_token) if api_token else None
+                db.execute("INSERT INTO api_integrations (name, description, api_base_url, subscriber_id, api_user, api_token, active, sync_interval_seconds, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (name, description, api_base_url or None, subscriber_id or None, api_user or None, stored_token, active, sync_interval_seconds, self.authenticated_user["id"]))
         self.send_json({"saved": True})
 
     def revert_api_integration(self, integration_id: int) -> None:
@@ -2116,6 +2245,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         status, message = "Interrompida", "A API foi desativada durante a sincronização."
                         break
                     config = dict(config_row)
+                    config["api_token"] = decrypt_integration_secret(config.get("api_token"))
                     config["subscriber_id"] = config["subscriber_id"] or config["api_user"]
                     candidates = db.execute("""SELECT patient.id, patient.name FROM patients patient
                                               WHERE (patient.phone IS NULL OR TRIM(patient.phone)='') AND TRIM(patient.name)!=''
@@ -3553,7 +3683,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             row = db.execute("SELECT api_base_url,api_token FROM integration_configs WHERE name='evolution_crm'").fetchone()
         if row and row["api_base_url"] and row["api_token"]:
-            return str(row["api_base_url"]).rstrip("/"), str(row["api_token"])
+            return str(row["api_base_url"]).rstrip("/"), str(decrypt_integration_secret(row["api_token"]) or "")
         return EVOLUTION_API_URL, EVOLUTION_API_KEY
 
     def evolution_api_request(self, path: str, method: str = "GET", payload: dict | None = None,
@@ -3842,7 +3972,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         base_url = f"{parsed_base_url.scheme}://{parsed_base_url.netloc}"
         with connect() as db:
             existing = db.execute("SELECT api_token FROM integration_configs WHERE name='evolution_crm'").fetchone()
-        api_key = api_key or (str(existing["api_token"]) if existing and existing["api_token"] else "")
+        api_key = api_key or (
+            str(decrypt_integration_secret(existing["api_token"]) or "")
+            if existing and existing["api_token"] else ""
+        )
         if not api_key:
             return self.send_json({"error": "Informe a chave global da Evolution API."}, HTTPStatus.BAD_REQUEST)
         try:
@@ -3855,7 +3988,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           VALUES('evolution_crm',?,?,datetime('now','localtime'),?)
                           ON CONFLICT(name) DO UPDATE SET api_base_url=excluded.api_base_url,api_token=excluded.api_token,
                           updated_at=datetime('now','localtime'),updated_by=excluded.updated_by""",
-                       (base_url, api_key, self.authenticated_user["id"]))
+                       (base_url, encrypt_integration_secret(api_key), self.authenticated_user["id"]))
             for item in items if isinstance(items, list) else []:
                 if not isinstance(item, dict): continue
                 summary = self.evolution_instance_summary(item)
@@ -4216,7 +4349,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchone()
         configured_url, configured_key = self.evolution_credentials()
         channel_base_url = (existing_channel["evolution_base_url"] if existing_channel else None) or configured_url
-        channel_api_key = (existing_channel["evolution_api_key"] if existing_channel else None) or configured_key
+        channel_api_key = (
+            decrypt_integration_secret(existing_channel["evolution_api_key"])
+            if existing_channel and existing_channel["evolution_api_key"] else configured_key
+        )
         try:
             try:
                 connected = self.evolution_api_request(
@@ -4265,6 +4401,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         display_name = str(payload.get("display_name") or instance).strip()
         base_url = str(payload.get("evolution_base_url") or "").strip().rstrip("/")
         api_key = str(payload.get("evolution_api_key") or "").strip()
+        stored_api_key = encrypt_integration_secret(api_key) if api_key else ""
         if not instance: return self.send_json({"error": "Informe o nome da instância."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             db.execute("""INSERT INTO crm_channels(instance_name,display_name,phone,evolution_base_url,evolution_api_key,active)
@@ -4272,7 +4409,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           phone=excluded.phone,evolution_base_url=excluded.evolution_base_url,
                           evolution_api_key=CASE WHEN excluded.evolution_api_key<>'' THEN excluded.evolution_api_key ELSE crm_channels.evolution_api_key END,
                           active=excluded.active,updated_at=datetime('now','localtime')""",
-                       (instance, display_name, self.crm_phone(payload.get("phone")) or None, base_url or None, api_key, 1 if payload.get("active", True) else 0))
+                       (instance, display_name, self.crm_phone(payload.get("phone")) or None, base_url or None, stored_api_key, 1 if payload.get("active", True) else 0))
             row = db.execute("SELECT id,instance_name,display_name,phone,active,connection_status FROM crm_channels WHERE instance_name=?", (instance,)).fetchone()
         self.send_json(dict(row), HTTPStatus.CREATED)
 
@@ -4417,12 +4554,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "name": "n8n",
                 "description": "Controla fluxos e eventos do CRM.",
                 "api_base_url": persistent["api_base_url"],
-                "api_token": persistent["api_token"],
+                "api_token": decrypt_integration_secret(persistent["api_token"]),
                 "active": persistent["active"],
                 "updated_at": persistent["updated_at"],
             }
         config = dict(row) if row else None
         if config and config.get("api_base_url") and config.get("api_token"):
+            config["api_token"] = decrypt_integration_secret(config["api_token"])
             self.persist_crm_n8n_config(
                 str(config["api_base_url"]), str(config["api_token"]), int(config.get("active") or 0)
             )
@@ -4434,7 +4572,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not isinstance(stored, dict):
             return config
         api_base_url = str(stored.get("api_base_url") or "").strip().rstrip("/")
-        api_token = str(stored.get("api_token") or "").strip()
+        api_token = str(decrypt_integration_secret(stored.get("api_token")) or "").strip()
         if not api_base_url or not api_token:
             return config
         recovered = {
@@ -4451,6 +4589,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def persist_crm_n8n_config(self, api_base_url: str, api_token: str, active: int) -> None:
         saved_at = datetime.now(CLINIC_TIMEZONE).isoformat(timespec="seconds")
+        encrypted_token = encrypt_integration_secret(api_token)
         with connect() as db:
             db.execute(
                 """INSERT INTO crm_n8n_config(id,api_base_url,api_token,active,updated_at)
@@ -4458,13 +4597,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                    ON CONFLICT(id) DO UPDATE SET api_base_url=excluded.api_base_url,
                      api_token=excluded.api_token,active=excluded.active,
                      updated_at=excluded.updated_at""",
-                (api_base_url.rstrip("/"), api_token, int(bool(active)), saved_at),
+                (api_base_url.rstrip("/"), encrypted_token, int(bool(active)), saved_at),
             )
         DATA.mkdir(parents=True, exist_ok=True)
         temporary_path = N8N_CONFIG_PATH.with_suffix(".tmp")
         stored = {
             "api_base_url": api_base_url.rstrip("/"),
-            "api_token": api_token,
+            "api_token": encrypted_token,
             "active": bool(active),
             "updated_at": saved_at,
         }
@@ -4570,14 +4709,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               api_token=?,active=?,updated_at=datetime('now','localtime'),updated_by=?
                               WHERE id=?""", (
                     "Controla fluxos, execuções e eventos de automação do CRM.",
-                    api_base_url, token, active, self.authenticated_user["id"], existing["id"],
+                    api_base_url, encrypt_integration_secret(token), active, self.authenticated_user["id"], existing["id"],
                 ))
             else:
                 db.execute("""INSERT INTO api_integrations
                               (name,description,api_base_url,api_token,active,sync_interval_seconds,updated_by)
                               VALUES('n8n',?,?,?,?,60,?)""", (
                     "Controla fluxos, execuções e eventos de automação do CRM.",
-                    api_base_url, token, active, self.authenticated_user["id"],
+                    api_base_url, encrypt_integration_secret(token), active, self.authenticated_user["id"],
                 ))
         self.send_json({
             "saved": True,
@@ -6466,7 +6605,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               VALUES(?,?,?,?,'Conectado',datetime('now','localtime'))
                               ON CONFLICT(instance_name) DO UPDATE SET connection_status='Conectado',last_event_at=datetime('now','localtime'),
                               evolution_base_url=COALESCE(crm_channels.evolution_base_url,excluded.evolution_base_url),evolution_api_key=COALESCE(crm_channels.evolution_api_key,excluded.evolution_api_key)""",
-                           (instance,instance,configured_url or None,configured_key or None))
+                           (instance,instance,configured_url or None,
+                            encrypt_integration_secret(configured_key) if configured_key else None))
                 channel_settings = db.execute("SELECT id,sync_enabled FROM crm_channels WHERE instance_name=?", (instance,)).fetchone()
                 if channel_settings and not channel_settings["sync_enabled"]:
                     db.execute("""UPDATE crm_webhook_events SET processing_status='Ignorado',
@@ -6681,7 +6821,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error":"Inicie o atendimento antes de enviar mensagens para um contato externo."},HTTPStatus.CONFLICT)
             configured_url, configured_key = self.evolution_credentials()
             base_url = row["evolution_base_url"] or configured_url
-            api_key = row["evolution_api_key"] or configured_key
+            api_key = (
+                decrypt_integration_secret(row["evolution_api_key"])
+                if row["evolution_api_key"] else configured_key
+            )
             if not base_url or not api_key: return self.send_json({"error":"Configure a URL e a chave da Evolution neste canal antes de enviar."},HTTPStatus.CONFLICT)
             try:
                 connection_state = self.crm_evolution_connection_state(row["instance_name"], base_url, api_key)

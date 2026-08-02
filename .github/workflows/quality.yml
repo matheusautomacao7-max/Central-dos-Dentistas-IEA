@@ -27,6 +27,7 @@ jobs:
         run: python -m compileall -q app ops
       - name: Executar regressões Python
         run: |
+          python ops/test_crm_accessibility.py
           python ops/test_crm_admin_observer.py
           python ops/test_crm_assignment.py
           python ops/test_crm_claim.py
@@ -36,6 +37,9 @@ jobs:
           python ops/test_crm_media_send.py
           python ops/test_crm_operations_schema.py
           python ops/test_crm_patient_ownership_lock.py
+          python ops/test_db_pool.py
+          python ops/test_integration_secret_encryption.py
+          python ops/test_request_observability.py
           python ops/test_security_hardening.py
       - name: Validar sintaxe JavaScript
         run: find app ops -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check

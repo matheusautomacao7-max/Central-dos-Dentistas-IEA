@@ -7,6 +7,8 @@ database whenever DATABASE_URL is configured.
 from __future__ import annotations
 
 import re
+import os
+import threading
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
@@ -14,14 +16,63 @@ from typing import Any
 import psycopg
 from psycopg import sql
 from psycopg.errors import IntegrityError
+try:
+    from psycopg_pool import ConnectionPool
+except ImportError:  # Allows source-only checks; live connections fail closed below.
+    ConnectionPool = None
 
 
 DATABASE_URL = ""
+_POOL: Any | None = None
+_POOL_LOCK = threading.Lock()
+
+
+def _bounded_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _pool() -> Any:
+    global _POOL
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL não configurada. O PostgreSQL é obrigatório.")
+    if ConnectionPool is None:
+        raise RuntimeError("psycopg_pool não instalado. Instale as dependências antes de iniciar o CRM.")
+    if _POOL is None:
+        with _POOL_LOCK:
+            if _POOL is None:
+                minimum = _bounded_int_env("DB_POOL_MIN", 2, 1, 20)
+                maximum = _bounded_int_env("DB_POOL_MAX", 12, minimum, 60)
+                timeout = _bounded_int_env("DB_POOL_TIMEOUT_SECONDS", 8, 1, 60)
+                _POOL = ConnectionPool(
+                    DATABASE_URL,
+                    min_size=minimum,
+                    max_size=maximum,
+                    timeout=timeout,
+                    max_idle=300,
+                    max_lifetime=1800,
+                    check=ConnectionPool.check_connection,
+                    open=True,
+                    name="iea-crm",
+                )
+    return _POOL
+
+
+def pool_stats() -> dict[str, int]:
+    return _pool().get_stats()
 
 
 def configure(database_url: str) -> None:
-    global DATABASE_URL
-    DATABASE_URL = (database_url or "").strip()
+    global DATABASE_URL, _POOL
+    configured_url = (database_url or "").strip()
+    with _POOL_LOCK:
+        if _POOL is not None and configured_url != DATABASE_URL:
+            _POOL.close()
+            _POOL = None
+        DATABASE_URL = configured_url
 
 
 def using_postgres() -> bool:
@@ -155,7 +206,9 @@ class PostgresConnection:
     def __init__(self):
         if not DATABASE_URL:
             raise RuntimeError("DATABASE_URL não configurada. O PostgreSQL é obrigatório.")
-        self._connection = psycopg.connect(DATABASE_URL)
+        self._pool = _pool()
+        self._connection = self._pool.getconn()
+        self._closed = False
 
     def __enter__(self):
         return self
@@ -168,7 +221,10 @@ class PostgresConnection:
         self.close()
 
     def close(self):
-        self._connection.close()
+        if self._closed:
+            return
+        self._closed = True
+        self._pool.putconn(self._connection)
 
     def commit(self):
         self._connection.commit()
