@@ -6,6 +6,16 @@ import { chromium } from "playwright";
 
 
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
+const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
+assert.match(crmHtml, /crm-goals\.js\?v=20260802-goals-visual-v3/);
+assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
+assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
+assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
+assert.match(goalScript, /label: "Não configurada", color: "#94A3B8", text: "#64748B"/);
+assert.match(goalScript, /label: "Atrasada", color: "#EF4444", text: "#DC2626"/);
+assert.match(goalScript, /label: "Atenção", color: "#F59E0B", text: "#B45309"/);
+assert.match(goalScript, /label: "Em andamento", color: "#2563EB", text: "#1D4ED8"/);
+assert.match(goalScript, /label: "Meta alcançada", color: "#16A34A", text: "#15803D"/);
 const goal = (metric_key, label, monthlyTarget, monthlyRealized, dailyTarget, dailyRealized) => ({
   metric_key, label, celebration_enabled: true, celebration_message: "",
   monthly: {
@@ -31,13 +41,13 @@ const dashboard = {
     remaining_open_days: 26
   },
   items: [
-    goal("first_consultations", "Primeiras consultas", 40, 28, 6, 4),
-    goal("recoveries", "Recuperação de pacientes", 20, 11, 3, 1),
-    goal("attendances", "Atendimentos", 300, 224, 45, 31)
+    goal("first_consultations", "Primeiras consultas", 40, 16, 6, 4),
+    goal("recoveries", "Recuperação de pacientes", 20, 16, 5, 4),
+    goal("attendances", "Atendimentos", 300, 300, 45, 45)
   ],
   conversion: {
-    first_consultation: { converted: 18, opportunities: 27, percentage: 66.7 },
-    recurring: { converted: 9, opportunities: 15, percentage: 60 }
+    first_consultation: { converted: 0, opportunities: 0, percentage: 0 },
+    recurring: { converted: 12, opportunities: 15, percentage: 80 }
   },
   history: []
 };
@@ -84,8 +94,40 @@ try {
   assert.equal(await page.getByText("Primeiras consultas", { exact: true }).count(), 2);
   assert.equal(await page.getByText("Conversão · Cliente recorrente", { exact: true }).count(), 1);
   assert.equal(await page.getByText("26 dias de expediente restantes", { exact: true }).count(), 1);
+  assert.equal(await page.locator(".iea-goals-avatar").textContent(), "MH");
+  assert.equal(await page.locator(".iea-goals-screen").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(243, 246, 250)");
+  assert.equal(await page.getByRole("button", { name: "Voltar" }).locator("svg").count(), 1);
+  assert.equal(await page.locator(".iea-goal-card .iea-metric-icon").count(), 3);
+  assert.equal(await page.locator('[data-metric-card="first_consultations"]').getAttribute("data-performance"), "low");
+  assert.equal(await page.locator('[data-metric-card="recoveries"]').getAttribute("data-performance"), "good");
+  assert.equal(await page.locator('[data-metric-card="attendances"]').getAttribute("data-performance"), "reached");
+  assert.equal(await page.locator('[data-metric-card="first_consultations"] .iea-goal-bar>i').evaluate(element => getComputedStyle(element).backgroundColor), "rgb(239, 68, 68)");
+  assert.equal(await page.locator('[data-metric-card="recoveries"] .iea-goal-bar>i').evaluate(element => getComputedStyle(element).backgroundColor), "rgb(37, 99, 235)");
+  assert.equal(await page.locator('[data-metric-card="attendances"] .iea-goal-bar>i').evaluate(element => getComputedStyle(element).backgroundColor), "rgb(22, 163, 74)");
+  assert.equal(await page.locator('[data-conversion="first"]').getAttribute("data-performance"), "neutral");
+  assert.equal(await page.locator('[data-conversion="first"]').evaluate(element => element.style.getPropertyValue("--tone")), "#94A3B8");
+  assert.equal(await page.locator('[data-conversion="recurring"]').getAttribute("data-performance"), "good");
+  assert.equal(await page.locator(".iea-radial").count(), 2);
+  assert.equal(await page.locator('[data-daily-performance="attention"]').count(), 1);
+  assert.equal(await page.locator('[data-daily-performance="good"]').count(), 1);
+  assert.equal(await page.locator('[data-daily-performance="reached"]').count(), 1);
+  assert.equal(await page.locator(".iea-mini-bar").count(), 3);
+  assert.equal(await page.locator(".iea-days-card svg").count(), 1);
+  assert.equal(await page.locator("[data-empty-state] .iea-empty-trophy").count(), 1);
+  assert.equal(await page.getByRole("tab", { name: "Acompanhamento" }).evaluate(element => getComputedStyle(element).backgroundColor), "rgb(37, 99, 235)");
+  if (process.env.CRM_GOALS_SCREENSHOT) {
+    const screen = page.locator(".iea-goals-screen");
+    await screen.screenshot({ path: process.env.CRM_GOALS_SCREENSHOT });
+    await screen.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await screen.screenshot({ path: process.env.CRM_GOALS_SCREENSHOT.replace(/\.png$/i, "-history.png") });
+    await screen.evaluate(element => { element.scrollTop = 0; });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await screen.screenshot({ path: process.env.CRM_GOALS_SCREENSHOT.replace(/\.png$/i, "-mobile.png") });
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
 
-  await page.getByRole("button", { name: "Configuração" }).click();
+  await page.getByRole("tab", { name: "Configuração" }).click();
+  assert.equal(await page.locator(".iea-config-card").count(), 3);
   await page.getByRole("button", { name: "Salvar metas" }).click();
   await page.getByText("Metas salvas com sucesso.").waitFor();
   await page.getByRole("heading", { name: "🎉 Meta alcançada!" }).waitFor();

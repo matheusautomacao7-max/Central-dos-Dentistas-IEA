@@ -6,6 +6,11 @@
     ["recoveries", "Recuperação de pacientes"],
     ["attendances", "Atendimentos"]
   ];
+  const METRIC_VISUALS = {
+    first_consultations: { color: "#2563EB", soft: "#F5F9FF" },
+    recoveries: { color: "#7C3AED", soft: "#FAF7FF" },
+    attendances: { color: "#F59E0B", soft: "#FFF9F0" }
+  };
   const baseFetch = window.fetch.bind(window);
   let root = null;
   let currentData = null;
@@ -20,6 +25,32 @@
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const number = value => Number(value || 0).toLocaleString("pt-BR");
   const percent = value => `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
+  const initials = value => String(value || "")
+    .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "CRC";
+
+  function performanceState(percentage, target, reached) {
+    const value = Number(percentage || 0);
+    if (!Number(target || 0)) return { key: "unset", label: "Não configurada", color: "#94A3B8", text: "#64748B", soft: "#F1F5F9" };
+    if (reached || value >= 100) return { key: "reached", label: "Meta alcançada", color: "#16A34A", text: "#15803D", soft: "#F0FDF4" };
+    if (value <= 50) return { key: "low", label: "Atrasada", color: "#EF4444", text: "#DC2626", soft: "#FEF2F2" };
+    if (value <= 75) return { key: "attention", label: "Atenção", color: "#F59E0B", text: "#B45309", soft: "#FFFBEB" };
+    return { key: "good", label: "Em andamento", color: "#2563EB", text: "#1D4ED8", soft: "#EFF6FF" };
+  }
+
+  function conversionState(percentage) {
+    const value = Number(percentage || 0);
+    if (value <= 0) return { key: "neutral", color: "#94A3B8", text: "#64748B", soft: "#F1F5F9" };
+    return performanceState(value, 100, value >= 100);
+  }
+
+  function metricIcon(metricKey) {
+    const paths = {
+      first_consultations: '<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path><path d="m9 16 2 2 4-5"></path>',
+      recoveries: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><circle cx="12" cy="11" r="2.5"></circle><path d="M7.5 19c.8-2.3 2.3-3.5 4.5-3.5s3.7 1.2 4.5 3.5"></path>',
+      attendances: '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="m8 10 2.2 2.2L16 7"></path>'
+    };
+    return `<svg class="iea-metric-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${paths[metricKey] || paths.attendances}</svg>`;
+  }
 
   async function request(url, options) {
     const response = await window.fetch(url, Object.assign({ credentials: "same-origin" }, options || {}));
@@ -34,34 +65,36 @@
     const style = document.createElement("style");
     style.id = "iea-goals-css";
     style.textContent = `
-      .iea-goals-screen{position:fixed;inset:0 0 0 80px;z-index:46;background:#f3f6f8;color:#102f4d;overflow:auto;font-family:Manrope,system-ui,sans-serif}
-      .iea-goals-wrap{max-width:1440px;margin:0 auto;padding:28px 32px 48px}
-      .iea-goals-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:18px}
-      .iea-goals-head h1{margin:0;font-size:28px}.iea-goals-head p{margin:6px 0 0;color:#66788a;font-size:14px}
-      .iea-goals-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
-      .iea-goals-btn{min-height:42px;border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:9px 15px;font:800 13px Manrope,system-ui;color:#102f4d;cursor:pointer}
-      .iea-goals-btn.primary{border-color:#17c964;background:#17c964;color:#fff}.iea-goals-btn:disabled{opacity:.55;cursor:wait}
-      .iea-goals-field{min-height:42px;border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:9px 12px;color:#17344f;font:700 13px Manrope,system-ui}
-      .iea-goals-tabs{display:flex;gap:8px;margin:0 0 18px}.iea-goals-tab{border:1px solid #d9e2e8;border-radius:999px;background:#fff;padding:9px 15px;color:#5e7284;font-weight:800;cursor:pointer}.iea-goals-tab.on{border-color:#17c964;background:#eafaf1;color:#08783c}
-      .iea-goals-panel{border:1px solid #dde5eb;border-radius:16px;background:#fff;padding:20px;margin-bottom:18px}
-      .iea-goals-summary{display:grid;grid-template-columns:repeat(3,minmax(230px,1fr));gap:14px;margin-bottom:18px}
-      .iea-goal-card{border:1px solid #dfe7ec;border-radius:16px;background:#fff;padding:18px;min-width:0}
-      .iea-goal-card.reached{border-color:#8be3ad;background:#f2fcf6}.iea-goal-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.iea-goal-title h2{font-size:16px;margin:0}.iea-goal-badge{border-radius:999px;background:#eef2f5;color:#607386;padding:5px 9px;font-size:10px;font-weight:900}.iea-goal-card.reached .iea-goal-badge{background:#dff8e9;color:#08783c}
-      .iea-goal-bar{height:10px;background:#edf1f3;border-radius:999px;overflow:hidden;margin:17px 0}.iea-goal-bar>i{display:block;height:100%;border-radius:inherit;background:#17c964;transition:width .35s ease}
-      .iea-goal-values{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.iea-goal-values small{display:block;color:#7b8c9a;font-size:10px;text-transform:uppercase;font-weight:800}.iea-goal-values strong{display:block;margin-top:4px;font-size:19px}
-      .iea-goal-pace{margin:15px 0 0;padding-top:13px;border-top:1px solid #edf1f3;color:#607386;font-size:12px;line-height:1.5}.iea-goal-pace b{color:#102f4d}
-      .iea-goals-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.iea-conversion{display:flex;align-items:center;justify-content:space-between;gap:18px}.iea-conversion h3{margin:0 0 5px;font-size:15px}.iea-conversion p{margin:0;color:#718295;font-size:12px}.iea-conversion strong{font-size:30px;color:#08783c}
-      .iea-daily-table{width:100%;border-collapse:collapse}.iea-daily-table th,.iea-daily-table td{padding:13px 10px;border-bottom:1px solid #e8edf1;text-align:left;font-size:13px}.iea-daily-table th{color:#718295;font-size:10px;text-transform:uppercase}.iea-daily-table tr:last-child td{border-bottom:0}
-      .iea-goals-config{display:grid;gap:14px}.iea-config-card{border:1px solid #dfe7ec;border-radius:14px;padding:17px}.iea-config-card h3{margin:0 0 13px;font-size:15px}.iea-config-grid{display:grid;grid-template-columns:160px 160px minmax(230px,1fr) auto;gap:12px;align-items:end}.iea-config-grid label{display:block;color:#607386;font-size:11px;font-weight:800}.iea-config-grid label .iea-goals-field{width:100%;margin-top:6px}.iea-goals-check{display:flex!important;align-items:center;gap:8px;min-height:42px;color:#17344f!important}.iea-goals-check input{width:18px;height:18px}
-      .iea-history{display:grid;gap:10px}.iea-history-row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:12px 0;border-bottom:1px solid #edf1f3}.iea-history-row:last-child{border:0}.iea-history-row p{margin:0;font-weight:750;font-size:13px}.iea-history-row small{color:#788a98}
-      .iea-goals-empty,.iea-goals-error{padding:32px;text-align:center;color:#718295}.iea-goals-error{color:#bd2436;background:#fff1f1;border-radius:13px}
-      .iea-celebration{position:fixed;left:50%;bottom:28px;z-index:260;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));border:1px solid #8be3ad;border-radius:18px;background:#fff;padding:19px 54px 19px 20px;box-shadow:0 20px 60px rgba(7,45,30,.25);color:#123b2a}
-      .iea-celebration h2{margin:0 0 6px;font-size:20px}.iea-celebration p{margin:4px 0;font-size:13px;line-height:1.45}.iea-celebration button{position:absolute;right:14px;top:14px;border:0;border-radius:50%;width:30px;height:30px;background:#edf7f1;color:#175c39;cursor:pointer;font-size:18px}
+      .iea-goals-screen{position:fixed;inset:0 0 0 80px;z-index:46;background:#F3F6FA;color:#0F2942;overflow:auto;overflow-x:hidden;font-family:Manrope,system-ui,sans-serif;--blue:#2563EB;--green:#16A34A;--red:#EF4444;--orange:#F59E0B;--purple:#7C3AED;--slate:#334155}
+      .iea-goals-wrap{max-width:1440px;margin:0 auto;padding:30px 32px 52px}
+      .iea-goals-head{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px}
+      .iea-goals-identity{display:flex;align-items:center;gap:13px;min-width:0}.iea-goals-avatar{width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:50%;background:#2563EB;color:#fff;box-shadow:0 8px 18px rgba(37,99,235,.2);font-size:15px;font-weight:900;letter-spacing:.03em}
+      .iea-goals-head h1{margin:0;font-size:28px;line-height:1.16;letter-spacing:-.025em}.iea-goals-head p{margin:6px 0 0;color:#64748B;font-size:14px}
+      .iea-goals-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.iea-goals-control{position:relative;display:flex;align-items:center}.iea-goals-control svg{position:absolute;left:12px;width:17px;height:17px;color:#64748B;pointer-events:none}.iea-goals-control .iea-goals-field{padding-left:37px}
+      .iea-goals-btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #D7E0E8;border-radius:11px;background:#fff;padding:9px 15px;font:800 13px Manrope,system-ui;color:#17344F;cursor:pointer;box-shadow:0 2px 5px rgba(15,41,66,.04);transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease}.iea-goals-btn svg{width:17px;height:17px}.iea-goals-btn:hover{border-color:#AFC0D0;box-shadow:0 6px 16px rgba(15,41,66,.08);transform:translateY(-1px)}
+      .iea-goals-btn.primary{border-color:#2563EB;background:#2563EB;color:#fff;box-shadow:0 7px 16px rgba(37,99,235,.2)}.iea-goals-btn:disabled{opacity:.55;cursor:wait;transform:none}
+      .iea-goals-field{min-height:44px;border:1px solid #D7E0E8;border-radius:11px;background:#fff;padding:9px 12px;color:#17344F;font:700 13px Manrope,system-ui;outline:none}.iea-goals-field:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+      .iea-goals-tabs{display:flex;gap:8px;margin:0 0 20px}.iea-goals-tab{min-height:40px;border:1px solid #D9E2E8;border-radius:10px;background:#fff;padding:9px 17px;color:#64748B;font:800 13px Manrope,system-ui;cursor:pointer;transition:all .16s ease}.iea-goals-tab.on{border-color:#2563EB;background:#2563EB;color:#fff;box-shadow:0 7px 16px rgba(37,99,235,.18)}
+      .iea-goals-panel{border:1px solid #E1E8EF;border-radius:18px;background:#fff;padding:22px;margin-bottom:18px;box-shadow:0 7px 24px rgba(15,41,66,.045)}
+      .iea-goals-summary{display:grid;grid-template-columns:repeat(3,minmax(230px,1fr));gap:16px;margin-bottom:18px}
+      .iea-goal-card{position:relative;overflow:hidden;border:1px solid #E0E7EF;border-top:4px solid var(--tone);border-radius:18px;background:linear-gradient(180deg,var(--metric-soft) 0,#fff 48%);padding:20px;min-width:0;box-shadow:0 8px 26px rgba(15,41,66,.07)}
+      .iea-goal-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.iea-goal-heading{display:flex;align-items:center;gap:11px;min-width:0}.iea-metric-icon-box{width:42px;height:42px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:12px;background:var(--metric-soft);color:var(--metric);border:1px solid color-mix(in srgb,var(--metric) 16%,transparent)}.iea-metric-icon{width:23px;height:23px;display:block}.iea-goal-title h2{font-size:16px;line-height:1.25;margin:0}.iea-goal-badge,.iea-status-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid color-mix(in srgb,var(--tone) 22%,transparent);border-radius:999px;background:var(--tone-soft);color:var(--tone-text,var(--tone));padding:6px 9px;font-size:10px;line-height:1;font-weight:900;white-space:nowrap}.iea-goal-badge:before,.iea-status-badge:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--tone)}
+      .iea-goal-bar{height:10px;background:#E7EDF3;border-radius:999px;overflow:hidden;margin:19px 0 18px}.iea-goal-bar>i{display:block;height:100%;border-radius:inherit;background:var(--tone);transition:width .35s ease;box-shadow:0 0 0 1px rgba(255,255,255,.2) inset}
+      .iea-goal-values{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.iea-goal-values>div{min-width:0}.iea-goal-values small{display:block;color:#7B8C9A;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:850}.iea-goal-values strong{display:block;margin-top:5px;font-size:20px;line-height:1.2}.iea-goal-values .featured{color:var(--tone-text,var(--tone));font-size:22px}.iea-goal-values .gap-zero{color:#15803D}
+      .iea-goal-pace{display:flex;align-items:center;gap:8px;margin:16px 0 0;padding-top:14px;border-top:1px solid rgba(148,163,184,.2);color:#64748B;font-size:12px;line-height:1.5}.iea-goal-pace:before{content:"";width:8px;height:8px;flex:0 0 auto;border-radius:50%;background:var(--tone)}.iea-goal-pace b{color:#17344F}
+      .iea-goals-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.iea-conversion{display:flex;align-items:center;justify-content:space-between;gap:20px;border-left:4px solid var(--tone);background:linear-gradient(135deg,var(--tone-soft),#fff 72%)}.iea-conversion-copy{display:flex;align-items:center;gap:12px;min-width:0}.iea-conversion-icon{width:38px;height:38px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;border-radius:11px;background:#fff;color:var(--tone-text,var(--tone));box-shadow:0 4px 13px rgba(15,41,66,.07)}.iea-conversion-icon svg{width:20px;height:20px}.iea-conversion h3{margin:0 0 6px;font-size:15px}.iea-conversion p{margin:0;color:#64748B;font-size:12px;line-height:1.45}
+      .iea-radial{position:relative;width:82px;height:82px;display:grid;place-items:center;flex:0 0 82px;border-radius:50%;background:conic-gradient(var(--tone) calc(var(--value) * 1%),#E2E8F0 0);box-shadow:0 5px 15px rgba(15,41,66,.08)}.iea-radial:before{content:"";position:absolute;inset:8px;border-radius:50%;background:#fff}.iea-radial strong{position:relative;z-index:1;color:var(--tone-text,var(--tone));font-size:19px;letter-spacing:-.03em}
+      .iea-daily-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:15px}.iea-daily-head h2,.iea-history-title{margin:0;font-size:18px}.iea-daily-head p{margin:5px 0 0;color:#718295;font-size:12px}.iea-days-card{display:flex;align-items:center;gap:9px;border:1px solid #BFDBFE;border-radius:12px;background:#EFF6FF;color:#1D4ED8;padding:9px 12px;font-size:11px;font-weight:850;white-space:nowrap}.iea-days-card svg{width:18px;height:18px;flex:0 0 auto}
+      .iea-daily-table{width:100%;border-collapse:separate;border-spacing:0}.iea-daily-table th,.iea-daily-table td{padding:14px 12px;border-bottom:1px solid #E8EDF1;text-align:left;font-size:13px}.iea-daily-table th{background:#F8FAFC;color:#64748B;font-size:10px;letter-spacing:.04em;text-transform:uppercase}.iea-daily-table th:first-child{border-radius:10px 0 0 10px}.iea-daily-table th:last-child{border-radius:0 10px 10px 0}.iea-daily-table tbody tr:nth-child(even){background:#F8FAFC}.iea-daily-table tbody tr:hover{background:#F1F5F9}.iea-daily-table tr:last-child td{border-bottom:0}.iea-daily-indicator{display:flex;align-items:center;gap:9px}.iea-daily-dot{width:9px;height:9px;flex:0 0 auto;border-radius:50%;background:var(--metric)}.iea-daily-percent{min-width:132px}.iea-daily-percent b{display:block;color:var(--tone-text,var(--tone));font-size:12px}.iea-mini-bar{width:112px;height:5px;margin-top:6px;border-radius:999px;background:#E2E8F0;overflow:hidden}.iea-mini-bar i{display:block;height:100%;border-radius:inherit;background:var(--tone)}
+      .iea-goals-config{display:grid;gap:14px}.iea-config-card{border:1px solid #DFE7EC;border-left:4px solid var(--metric);border-radius:14px;padding:18px;background:linear-gradient(100deg,var(--metric-soft),#fff 45%)}.iea-config-card h3{display:flex;align-items:center;gap:9px;margin:0 0 14px;font-size:15px}.iea-config-card h3 svg{width:20px;height:20px;color:var(--metric)}.iea-config-grid{display:grid;grid-template-columns:160px 160px minmax(230px,1fr) auto;gap:12px;align-items:end}.iea-config-grid label{display:block;color:#607386;font-size:11px;font-weight:800}.iea-config-grid label .iea-goals-field{width:100%;margin-top:6px}.iea-goals-check{display:flex!important;align-items:center;gap:8px;min-height:44px;color:#17344F!important}.iea-goals-check input{width:18px;height:18px;accent-color:#2563EB}
+      .iea-history-title{margin-bottom:14px}.iea-history{display:grid;gap:10px}.iea-history-row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:13px 2px;border-bottom:1px solid #EDF1F3}.iea-history-row:last-child{border:0}.iea-history-row p{margin:0;font-weight:750;font-size:13px}.iea-history-row small{color:#788A98}.iea-goals-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;padding:30px;text-align:center;border:1px solid rgba(99,102,241,.14);border-radius:15px;background:linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%);color:#64748B}.iea-empty-trophy{width:58px;height:58px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;border-radius:18px;background:rgba(255,255,255,.8);color:#7C3AED;box-shadow:0 7px 20px rgba(76,29,149,.1)}.iea-empty-trophy svg{width:30px;height:30px}.iea-goals-empty strong{color:#334155;font-size:15px}.iea-goals-empty p{max-width:420px;margin:6px 0 0;font-size:12px;line-height:1.5}
+      .iea-goals-error{padding:32px;text-align:center;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:13px}.iea-goals-loading{display:flex;align-items:center;gap:11px;color:#64748B}.iea-goals-loading:before{content:"";width:18px;height:18px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:iea-spin .7s linear infinite}
+      .iea-celebration{position:fixed;left:50%;bottom:28px;z-index:260;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));border:1px solid #86EFAC;border-radius:18px;background:#fff;padding:19px 54px 19px 20px;box-shadow:0 20px 60px rgba(7,45,30,.25);color:#123B2A}.iea-celebration h2{margin:0 0 6px;font-size:20px}.iea-celebration p{margin:4px 0;font-size:13px;line-height:1.45}.iea-celebration button{position:absolute;right:14px;top:14px;border:0;border-radius:50%;width:30px;height:30px;background:#EDF7F1;color:#175C39;cursor:pointer;font-size:18px}
       .iea-confetti{position:fixed;inset:0;z-index:255;pointer-events:none;overflow:hidden}.iea-confetti i{position:absolute;top:-20px;width:9px;height:15px;background:var(--color);left:var(--left);animation:iea-confetti-fall var(--duration) cubic-bezier(.15,.65,.35,1) forwards;animation-delay:var(--delay);transform:rotate(var(--rotate))}
-      @keyframes iea-confetti-fall{to{transform:translate3d(var(--drift),105vh,0) rotate(760deg);opacity:.9}}
-      @media(prefers-reduced-motion:reduce){.iea-goal-bar>i{transition:none}.iea-confetti{display:none}}
-      @media(max-width:1050px){.iea-goals-summary{grid-template-columns:1fr}.iea-config-grid{grid-template-columns:1fr 1fr}.iea-config-grid label:nth-child(3){grid-column:1/-1}}
-      @media(max-width:720px){.iea-goals-screen{left:0}.iea-goals-wrap{padding:20px 14px 36px}.iea-goals-head{flex-direction:column}.iea-goals-actions{justify-content:flex-start}.iea-goals-two{grid-template-columns:1fr}.iea-goal-values{grid-template-columns:1fr 1fr}.iea-config-grid{grid-template-columns:1fr}.iea-config-grid label:nth-child(3){grid-column:auto}.iea-daily-table{min-width:620px}.iea-goals-panel.table-scroll{overflow:auto}}
+      @keyframes iea-spin{to{transform:rotate(360deg)}}@keyframes iea-confetti-fall{to{transform:translate3d(var(--drift),105vh,0) rotate(760deg);opacity:.9}}
+      @media(prefers-reduced-motion:reduce){.iea-goal-bar>i,.iea-goals-btn,.iea-goals-tab{transition:none}.iea-goals-loading:before{animation:none}.iea-confetti{display:none}}
+      @media(max-width:1100px){.iea-goals-summary{grid-template-columns:1fr}.iea-config-grid{grid-template-columns:1fr 1fr}.iea-config-grid label:nth-child(3){grid-column:1/-1}}
+      @media(max-width:720px){.iea-goals-screen{left:0}.iea-goals-wrap{padding:20px 14px 36px}.iea-goals-head{align-items:flex-start;flex-direction:column}.iea-goals-actions{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);justify-content:stretch}.iea-goals-control,.iea-goals-actions>[data-agent]{width:100%;min-width:0}.iea-goals-control .iea-goals-field{width:100%;min-width:0}.iea-goals-actions .iea-goals-btn{justify-self:start}.iea-goals-tabs{overflow:auto;padding-bottom:2px}.iea-goals-two{grid-template-columns:1fr}.iea-conversion{align-items:flex-start}.iea-radial{width:72px;height:72px;flex-basis:72px}.iea-goal-values{grid-template-columns:1fr 1fr}.iea-config-grid{grid-template-columns:1fr}.iea-config-grid label:nth-child(3){grid-column:auto}.iea-daily-head{flex-direction:column}.iea-daily-table{min-width:720px}.iea-goals-panel.table-scroll{overflow:auto}.iea-goals-avatar{width:44px;height:44px}.iea-goals-head h1{font-size:24px}}
     `;
     document.head.appendChild(style);
   }
@@ -94,7 +127,7 @@
 
   async function loadGoals(silent) {
     if (!root) return;
-    if (!silent) root.innerHTML = `<div class="iea-goals-wrap"><div class="iea-goals-panel">Carregando metas...</div></div>`;
+    if (!silent) root.innerHTML = `<div class="iea-goals-wrap"><div class="iea-goals-panel iea-goals-loading" role="status">Carregando metas...</div></div>`;
     const params = new URLSearchParams({ month: selectedMonth });
     if (selectedUserId) params.set("user_id", selectedUserId);
     try {
@@ -110,12 +143,13 @@
   function render() {
     if (!root || !currentData) return;
     const agents = currentData.agents || [];
+    const userName = (currentData.user || {}).name || "Colaborador CRC";
     const agentPicker = currentData.can_configure ? `<select class="iea-goals-field" data-agent aria-label="Atendente">${agents.map(agent => `<option value="${Number(agent.id)}"${String(agent.id) === selectedUserId ? " selected" : ""}>${esc(agent.name)}</option>`).join("")}</select>` : "";
     root.innerHTML = `<div class="iea-goals-wrap">
-      <header class="iea-goals-head"><div><h1>Metas individuais</h1><p>${esc((currentData.user || {}).name)} · ${esc(currentData.month_label)}</p></div><div class="iea-goals-actions">
-        ${agentPicker}<input class="iea-goals-field" data-month type="month" value="${esc(selectedMonth)}" aria-label="Mês das metas"><button class="iea-goals-btn" data-close>Voltar</button>
+      <header class="iea-goals-head"><div class="iea-goals-identity"><div class="iea-goals-avatar" aria-hidden="true">${esc(initials(userName))}</div><div><h1>Metas individuais</h1><p>${esc(userName)} · ${esc(currentData.month_label)}</p></div></div><div class="iea-goals-actions">
+        ${agentPicker}<label class="iea-goals-control" aria-label="Selecionar mês"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg><input class="iea-goals-field" data-month type="month" value="${esc(selectedMonth)}" aria-label="Mês das metas"></label><button class="iea-goals-btn" data-close><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Voltar</button>
       </div></header>
-      <nav class="iea-goals-tabs" aria-label="Seções de metas"><button class="iea-goals-tab ${activeTab === "progress" ? "on" : ""}" data-tab="progress">Acompanhamento</button>${currentData.can_configure ? `<button class="iea-goals-tab ${activeTab === "config" ? "on" : ""}" data-tab="config">Configuração</button>` : ""}</nav>
+      <nav class="iea-goals-tabs" aria-label="Seções de metas" role="tablist"><button class="iea-goals-tab ${activeTab === "progress" ? "on" : ""}" data-tab="progress" role="tab" aria-selected="${activeTab === "progress"}">Acompanhamento</button>${currentData.can_configure ? `<button class="iea-goals-tab ${activeTab === "config" ? "on" : ""}" data-tab="config" role="tab" aria-selected="${activeTab === "config"}">Configuração</button>` : ""}</nav>
       <main data-content>${activeTab === "config" ? configMarkup() : progressMarkup()}</main>
     </div>`;
     bindCommon();
@@ -127,29 +161,46 @@
     const cards = items.map(item => {
       const m = item.monthly || {};
       const width = Math.min(100, Number(m.percentage || 0));
+      const visual = METRIC_VISUALS[item.metric_key] || METRIC_VISUALS.attendances;
+      const state = performanceState(m.percentage, m.target, m.reached);
       const pace = m.reached ? "Meta mensal atingida" : m.target ? `<b>${number(m.required_per_open_day)}</b> por dia de expediente para fechar o gap` : "Meta mensal ainda não configurada";
-      return `<article class="iea-goal-card ${m.reached ? "reached" : ""}"><div class="iea-goal-title"><h2>${esc(item.label)}</h2><span class="iea-goal-badge">${m.reached ? "Meta atingida" : "Em andamento"}</span></div><div class="iea-goal-bar" aria-label="${esc(item.label)}: ${percent(m.percentage)}"><i style="width:${width}%"></i></div><div class="iea-goal-values">
-        <div><small>Meta</small><strong>${number(m.target)}</strong></div><div><small>Realizado</small><strong>${number(m.realized)}</strong></div><div><small>% realizada</small><strong>${percent(m.percentage)}</strong></div><div><small>Gap</small><strong>${number(m.gap)}</strong></div>
+      return `<article class="iea-goal-card" data-metric-card="${esc(item.metric_key)}" data-performance="${state.key}" style="--metric:${visual.color};--metric-soft:${visual.soft};--tone:${state.color};--tone-text:${state.text};--tone-soft:${state.soft}"><div class="iea-goal-title"><div class="iea-goal-heading"><span class="iea-metric-icon-box">${metricIcon(item.metric_key)}</span><h2>${esc(item.label)}</h2></div><span class="iea-goal-badge">${state.label}</span></div><div class="iea-goal-bar" role="progressbar" aria-label="${esc(item.label)}: ${percent(m.percentage)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(100, Math.max(0, Number(m.percentage || 0)))}"><i style="width:${width}%"></i></div><div class="iea-goal-values">
+        <div><small>Meta</small><strong>${number(m.target)}</strong></div><div><small>Realizado</small><strong class="featured">${number(m.realized)}</strong></div><div><small>% realizada</small><strong class="featured">${percent(m.percentage)}</strong></div><div><small>Gap</small><strong class="${Number(m.gap || 0) === 0 && Number(m.target || 0) > 0 ? "gap-zero" : ""}">${number(m.gap)}</strong></div>
       </div><p class="iea-goal-pace">${pace}</p></article>`;
     }).join("");
     const conversions = currentData.conversion || {};
     const first = conversions.first_consultation || {};
     const recurring = conversions.recurring || {};
     const schedule = currentData.schedule || {};
+    const conversionCard = (key, title, data, description) => {
+      const state = conversionState(data.percentage);
+      const radialValue = Math.min(100, Math.max(0, Number(data.percentage || 0)));
+      return `<article class="iea-goals-panel iea-conversion" data-conversion="${key}" data-performance="${state.key}" style="--tone:${state.color};--tone-text:${state.text};--tone-soft:${state.soft};--value:${radialValue}"><div class="iea-conversion-copy"><span class="iea-conversion-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="m7 15 4-4 3 3 5-7"></path></svg></span><div><h3>${title}</h3><p>${description}</p></div></div><div class="iea-radial" role="img" aria-label="${title}: ${percent(data.percentage)}"><strong>${percent(data.percentage)}</strong></div></article>`;
+    };
+    const dailyRows = items.map(item => {
+      const d = item.daily || {};
+      const visual = METRIC_VISUALS[item.metric_key] || METRIC_VISUALS.attendances;
+      const state = performanceState(d.percentage, d.target, d.reached);
+      const width = Math.min(100, Math.max(0, Number(d.percentage || 0)));
+      return `<tr data-daily-performance="${state.key}" style="--metric:${visual.color};--tone:${state.color};--tone-text:${state.text};--tone-soft:${state.soft}"><td><span class="iea-daily-indicator"><i class="iea-daily-dot" aria-hidden="true"></i><b>${esc(item.label)}</b></span></td><td>${number(d.target)}</td><td><b>${number(d.realized)}</b></td><td><div class="iea-daily-percent"><b>${percent(d.percentage)}</b><div class="iea-mini-bar" role="progressbar" aria-label="Progresso diário de ${esc(item.label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${width}"><i style="width:${width}%"></i></div></div></td><td>${number(d.gap)}</td><td><span class="iea-status-badge">${state.label}</span></td></tr>`;
+    }).join("");
     return `<section class="iea-goals-summary">${cards}</section>
-      <section class="iea-goals-two" style="margin-bottom:18px"><article class="iea-goals-panel iea-conversion"><div><h3>Conversão · Primeira consulta</h3><p>${number(first.converted)} agendamentos em ${number(first.opportunities)} oportunidades</p></div><strong>${percent(first.percentage)}</strong></article><article class="iea-goals-panel iea-conversion"><div><h3>Conversão · Cliente recorrente</h3><p>${number(recurring.converted)} agendamentos em ${number(recurring.opportunities)} retornos sem tratamento</p></div><strong>${percent(recurring.percentage)}</strong></article></section>
-      <section class="iea-goals-panel table-scroll"><div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:10px"><div><h2 style="margin:0;font-size:18px">Meta do dia</h2><p style="margin:5px 0 0;color:#718295;font-size:12px">${esc(schedule.weekdays)} · ${esc(schedule.saturday)}</p></div><span class="iea-goal-badge">${number(schedule.remaining_open_days)} dias de expediente restantes</span></div><table class="iea-daily-table"><thead><tr><th>Indicador</th><th>Meta</th><th>Realizado</th><th>% realizada</th><th>Faltam</th><th>Situação</th></tr></thead><tbody>${items.map(item => { const d = item.daily || {}; return `<tr><td><b>${esc(item.label)}</b></td><td>${number(d.target)}</td><td>${number(d.realized)}</td><td>${percent(d.percentage)}</td><td>${number(d.gap)}</td><td>${d.reached ? "Meta atingida" : d.target ? "Em andamento" : "Não configurada"}</td></tr>`; }).join("")}</tbody></table></section>
-      <section class="iea-goals-panel"><h2 style="margin:0 0 13px;font-size:18px">Conquistas recentes</h2><div class="iea-history">${(currentData.history || []).length ? currentData.history.map(row => `<div class="iea-history-row"><div><p>${esc(row.message)}</p><small>${row.achievement_type === "daily" ? "Meta diária" : "Meta mensal"} · ${esc(row.period_key)}</small></div><small>${esc(row.achieved_at)}</small></div>`).join("") : `<div class="iea-goals-empty">As metas alcançadas aparecerão aqui.</div>`}</div></section>`;
+      <section class="iea-goals-two" style="margin-bottom:18px">${conversionCard("first", "Conversão · Primeira consulta", first, `${number(first.converted)} agendamentos em ${number(first.opportunities)} oportunidades`)}${conversionCard("recurring", "Conversão · Cliente recorrente", recurring, `${number(recurring.converted)} agendamentos em ${number(recurring.opportunities)} retornos sem tratamento`)}</section>
+      <section class="iea-goals-panel table-scroll"><div class="iea-daily-head"><div><h2>Meta do dia</h2><p>${esc(schedule.weekdays)} · ${esc(schedule.saturday)}</p></div><span class="iea-days-card"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg>${number(schedule.remaining_open_days)} dias de expediente restantes</span></div><table class="iea-daily-table"><thead><tr><th scope="col">Indicador</th><th scope="col">Meta</th><th scope="col">Realizado</th><th scope="col">% realizada</th><th scope="col">Faltam</th><th scope="col">Situação</th></tr></thead><tbody>${dailyRows}</tbody></table></section>
+      <section class="iea-goals-panel"><h2 class="iea-history-title">Conquistas recentes</h2><div class="iea-history">${(currentData.history || []).length ? currentData.history.map(row => `<div class="iea-history-row"><div><p>${esc(row.message)}</p><small>${row.achievement_type === "daily" ? "Meta diária" : "Meta mensal"} · ${esc(row.period_key)}</small></div><small>${esc(row.achieved_at)}</small></div>`).join("") : `<div class="iea-goals-empty" data-empty-state><span class="iea-empty-trophy"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4Z"></path><path d="M7 6H4v2a4 4 0 0 0 4 4M17 6h3v2a4 4 0 0 1-4 4"></path></svg></span><strong>As metas alcançadas aparecerão aqui.</strong></div>`}</div></section>`;
   }
 
   function configMarkup() {
-    const cards = (currentData.items || []).map(item => `<article class="iea-config-card" data-metric="${esc(item.metric_key)}"><h3>${esc(item.label)}</h3><div class="iea-config-grid">
-      <label>Meta do mês<input class="iea-goals-field" data-monthly type="number" min="0" max="100000" step="1" value="${Number((item.monthly || {}).target || 0)}"></label>
-      <label>Meta por dia<input class="iea-goals-field" data-daily type="number" min="0" max="10000" step="1" value="${Number((item.daily || {}).target || 0)}"></label>
-      <label>Mensagem personalizada<input class="iea-goals-field" data-message maxlength="180" value="${esc(item.celebration_message || "")}" placeholder="Opcional; o CRM inclui o resultado alcançado"></label>
-      <label class="iea-goals-check"><input data-celebration type="checkbox" ${item.celebration_enabled ? "checked" : ""}> Comemorar</label>
-    </div></article>`).join("");
-    return `<section class="iea-goals-panel"><div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:16px"><div><h2 style="margin:0;font-size:18px">Configurar ${esc(currentData.month_label)}</h2><p style="margin:5px 0 0;color:#718295;font-size:12px">Metas individuais de ${esc((currentData.user || {}).name)}. Zero desativa o indicador.</p></div><button class="iea-goals-btn primary" data-save>Salvar metas</button></div><div class="iea-goals-config">${cards}</div><div data-save-status role="status" style="margin-top:13px;font-size:13px"></div></section>`;
+    const cards = (currentData.items || []).map(item => {
+      const visual = METRIC_VISUALS[item.metric_key] || METRIC_VISUALS.attendances;
+      return `<article class="iea-config-card" data-metric="${esc(item.metric_key)}" style="--metric:${visual.color};--metric-soft:${visual.soft}"><h3>${metricIcon(item.metric_key)}${esc(item.label)}</h3><div class="iea-config-grid">
+        <label>Meta do mês<input class="iea-goals-field" data-monthly type="number" min="0" max="100000" step="1" value="${Number((item.monthly || {}).target || 0)}"></label>
+        <label>Meta por dia<input class="iea-goals-field" data-daily type="number" min="0" max="10000" step="1" value="${Number((item.daily || {}).target || 0)}"></label>
+        <label>Mensagem personalizada<input class="iea-goals-field" data-message maxlength="180" value="${esc(item.celebration_message || "")}" placeholder="Opcional; o CRM inclui o resultado alcançado"></label>
+        <label class="iea-goals-check"><input data-celebration type="checkbox" ${item.celebration_enabled ? "checked" : ""}> Comemorar</label>
+      </div></article>`;
+    }).join("");
+    return `<section class="iea-goals-panel"><div class="iea-daily-head"><div><h2>Configurar ${esc(currentData.month_label)}</h2><p>Metas individuais de ${esc((currentData.user || {}).name)}. Zero desativa o indicador.</p></div><button class="iea-goals-btn primary" data-save>Salvar metas</button></div><div class="iea-goals-config">${cards}</div><div data-save-status role="status" style="margin-top:13px;font-size:13px"></div></section>`;
   }
 
   function bindCommon() {
