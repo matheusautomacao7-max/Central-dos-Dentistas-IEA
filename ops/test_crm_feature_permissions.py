@@ -141,7 +141,7 @@ assert "CREATE TABLE IF NOT EXISTS crm_permission_audit" in schema
 assert 'crm_access_level TEXT NOT NULL DEFAULT \'attendant\'' in schema
 assert 'def can_manage_crm' in server_source
 assert 'user.get("access_role") == "crc" and user.get("crm_access_level") == "admin"' in server_source
-assert "lower(email)='matheuscrc@instituto.local'" in server_source
+assert "lower(email) IN ('matheuscrc@instituto.local','melocrc@instituto.local')" in server_source
 
 admin_js = ADMIN_JS_PATH.read_text(encoding="utf-8")
 assert "data-crm-operational-agent" in admin_js
