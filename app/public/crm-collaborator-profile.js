@@ -221,13 +221,41 @@
     avatar.classList.add("iea-cp-trigger"); avatar.setAttribute("role", "button"); avatar.setAttribute("tabindex", "0");
     avatar.setAttribute("aria-label", "Abrir meu perfil e conquistas"); avatar.setAttribute("title", "Abrir perfil");
     if (avatar.children.length === 0) avatar.textContent = initials(currentUser.name);
-    avatar.addEventListener("click", function (event) { event.preventDefault(); event.stopPropagation(); openProfile(); });
-    avatar.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); openProfile(); } });
+  }
+
+  function clickedFooterAvatar(target) {
+    if (!currentUser || !(target instanceof Element)) return null;
+    var aside = target.closest("aside");
+    if (!aside) return null;
+    var element = target;
+    while (element && element !== aside) {
+      if (element.matches("div,span") && visibleFooterElement(element)) {
+        var style = window.getComputedStyle(element);
+        var width = parseFloat(style.width || "0");
+        var height = parseFloat(style.height || "0");
+        var radius = parseFloat(style.borderTopLeftRadius || "0");
+        if (width >= 38 && width <= 48 && height >= 38 && height <= 48 && radius >= 18) return element;
+      }
+      element = element.parentElement;
+    }
+    return null;
+  }
+
+  function interceptProfileTrigger(event) {
+    var avatar = clickedFooterAvatar(event.target);
+    if (!avatar) return;
+    if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    enhanceAvatar();
+    openProfile();
   }
 
   function enhance() { scheduled = false; enhanceTheme(); enhanceAvatar(); }
   function schedule() { if (scheduled) return; scheduled = true; window.requestAnimationFrame(enhance); }
 
+  document.addEventListener("click", interceptProfileTrigger, true);
+  document.addEventListener("keydown", interceptProfileTrigger, true);
   document.addEventListener("keydown", function (event) { if (event.key === "Escape" && overlay) closeProfile(); });
   injectStyle();
   request("/api/auth/status").then(function (payload) { currentUser = payload && payload.user; schedule(); }).catch(function () {});

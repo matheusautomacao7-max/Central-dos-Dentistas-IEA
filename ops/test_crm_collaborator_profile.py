@@ -51,8 +51,9 @@ def test_schema_and_frontend_contract() -> None:
     assert 'prefers-reduced-motion:reduce' in bridge
     assert '/api/crm/profile/achievements' in bridge
     assert 'role="dialog"' in bridge and 'aria-modal="true"' in bridge
-    assert 'crm-collaborator-profile.js?v=20260802-profile-theme-v2' in html
+    assert 'crm-collaborator-profile.js?v=20260802-profile-theme-v3' in html
     assert 'bundle legado ainda desenha o rodapé com as iniciais fixas "AS"' in bridge
+    assert 'document.addEventListener("click", interceptProfileTrigger, true)' in bridge
 
 
 def test_only_crm_admin_can_create_manual_achievement() -> None:

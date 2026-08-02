@@ -21,10 +21,13 @@ const pageHtml = `<!doctype html><html><body data-omtheme="light" style="margin:
   <aside style="width:80px;height:100vh;display:flex;flex-direction:column;align-items:center;background:#122b46">
     <div style="flex:1"></div>
     <div id="theme" style="width:44px;height:38px;cursor:pointer"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3"></path></svg></div>
-    <div style="position:relative;cursor:pointer"><div id="avatar" style="width:42px;height:42px;border-radius:50%;cursor:pointer">AS</div><span style="position:absolute;width:13px;height:13px"></span></div>
+    <div id="user-menu" style="position:relative;cursor:pointer"><div id="avatar" style="width:42px;height:42px;border-radius:50%;cursor:pointer">AS</div><span style="position:absolute;width:13px;height:13px"></span></div>
   </aside><script>
     document.getElementById("theme").addEventListener("click", function () {
       document.body.dataset.omtheme = document.body.dataset.omtheme === "dark" ? "light" : "dark";
+    });
+    document.getElementById("user-menu").addEventListener("click", function () {
+      document.body.dataset.legacyStatusMenuOpened = "true";
     });
   </script><script src="/crm-collaborator-profile.js"></script></body></html>`;
 
@@ -66,8 +69,13 @@ try {
   await page.waitForFunction(() => document.body.dataset.omtheme === "dark");
   assert.equal(await page.evaluate(() => localStorage.getItem("iea.crm.theme")), "dark");
 
-  await avatar.click();
+  await avatar.evaluate(element => {
+    const replacement = element.cloneNode(true);
+    element.replaceWith(replacement);
+    replacement.click();
+  });
   await page.getByRole("heading", {name:"Matheus Henrique"}).waitFor();
+  assert.equal(await page.evaluate(() => document.body.dataset.legacyStatusMenuOpened || "false"), "false");
   assert.equal(await page.getByRole("dialog").count(), 1);
   assert.equal(await page.getByText("Administrador do CRM", {exact:true}).count(), 1);
   assert.equal(await page.getByText("22", {exact:true}).count(), 1);
