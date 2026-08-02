@@ -446,7 +446,7 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE users ADD COLUMN crm_access_level TEXT NOT NULL DEFAULT 'attendant'")
             db.execute("""UPDATE users SET crm_access_level='admin'
                           WHERE access_role='crc'
-                            AND (COALESCE(crm_manage_automation,0)=1 OR COALESCE(crm_operational_agent,1)=0)""")
+                            AND lower(email)='matheuscrc@instituto.local'""")
         db.execute("""UPDATE users SET crm_channel_scope_enabled=0,crm_feature_scope_enabled=0,
                          crm_manage_automation=1,crm_operational_agent=0
                       WHERE access_role='crc' AND crm_access_level='admin'""")
