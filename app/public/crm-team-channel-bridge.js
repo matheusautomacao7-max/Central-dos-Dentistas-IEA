@@ -106,6 +106,16 @@
       '.iea-team-composer input:focus{border-color:#25d366;box-shadow:0 0 0 3px rgba(37,211,102,.12)}',
       '.iea-team-send{border:0;border-radius:12px;padding:0 18px;background:#18a957;color:#fff;font-weight:800;cursor:pointer}',
       '.iea-team-back{border:0;background:transparent;color:#167a48;font-weight:800;cursor:pointer;padding:0 0 12px}',
+      /* Tabs do inbox: superfÃ­cie leve, estado ativo claro e rolagem discreta
+         em larguras menores, sem cortar o Ãºltimo filtro. */
+      '[data-iea-inbox-tabs]{display:flex!important;align-items:stretch!important;gap:6px!important;min-width:0!important;padding:2px 0 5px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;overscroll-behavior-x:contain}',
+      '[data-iea-inbox-tabs]::-webkit-scrollbar{display:none}',
+      '[data-iea-inbox-tabs] [data-iea-inbox-tab]{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:38px!important;max-height:38px!important;flex:0 0 auto!important;gap:5px!important;padding:0 13px!important;border:1px solid transparent!important;border-radius:12px!important;background:transparent!important;color:var(--text2,#667781)!important;font:700 12px/1.15 Manrope,system-ui,sans-serif!important;letter-spacing:-.08px!important;white-space:nowrap!important;box-shadow:none!important;cursor:pointer!important;transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease!important}',
+      '[data-iea-inbox-tabs] [data-iea-inbox-tab]:hover{background:var(--panel2,#f3f6f8)!important;color:var(--text,#11243d)!important}',
+      '[data-iea-inbox-tabs] [data-iea-inbox-tab][data-iea-active="true"]{border-color:#22c55e!important;background:#ecfdf3!important;color:#168448!important;box-shadow:inset 0 0 0 1px rgba(34,197,94,.06)!important}',
+      '[data-iea-inbox-tabs] [data-iea-inbox-tab]:focus-visible{outline:3px solid rgba(37,211,102,.28)!important;outline-offset:2px!important}',
+      '[data-iea-inbox-tabs] [data-iea-team-button]{border-color:#dbe4f0!important;background:#f7f9fc!important;color:#49627c!important}',
+      '[data-iea-inbox-tabs] [data-iea-team-button]:hover{border-color:#b8c8d9!important;background:#eef3f8!important;color:#233d57!important}',
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -353,6 +363,7 @@
   }
 
   function addControls() {
+    ensureStyles();
     /* O bundle pode renderizar os filtros como button ou como elemento com role=button. */
     var candidates = Array.from(document.querySelectorAll('button,[role="button"]'));
     var allButton = candidates.find(function (button) { return button.textContent.trim() === 'Todos os canais'; });
@@ -368,15 +379,20 @@
       }, true);
     }
     var container = anchor.parentElement;
+    container.dataset.ieaInboxTabs = '1';
     Array.from(container.querySelectorAll('button,[role="button"]')).forEach(function (button) {
       if (!button.dataset.ieaChannelPill) {
         button.dataset.ieaChannelPill = '1';
         button.dataset.ieaChannelLabel = button.textContent.trim();
       }
+      button.dataset.ieaInboxTab = '1';
+      button.dataset.ieaActive = isActiveInboxTab(button) ? 'true' : 'false';
     });
     if (!container.querySelector('[data-iea-team-button]')) {
       var team = document.createElement('button');
       team.type = 'button'; team.dataset.ieaTeamButton = '1'; team.textContent = 'Time';
+      team.dataset.ieaInboxTab = '1';
+      team.dataset.ieaActive = 'false';
       team.style.cssText = 'display:flex;align-items:center;gap:6px;flex:0 0 auto;padding:5px 11px;border-radius:16px;font-size:12px;font-weight:800;cursor:pointer;border:1px solid #6c63ff;background:#f4f1ff;color:#5148bf';
       team.onclick = openTeam;
       // Fica antes de "Todos os canais" para nunca ser escondido pelo
@@ -387,6 +403,11 @@
         anchor.insertAdjacentElement('afterend', team);
       }
     }
+  }
+
+  function isActiveInboxTab(button) {
+    var source = String(button.getAttribute('style') || '') + ' ' + String(button.className || '');
+    return /#25d366|#16a34a|37\s*,\s*211\s*,\s*102|21\s*,\s*163\s*,\s*74/i.test(source);
   }
 
   /*
