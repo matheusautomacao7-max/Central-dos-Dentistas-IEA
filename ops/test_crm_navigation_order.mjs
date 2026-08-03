@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v5/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v6/);
 assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
@@ -103,9 +103,10 @@ try {
   assert.deepEqual(controlGeometry, { deltaX: 0, width: 22, height: 22, label: "Controle" });
 
   const alignment = await page.locator("aside > [data-iea-navigation-key]").evaluateAll(nodes => nodes.map(node => {
-    const item = node.getBoundingClientRect();
-    const icon = node.querySelector("svg")?.getBoundingClientRect();
-    const label = Array.from(node.querySelectorAll("span,div")).find(child => !child.children.length)?.getBoundingClientRect();
+    const surface = node.matches("a,button,div") ? node : Array.from(node.children).find(child => child.matches("a,button,div")) || node;
+    const item = surface.getBoundingClientRect();
+    const icon = surface.querySelector("svg")?.getBoundingClientRect();
+    const label = Array.from(surface.querySelectorAll("span,div,p,small,strong,label")).find(child => !child.children.length)?.getBoundingClientRect();
     const center = item.left + item.width / 2;
     return {
       key: node.dataset.ieaNavigationKey,
@@ -127,19 +128,23 @@ try {
   assert.ok(labels.some(label => label.text === "Contatos" || label.text === "Pacientes"));
   labels.forEach(label => {
     assert.ok(label.fontSize <= 9.5, `${label.text} must fit the compact rail`);
-    assert.ok(label.width <= 58.5, `${label.text} must not overflow the compact rail`);
+    assert.ok(label.width <= 68.5, `${label.text} must not overflow the compact rail`);
     assert.equal(label.overflow, "hidden");
     assert.equal(label.whiteSpace, "nowrap");
   });
   const sidebarOverflow = await page.locator("aside").evaluate((aside) => ({
     scrollWidth: aside.scrollWidth,
     clientWidth: aside.clientWidth,
-    patientWidth: aside.querySelector("[data-iea-navigation-key='pacientes']").getBoundingClientRect().width,
+    patientWidth: (() => {
+      const patient = aside.querySelector("[data-iea-navigation-key='pacientes']");
+      const surface = patient.matches("a,button,div") ? patient : Array.from(patient.children).find(child => child.matches("a,button,div")) || patient;
+      return surface.getBoundingClientRect().width;
+    })(),
     patientLabelWidth: aside.querySelector("[data-iea-navigation-key='pacientes'] [data-iea-navigation-label]").getBoundingClientRect().width,
   }));
   assert.ok(sidebarOverflow.scrollWidth <= sidebarOverflow.clientWidth, "compact rail must never acquire horizontal overflow");
-  assert.ok(sidebarOverflow.patientWidth <= 64.5, "wrapped patient navigation must remain compact");
-  assert.ok(sidebarOverflow.patientLabelWidth <= 58.5, "wrapped patient label must remain within the rail");
+  assert.ok(sidebarOverflow.patientWidth <= 74.5, "wrapped patient navigation must remain compact");
+  assert.ok(sidebarOverflow.patientLabelWidth <= 68.5, "wrapped patient label must remain within the rail");
 
   await page.getByRole("button", { name: "Abrir conversa" }).click();
   assert.equal(new URL(page.url()).pathname, "/", "patient start actions must never submit the page");
@@ -187,9 +192,9 @@ try {
   assert.equal(await page.evaluate(() => window.goalsOpened), 2, "a remounted legacy link must still use SPA navigation");
   assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
 
-  await page.locator("aside > [data-nav]").evaluateAll((nodes) => {
+  await page.locator("aside > [data-iea-navigation-key]").evaluateAll((nodes) => {
     for (const node of nodes) {
-      if (["Gestão", "Campanhas", "Integração", "Configuração"].includes(node.textContent.trim())) node.style.display = "none";
+      if (["gestao", "campanhas", "integracao", "configuracao"].includes(node.dataset.ieaNavigationKey)) node.style.display = "none";
     }
     window.IEACrmNavigationOrder.maintain();
   });

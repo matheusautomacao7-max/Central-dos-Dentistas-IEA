@@ -119,12 +119,30 @@
       .filter((node) => !node.children.length && normalized(node.textContent));
   }
 
+  function visibleNavigationSurface(item) {
+    if (!item) return null;
+    if (item.matches("a,button,div,[role='button'],[role='tab']")) return item;
+    return Array.from(item.children).find((child) =>
+      child.matches("a,button,div,[role='button'],[role='tab']")
+    ) || item;
+  }
+
   function setImportantStyle(element, property, value) {
     if (!element) return;
     const cssProperty = property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
     if (element.style.getPropertyValue(cssProperty) === value &&
         element.style.getPropertyPriority(cssProperty) === "important") return;
     element.style.setProperty(cssProperty, value, "important");
+  }
+
+  // Visibilidade vem das permissões. Por isso `display` nunca pode ser
+  // importante: um item ocultado pelo CRM precisa continuar oculto.
+  function setLayoutStyle(element, property, value) {
+    if (!element) return;
+    const cssProperty = property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+    if (element.style.getPropertyValue(cssProperty) === value &&
+        element.style.getPropertyPriority(cssProperty) === "") return;
+    element.style.setProperty(cssProperty, value);
   }
 
   function useCompleteAdminLabels(items) {
@@ -159,26 +177,15 @@
     if (!item) return;
     item.dataset.ieaNavigationKey = key;
     const important = {
-      width: "64px", minHeight: "54px", height: "auto", margin: "0px auto",
-      padding: "7px 3px", boxSizing: "border-box", alignItems: "center",
+      width: "74px", minWidth: "74px", maxWidth: "74px", minHeight: "54px", height: "auto", margin: "0px auto",
+      padding: "7px 3px", boxSizing: "border-box", flexDirection: "column", alignItems: "center",
       justifyContent: "center", gap: "4px", textAlign: "center",
-      position: "relative", flex: "0 0 auto", overflow: "hidden",
-      borderWidth: "0px",
+      position: "relative", flex: "0 0 auto", overflow: "hidden", color: "rgba(255,255,255,.76)",
     };
-    // O bundle do CRM alterna entre itens diretos e wrappers com <a>/<button>
-    // internos. Estilizar somente o wrapper deixa o controle interno livre para
-    // vazar para fora da rail. Aplicamos a mesma caixa compacta Ã  superfÃ­cie
-    // clicÃ¡vel, sem tocar na aÃ§Ã£o ou no listener original.
-    // Em produÃ§Ã£o os itens ficam dentro de <sc-if>. O elemento direto do
-    // <aside> Ã© apenas o wrapper; o <div> filho Ã© a superfÃ­cie que recebe o
-    // estilo do bundle e era ele que deixava rÃ³tulos longos escaparem.
-    const surfaces = [item, ...Array.from(item.children).filter((child) =>
-      child.matches("a,button,div,[role='button'],[role='tab']")
-    )];
-    surfaces.forEach((surface) => {
-      Object.entries(important).forEach(([property, value]) => setImportantStyle(surface, property, value));
-    });
-    item.querySelectorAll("svg").forEach(icon => {
+    const surface = visibleNavigationSurface(item);
+    if (surface.style.display !== "none") setLayoutStyle(surface, "display", "flex");
+    Object.entries(important).forEach(([property, value]) => setImportantStyle(surface, property, value));
+    surface.querySelectorAll("svg").forEach(icon => {
       setImportantStyle(icon, "display", "block");
       setImportantStyle(icon, "margin", "0px auto");
       setImportantStyle(icon, "flex", "0 0 auto");
@@ -189,14 +196,14 @@
       campanhas: ["campanhas"], integracao: ["integra", "integracao", "integrações"],
       configuracao: ["config", "configuracao"],
     };
-    const labels = navigationTextLeaves(item);
-    const preferredLabel = leafWithLabel(item, labelAliases[key] || [key]);
+    const labels = navigationTextLeaves(surface);
+    const preferredLabel = leafWithLabel(surface, labelAliases[key] || [key]);
     if (preferredLabel && !labels.includes(preferredLabel)) labels.push(preferredLabel);
     labels.forEach((label) => {
       label.dataset.ieaNavigationLabel = key;
       setImportantStyle(label, "display", "block");
-      setImportantStyle(label, "width", "58px");
-      setImportantStyle(label, "maxWidth", "58px");
+      setImportantStyle(label, "width", "68px");
+      setImportantStyle(label, "maxWidth", "68px");
       setImportantStyle(label, "margin", "0px");
       setImportantStyle(label, "textAlign", "center");
       setImportantStyle(label, "fontSize", label.textContent.trim().length > 8 ? "8.25px" : "9.5px");
@@ -206,6 +213,7 @@
       setImportantStyle(label, "textOverflow", "clip");
       setImportantStyle(label, "overflowWrap", "normal");
       setImportantStyle(label, "wordBreak", "keep-all");
+      setImportantStyle(label, "color", "inherit");
     });
   }
 
