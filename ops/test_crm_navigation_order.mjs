@@ -50,7 +50,7 @@ const server = http.createServer((request, response) => {
       <a href="/reload?screen=queue" data-nav><span>Filas</span></a>
       <a href="/reload?screen=funnel" data-nav><span>Funil</span></a>
       <a href="/reload?screen=management" data-nav><span>Gestão</span></a>
-      <sc-if data-nav><div data-iea-patients-nav><p>Contatos</p></div></sc-if>
+      <sc-if data-nav><sc-scope><div data-iea-patients-nav><svg width="21" height="21"></svg><p>Contatos</p></div></sc-scope></sc-if>
       <a href="/reload?screen=campaigns" data-nav><span>Campanhas</span></a>
       <a href="/reload?screen=integrations" data-nav><span>Integra</span></a>
       <a href="/reload?screen=settings" data-nav><span>Config</span></a>
@@ -103,7 +103,8 @@ try {
   assert.deepEqual(controlGeometry, { deltaX: 0, width: 22, height: 22, label: "Controle" });
 
   const alignment = await page.locator("aside > [data-iea-navigation-key]").evaluateAll(nodes => nodes.map(node => {
-    const surface = node.matches("a,button,div") ? node : Array.from(node.children).find(child => child.matches("a,button,div")) || node;
+    const candidates = [node, ...node.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+    const surface = candidates.find(candidate => candidate.matches("a,button,div,[role='button'],[role='tab']") && candidate.querySelector("svg")) || node;
     const item = surface.getBoundingClientRect();
     const icon = surface.querySelector("svg")?.getBoundingClientRect();
     const label = Array.from(surface.querySelectorAll("span,div,p,small,strong,label")).find(child => !child.children.length)?.getBoundingClientRect();
@@ -124,6 +125,8 @@ try {
     width: node.getBoundingClientRect().width,
     overflow: getComputedStyle(node).overflow,
     whiteSpace: getComputedStyle(node).whiteSpace,
+    color: node.style.getPropertyValue("color"),
+    colorPriority: node.style.getPropertyPriority("color"),
   })));
   assert.ok(labels.some(label => label.text === "Contatos" || label.text === "Pacientes"));
   labels.forEach(label => {
@@ -131,13 +134,16 @@ try {
     assert.ok(label.width <= 68.5, `${label.text} must not overflow the compact rail`);
     assert.equal(label.overflow, "hidden");
     assert.equal(label.whiteSpace, "nowrap");
+    assert.match(label.color, /^rgba\(255,\s*255,\s*255,\s*0?\.76\)$/);
+    assert.equal(label.colorPriority, "important");
   });
   const sidebarOverflow = await page.locator("aside").evaluate((aside) => ({
     scrollWidth: aside.scrollWidth,
     clientWidth: aside.clientWidth,
     patientWidth: (() => {
       const patient = aside.querySelector("[data-iea-navigation-key='pacientes']");
-      const surface = patient.matches("a,button,div") ? patient : Array.from(patient.children).find(child => child.matches("a,button,div")) || patient;
+      const candidates = [patient, ...patient.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+      const surface = candidates.find(candidate => candidate.matches("a,button,div,[role='button'],[role='tab']") && candidate.querySelector("svg")) || patient;
       return surface.getBoundingClientRect().width;
     })(),
     patientLabelWidth: aside.querySelector("[data-iea-navigation-key='pacientes'] [data-iea-navigation-label]").getBoundingClientRect().width,

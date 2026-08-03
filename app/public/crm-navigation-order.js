@@ -121,10 +121,15 @@
 
   function visibleNavigationSurface(item) {
     if (!item) return null;
-    if (item.matches("a,button,div,[role='button'],[role='tab']")) return item;
-    return Array.from(item.children).find((child) =>
-      child.matches("a,button,div,[role='button'],[role='tab']")
-    ) || item;
+    // O runtime do bundle pode inserir <sc-if>/<sc-scope> entre o <aside>
+    // e o div clicável. Procurar apenas o primeiro filho estiliza o wrapper e
+    // deixa ícone/texto reais com a aparência padrão (preta e desalinhada).
+    const candidates = [item, ...item.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+    return candidates.find((candidate) =>
+      candidate.matches("a,button,div,[role='button'],[role='tab']") &&
+      candidate.querySelector("svg") &&
+      navigationTextLeaves(candidate).length > 0
+    ) || candidates.find((candidate) => candidate.matches("a,button,div,[role='button'],[role='tab']")) || item;
   }
 
   function setImportantStyle(element, property, value) {
@@ -189,6 +194,7 @@
       setImportantStyle(icon, "display", "block");
       setImportantStyle(icon, "margin", "0px auto");
       setImportantStyle(icon, "flex", "0 0 auto");
+      setImportantStyle(icon, "color", "rgba(255,255,255,.76)");
     });
     const labelAliases = {
       inbox: ["inbox"], filas: ["filas", "fila"], funil: ["funil"], metas: ["metas"],
@@ -213,7 +219,7 @@
       setImportantStyle(label, "textOverflow", "clip");
       setImportantStyle(label, "overflowWrap", "normal");
       setImportantStyle(label, "wordBreak", "keep-all");
-      setImportantStyle(label, "color", "inherit");
+      setImportantStyle(label, "color", "rgba(255,255,255,.76)");
     });
   }
 
