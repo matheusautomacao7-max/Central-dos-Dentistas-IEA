@@ -46,7 +46,7 @@ const server = http.createServer((request, response) => {
       media_url: "/api/crm/media/test.wav",
       direction: "outbound",
       sender_name: "Atendente Teste",
-      message_at: "2026-08-03T12:00:00-04:00",
+      message_at: "2026-08-03T12:00:00",
     }] }));
   }
   if (url.pathname === "/api/crm/media/test.wav") {
@@ -74,7 +74,13 @@ const server = http.createServer((request, response) => {
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   response.end(`<!doctype html><html><body style="margin:0">
     <main style="width:900px;height:650px;display:flex;flex-direction:column">
-      <section id="timeline" style="height:560px;width:900px;overflow:auto"></section>
+      <section id="timeline" style="height:560px;width:900px;overflow:auto">
+        <div style="display:flex;justify-content:flex-end;width:100%">
+          <div class="existing-bubble" style="width:280px;height:80px;margin-left:auto">
+            <div style="width:30px;height:10px;margin-left:auto"><span>12:00</span></div>
+          </div>
+        </div>
+      </section>
       <div style="height:90px"><input placeholder="Digite uma mensagem" style="width:700px;height:40px"></div>
     </main>
     <script src="/crm-media-bridge.js"></script>
@@ -98,11 +104,13 @@ const browser = await chromium.launch({
 
 try {
   const page = await browser.newPage();
+  const pageErrors = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
   await page.goto(`http://127.0.0.1:${address.port}/`);
-  const player = page.locator("audio[data-iea-inline-media-control]");
+  const player = page.locator(".existing-bubble audio");
   await player.waitFor();
   await page.waitForFunction(() => {
-    const audioElement = document.querySelector("audio[data-iea-inline-media-control]");
+    const audioElement = document.querySelector(".existing-bubble audio");
     return audioElement && Number.isFinite(audioElement.duration) && audioElement.duration > 0;
   });
   const playback = await player.evaluate(async element => {
@@ -125,6 +133,7 @@ try {
     `o navegador precisa decodificar e entrar em reprodução: ${JSON.stringify(playback)}`
   );
   assert.ok(rangeRequests > 0, "o navegador precisa conseguir solicitar trechos do áudio");
+  assert.deepEqual(pageErrors, [], "a hidratação do player não pode lançar erro de insertBefore");
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // CRM_MEDIA_BRIDGE_PLAYBACK_RANGE_SAFE_V14
+  // CRM_MEDIA_BRIDGE_DOM_RACE_SAFE_V15
   // Respostas incrementais vazias não podem apagar os controles já exibidos.
 
   var nativeFetch = window.fetch.bind(window);
@@ -335,10 +335,20 @@
 
   function hydrateBubble(match, item, id) {
     var bubble = match.bubble;
+    var insertionReference = match.timeElement;
+    if (!bubble || !bubble.isConnected || !insertionReference || !insertionReference.isConnected) {
+      return false;
+    }
+    while (insertionReference && insertionReference.parentElement !== bubble) {
+      insertionReference = insertionReference.parentElement;
+    }
+    if (!insertionReference || insertionReference.parentElement !== bubble) {
+      return false;
+    }
     if (bubble.querySelector("[data-iea-inline-media-control]")) return true;
     var control = mediaElement(item);
     control.setAttribute("data-iea-inline-media-control", id);
-    bubble.insertBefore(control, match.timeElement);
+    bubble.insertBefore(control, insertionReference);
     bubble.setAttribute("data-iea-inline-media-message", id);
     Object.assign(bubble.style, {
       minWidth: "220px",
@@ -390,8 +400,7 @@
         if (existing && existing.querySelector("[data-iea-inline-media-control]")) return;
 
         var match = matchingEmptyBubble(timeline, item);
-        if (match) {
-          hydrateBubble(match, item, id);
+        if (match && hydrateBubble(match, item, id)) {
           changed = true;
           return;
         }
