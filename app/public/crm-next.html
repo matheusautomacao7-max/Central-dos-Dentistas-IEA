@@ -1,3 +1,47 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CRM IEA</title><link rel="stylesheet" href="/crm-next.css"></head>
-<body><main class="crm-shell"><header><div><span>CRM IEA · ambiente paralelo</span><h1>Atendimento</h1><p id="identity">Carregando perfil…</p></div><a href="/central-crc/whatsapp">Abrir CRM atual</a></header><section class="notice"><strong>Migração segura em andamento</strong><p>Este novo CRM utiliza o mesmo login e as mesmas APIs, sem duplicar conversas ou dados.</p></section><section class="modules"><article><b>Inbox</b><span>Próxima etapa: conversas e mensagens.</span></article><article><b>Funil</b><span>Será migrado após validação do Inbox.</span></article><article><b>Metas</b><span>Será migrado sem alterar as configurações atuais.</span></article></section></main><script src="/crm-next.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CRM IEA</title>
+  <link rel="stylesheet" href="/crm-next.css">
+</head>
+<body>
+  <main class="crm-shell">
+    <header class="topbar">
+      <div>
+        <span>CRM IEA · ambiente paralelo</span>
+        <h1>Inbox</h1>
+        <p id="identity">Carregando perfil…</p>
+      </div>
+      <a href="/central-crc/whatsapp">Abrir CRM atual</a>
+    </header>
+    <section class="notice">
+      <strong>Modo de leitura para validação</strong>
+      <p>As conversas abaixo são as conversas reais do CRM atual. Nesta etapa não há envio, atribuição ou alteração de dados.</p>
+    </section>
+    <section class="inbox" aria-label="Inbox de conversas">
+      <aside class="conversation-panel">
+        <label class="search-label" for="search">Buscar conversa</label>
+        <input id="search" type="search" placeholder="Nome ou telefone">
+        <p id="list-status" class="status">Carregando conversas…</p>
+        <div id="conversations" class="conversations" aria-live="polite"></div>
+      </aside>
+      <article class="thread-panel">
+        <header class="thread-header">
+          <div>
+            <p class="eyebrow">Conversa selecionada</p>
+            <h2 id="thread-title">Selecione uma conversa</h2>
+            <p id="thread-subtitle">As mensagens serão carregadas sem alterar o atendimento.</p>
+          </div>
+          <span class="read-only-badge">Somente leitura</span>
+        </header>
+        <div id="messages" class="messages" aria-live="polite">
+          <div class="empty-state"><strong>Inbox paralelo pronto.</strong><span>Escolha uma conversa à esquerda para conferir o histórico.</span></div>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script src="/crm-next.js"></script>
+</body>
+</html>

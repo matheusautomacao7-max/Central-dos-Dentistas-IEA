@@ -6541,6 +6541,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
             return
         query = query or {}
+        read_only = str(query.get("read_only", [""])[0]).strip().lower() in {"1", "true", "yes"}
         try:
             after_id = max(0, int(query.get("after_id", ["0"])[0] or 0))
             limit = max(20, min(300, int(query.get("limit", ["200"])[0] or 200)))
@@ -6565,9 +6566,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 ) recent ORDER BY id""", (conversation_id, limit)).fetchall()
             # A simples pré-visualização não pode retirar um contato da fila.
             # Só zeramos o não lido quando a conversa já foi assumida pelo usuário atual.
-            db.execute("""UPDATE crm_conversations SET unread_count=0
-                          WHERE id=? AND assigned_user_id=?""",
-                       (conversation_id, self.authenticated_user["id"]))
+            # O CRM paralelo utiliza read_only para validar o novo Inbox sem
+            # modificar sequer esse estado secundário da conversa.
+            if not read_only:
+                db.execute("""UPDATE crm_conversations SET unread_count=0
+                              WHERE id=? AND assigned_user_id=?""",
+                           (conversation_id, self.authenticated_user["id"]))
         items = []
         for row in rows:
             item = dict(row)
