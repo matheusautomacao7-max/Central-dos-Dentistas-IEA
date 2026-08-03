@@ -9,7 +9,8 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-stability-v2/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v3/);
+assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
 assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
@@ -49,7 +50,7 @@ const server = http.createServer((request, response) => {
       <a href="/reload?screen=queue" data-nav><span>Filas</span></a>
       <a href="/reload?screen=funnel" data-nav><span>Funil</span></a>
       <a href="/reload?screen=management" data-nav><span>Gestão</span></a>
-      <a href="/reload?screen=contacts" data-nav data-iea-patients-nav><span>Pacientes</span></a>
+      <a href="/reload?screen=contacts" data-nav data-iea-patients-nav><span>Contatos</span></a>
       <a href="/reload?screen=campaigns" data-nav><span>Campanhas</span></a>
       <a href="/reload?screen=integrations" data-nav><span>Integra</span></a>
       <a href="/reload?screen=settings" data-nav><span>Config</span></a>
@@ -114,7 +115,21 @@ try {
   }));
   alignment.forEach(item => {
     assert.ok(item.iconDelta <= 0.5, `${item.key} icon must be centered`);
-    assert.ok(item.labelDelta <= 0.5, `${item.key} label must be centered`);
+    assert.ok(item.labelDelta <= 0.5, `${item.key} label must be centered; delta=${item.labelDelta}`);
+  });
+  const labels = await page.locator("aside [data-iea-navigation-label]").evaluateAll(nodes => nodes.map(node => ({
+    text: node.textContent.trim(),
+    fontSize: parseFloat(getComputedStyle(node).fontSize),
+    width: node.getBoundingClientRect().width,
+    overflow: getComputedStyle(node).overflow,
+    whiteSpace: getComputedStyle(node).whiteSpace,
+  })));
+  assert.ok(labels.some(label => label.text === "Contatos" || label.text === "Pacientes"));
+  labels.forEach(label => {
+    assert.ok(label.fontSize <= 9.5, `${label.text} must fit the compact rail`);
+    assert.ok(label.width <= 58.5, `${label.text} must not overflow the compact rail`);
+    assert.equal(label.overflow, "hidden");
+    assert.equal(label.whiteSpace, "nowrap");
   });
 
   await page.getByRole("button", { name: "Abrir conversa" }).click();
@@ -169,7 +184,10 @@ try {
     }
     window.IEACrmNavigationOrder.maintain();
   });
-  await page.waitForFunction(() => document.querySelector("[data-iea-admin-navigation-divider]").hidden);
+  await page.waitForFunction(() => {
+    const divider = document.querySelector("[data-iea-admin-navigation-divider]");
+    return divider?.hidden && getComputedStyle(divider).display === "none";
+  });
   assert.equal(await page.locator("[data-iea-admin-navigation-divider]").isVisible(), false);
   console.log("crm-navigation-order-e2e-ok");
 } finally {

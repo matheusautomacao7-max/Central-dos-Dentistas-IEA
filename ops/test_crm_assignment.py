@@ -360,7 +360,7 @@ with tempfile.TemporaryDirectory() as directory:
             })
             assert isabela.responses[-1][0] == 201
             assert captured_audio_request["url"].endswith("/message/sendWhatsAppAudio/Zero%20Carie")
-            assert captured_audio_request["payload"]["encoding"] is False
+            assert captured_audio_request["payload"]["encoding"] is True
             with sqlite3.connect(server.DB_PATH) as db:
                 sent_audio = db.execute("SELECT message_type,media_url,mime_type,author_type FROM crm_messages WHERE external_message_id='audio-1'").fetchone()
                 assert sent_audio[0] == "audio" and sent_audio[2:] == ("audio/ogg", "human")

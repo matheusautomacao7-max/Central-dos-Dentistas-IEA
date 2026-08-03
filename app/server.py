@@ -7387,7 +7387,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             instance_path = quote(str(row["instance_name"]), safe="")
             if message_type == "audio":
                 evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
-                evolution_payload = {"number": f"55{row['phone']}", "audio": base64.b64encode(audio_bytes).decode("ascii"), "encoding": False}
+                # A Evolution 2.3.7 só executa a preparação final da nota de
+                # voz quando `encoding` está ativo. Mesmo com OGG/Opus válido,
+                # pular essa etapa pode gerar uma mídia aceita pela API, mas
+                # indisponível para reprodução no aplicativo do destinatário.
+                evolution_payload = {
+                    "number": f"55{row['phone']}",
+                    "audio": base64.b64encode(audio_bytes).decode("ascii"),
+                    "encoding": True,
+                }
             elif message_type in {"image", "video", "document"}:
                 evolution_path = f"/message/sendMedia/{instance_path}"
                 evolution_payload = {

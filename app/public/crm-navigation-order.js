@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  // CRM_NAVIGATION_COMPACT_RAIL_V3
   if (window.__IEA_CRM_NAVIGATION_ORDER_INSTALLED__) return;
   window.__IEA_CRM_NAVIGATION_ORDER_INSTALLED__ = true;
 
@@ -145,7 +146,8 @@
       width: "64px", minHeight: "54px", height: "auto", margin: "0px auto",
       padding: "7px 3px", boxSizing: "border-box", alignItems: "center",
       justifyContent: "center", gap: "4px", textAlign: "center",
-      position: "relative", flex: "0 0 auto",
+      position: "relative", flex: "0 0 auto", overflow: "hidden",
+      borderWidth: "0px",
     };
     Object.entries(important).forEach(([property, value]) => setImportantStyle(item, property, value));
     item.querySelectorAll("svg").forEach(icon => {
@@ -153,17 +155,27 @@
       setImportantStyle(icon, "margin", "0px auto");
       setImportantStyle(icon, "flex", "0 0 auto");
     });
-    const label = leafWithLabel(item, [key, key === "integracao" ? "integração" : "", key === "configuracao" ? "configuração" : ""]);
+    const labelAliases = {
+      inbox: ["inbox"], filas: ["filas", "fila"], funil: ["funil"], metas: ["metas"],
+      pacientes: ["pacientes", "contatos"], controle: ["controle"], gestao: ["gestao"],
+      campanhas: ["campanhas"], integracao: ["integra", "integracao", "integrações"],
+      configuracao: ["config", "configuracao"],
+    };
+    const label = leafWithLabel(item, labelAliases[key] || [key]);
     if (label) {
+      label.dataset.ieaNavigationLabel = key;
       setImportantStyle(label, "display", "block");
-      setImportantStyle(label, "width", "100%");
+      setImportantStyle(label, "width", "58px");
+      setImportantStyle(label, "maxWidth", "58px");
       setImportantStyle(label, "margin", "0px");
       setImportantStyle(label, "textAlign", "center");
-      setImportantStyle(label, "fontSize", "9.5px");
+      setImportantStyle(label, "fontSize", label.textContent.trim().length > 8 ? "8.25px" : "9.5px");
       setImportantStyle(label, "lineHeight", "1.15");
-      setImportantStyle(label, "whiteSpace", "normal");
+      setImportantStyle(label, "whiteSpace", "nowrap");
+      setImportantStyle(label, "overflow", "hidden");
+      setImportantStyle(label, "textOverflow", "clip");
       setImportantStyle(label, "overflowWrap", "normal");
-      setImportantStyle(label, "wordBreak", "normal");
+      setImportantStyle(label, "wordBreak", "keep-all");
     }
   }
 
