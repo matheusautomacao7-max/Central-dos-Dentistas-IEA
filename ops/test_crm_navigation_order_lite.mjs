@@ -19,7 +19,7 @@ const server = http.createServer((req, res) => {
     <div data-id="pacientes" data-iea-patients-nav style="color:white">Pacientes</div><div data-id="campanhas" style="color:white">Campanhas</div>
     <button data-id="controle" data-iea-patient-control style="color:white">Controle</button><div data-id="integracao" style="color:white">Integra</div>
     <div data-id="configuracao" style="color:white">Config</div><button data-id="metas" data-iea-goals-nav style="color:white">Metas</button>
-  </aside><script src="/lite.js"></script>`);
+  </aside><script>window.opens=0;window.IEACrmGoals={open:()=>window.opens++}</script><script src="/lite.js"></script>`);
 });
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 const executablePath = ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"].find(existsSync);
@@ -31,6 +31,8 @@ try {
   const result = await page.locator("aside > [data-id]").evaluateAll(nodes => nodes.map(node => ({ id: node.dataset.id, style: node.getAttribute("style") })));
   assert.deepEqual(result.map(item => item.id), ["inbox", "funil", "filas", "metas", "pacientes", "controle", "gestao", "campanhas", "integracao", "configuracao"]);
   result.forEach(item => assert.equal(item.style, "color:white"));
+  await page.getByRole("button", { name: "Metas" }).click();
+  assert.equal(await page.evaluate(() => window.opens), 1, "Metas must open after reordering");
   console.log("crm-navigation-order-lite-e2e-ok");
 } finally {
   await browser.close();

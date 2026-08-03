@@ -52,6 +52,16 @@
     scheduled = true;
     requestAnimationFrame(() => { scheduled = false; arrange(); });
   }
+  // O botão de Metas é criado pelo módulo próprio. Ao ser reposicionado,
+  // mantemos uma abertura delegada para não depender do listener do nó que o
+  // runtime eventualmente recriar.
+  document.addEventListener("click", event => {
+    const goals = event.composedPath().find(node => node instanceof Element && node.matches("[data-iea-goals-nav]"));
+    if (!goals || !window.IEACrmGoals || typeof window.IEACrmGoals.open !== "function") return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.IEACrmGoals.open();
+  }, true);
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
   schedule();
 })();
