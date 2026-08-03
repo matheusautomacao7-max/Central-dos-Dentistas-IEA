@@ -26,6 +26,7 @@ await page.addScriptTag({ path: scriptPath });
 await page.getByRole("button", { name: "Funil" }).click();
 await page.waitForFunction(() => document.querySelectorAll(".funnel-card").length === 3);
 assert.equal(await page.locator("#funnel-screen").getAttribute("hidden"), null);
+assert.equal(await page.locator("#inbox-screen").isVisible(), false);
 assert.equal(await page.locator(".funnel-card").count(), 3);
 assert.match(await page.locator("#funnel-status").textContent(), /3 atendimentos carregados/);
 await browser.close();
