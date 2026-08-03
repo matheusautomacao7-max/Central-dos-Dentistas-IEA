@@ -9038,6 +9038,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             relative = "crc.html"
         elif request_path in (CRM_NEXT_ROUTE, f"{CRM_NEXT_ROUTE}/"):
             relative = "crm-next.html"
+        elif request_path in (f"{CRM_NEXT_ROUTE}/operacional", f"{CRM_NEXT_ROUTE}/operacional/"):
+            # Corte seguro: o CRM completo passa a ter uma rota própria,
+            # fora da Central, preservando todas as regras operacionais já
+            # validadas (mídias, trava, transferência e resolução).
+            relative = "crm-whatsapp.html"
         elif request_path in (f"{CRC_ROUTE}/whatsapp", f"{CRC_ROUTE}/whatsapp/"):
             relative = "crm-whatsapp.html"
         elif request_path in (f"{CRC_ROUTE}/controle-pacientes", f"{CRC_ROUTE}/controle-pacientes/"):
