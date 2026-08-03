@@ -50,6 +50,19 @@ redacted = server.ClinicHandler.redact_log_value(
 assert "super-secret" not in redacted and "legacy" not in redacted
 assert "[REDACTED]" in redacted
 
+# Evolution 2.x pode manter o nome legado `token`; ele só é aceito quando o
+# valor coincide com o segredo exclusivo do webhook.
+original_webhook_token = server.EVOLUTION_WEBHOOK_TOKEN
+try:
+    server.EVOLUTION_WEBHOOK_TOKEN = "webhook-exclusive-secret"
+    webhook_handler = server.ClinicHandler.__new__(server.ClinicHandler)
+    webhook_handler.headers = {}
+    assert webhook_handler.evolution_webhook_authorized({"webhook_key": ["webhook-exclusive-secret"]})
+    assert webhook_handler.evolution_webhook_authorized({"token": ["webhook-exclusive-secret"]})
+    assert not webhook_handler.evolution_webhook_authorized({"token": ["wrong-secret"]})
+finally:
+    server.EVOLUTION_WEBHOOK_TOKEN = original_webhook_token
+
 # A ativação de 2FA deve falhar de forma segura, nunca persistir segredo em texto claro.
 original_key = server.APP_SECRET_KEY
 original_aesgcm = server.AESGCM

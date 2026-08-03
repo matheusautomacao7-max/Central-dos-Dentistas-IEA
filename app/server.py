@@ -6818,8 +6818,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.wfile.write(content)
 
     def evolution_webhook_authorized(self, query: dict) -> bool:
-        supplied = self.headers.get("X-Webhook-Token") or self.headers.get("Authorization", "").removeprefix("Bearer ") or str(query.get("webhook_key", [""])[0])
-        return bool(EVOLUTION_WEBHOOK_TOKEN and supplied and hmac.compare_digest(str(supplied), EVOLUTION_WEBHOOK_TOKEN))
+        # Algumas instâncias Evolution 2.x persistem a URL antiga usando
+        # `token`, mesmo após receberem a configuração com `webhook_key`.
+        # Aceitamos os dois nomes, mas sempre comparamos exclusivamente com o
+        # segredo dedicado EVOLUTION_WEBHOOK_TOKEN.
+        candidates = (
+            self.headers.get("X-Webhook-Token"),
+            self.headers.get("Authorization", "").removeprefix("Bearer "),
+            str(query.get("webhook_key", [""])[0]),
+            str(query.get("token", [""])[0]),
+        )
+        return bool(EVOLUTION_WEBHOOK_TOKEN and any(
+            supplied and hmac.compare_digest(str(supplied), EVOLUTION_WEBHOOK_TOKEN)
+            for supplied in candidates
+        ))
 
     def shared_integration_authorized(self, query: dict) -> bool:
         supplied = self.headers.get("X-Integration-Key") or self.headers.get("Authorization", "").removeprefix("Bearer ") or str(query.get("token", [""])[0])
