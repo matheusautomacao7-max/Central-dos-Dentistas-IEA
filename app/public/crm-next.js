@@ -40,9 +40,21 @@
       const response = await fetch("/api/crm/conversations?view=operational");
       if (!response.ok) throw new Error("Não foi possível carregar o Funil.");
       const payload = await response.json();
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      renderFunnel(items);
-      funnelStatus.textContent = `${items.length} atendimento${items.length === 1 ? "" : "s"} carregado${items.length === 1 ? "" : "s"} sem alterações.`;
+      let items = Array.isArray(payload.items) ? payload.items : [];
+      let fallback = false;
+      if (!items.length) {
+        const activeResponse = await fetch("/api/crm/conversations?view=active");
+        if (activeResponse.ok) {
+          const activePayload = await activeResponse.json();
+          items = Array.isArray(activePayload.items) ? activePayload.items : [];
+          fallback = true;
+        }
+      }
+      const visibleItems = items.slice(0, 200);
+      renderFunnel(visibleItems);
+      funnelStatus.textContent = fallback
+        ? `${visibleItems.length} conversa${visibleItems.length === 1 ? "" : "s"} aberta${visibleItems.length === 1 ? "" : "s"} exibida${visibleItems.length === 1 ? "" : "s"} para este perfil.`
+        : `${visibleItems.length} atendimento${visibleItems.length === 1 ? "" : "s"} carregado${visibleItems.length === 1 ? "" : "s"} sem alterações.`;
       state.funnelLoaded = true;
     } catch (error) {
       funnelStatus.textContent = error.message || "Não foi possível carregar o Funil.";
