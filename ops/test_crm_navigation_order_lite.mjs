@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 
 const script = await readFile(new URL("../app/public/crm-navigation-order-lite.js", import.meta.url), "utf8");
 const html = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(html, /crm-navigation-order-lite\.js\?v=20260803-native-order-v2/);
+assert.match(html, /crm-navigation-order-lite\.js\?v=20260803-native-order-v3/);
 assert.match(script, /iea-navigation-order-lite/);
 assert.doesNotMatch(html, /crm-navigation-order\.js/);
 
