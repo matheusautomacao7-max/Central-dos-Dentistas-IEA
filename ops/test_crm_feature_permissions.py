@@ -34,6 +34,7 @@ exact_feature_guards = {
     "get_crm_contacts": "contacts",
     "cleanup_crm_imported_contacts": "contacts",
     "get_crm_campaigns": "campaigns",
+    "get_crm_campaign_responses": "campaigns",
     "get_crm_quick_replies": "inbox",
     "create_crm_quick_reply": "inbox",
     "update_crm_quick_reply": "inbox",
@@ -85,6 +86,7 @@ assert view_mapping.rstrip().endswith('return "inbox"')
 for method_name in (
     "get_crm_contacts",
     "get_crm_campaigns",
+    "get_crm_campaign_responses",
     "get_crm_agents",
     "get_crm_metrics",
     "get_crm_resolution_reports",

@@ -135,6 +135,53 @@
     return `<div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px"><small style="display:block;color:var(--text3);font-weight:800">${label}</small><strong style="display:block;color:${color};font-size:24px;margin-top:4px">${displayed}</strong></div>`;
   }
 
+  function campaignReplyStatusStyle(status) {
+    if (status === "Na fila") return "background:#e8f2ff;color:#1859a9";
+    if (status === "Em atendimento") return "background:#e8f8ee;color:#08783c";
+    if (status === "Resolvida") return "background:var(--chip);color:var(--text2)";
+    if (status === "No Inbox") return "background:#fff4d9;color:#8a5a00";
+    return "background:#feecec;color:#b4232f";
+  }
+
+  function locateCampaignPatient(overlay, patient) {
+    overlay.remove();
+    const inboxLabel = [...document.querySelectorAll("span")].find(element => text(element) === "Inbox");
+    (inboxLabel?.parentElement || inboxLabel)?.click();
+    setTimeout(() => {
+      const search = [...document.querySelectorAll("input")].find(input =>
+        /buscar conversa/i.test(String(input.placeholder || ""))
+      );
+      if (!search) return;
+      const value = patient.phone || patient.name || "";
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter) setter.call(search, value); else search.value = value;
+      search.dispatchEvent(new Event("input", {bubbles:true}));
+      search.focus();
+    }, 450);
+  }
+
+  async function openCampaignReplies(campaign, days) {
+    const overlay = document.createElement("div");
+    overlay.dataset.campaignRepliesModal = "1";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:10050;background:rgba(8,20,32,.58);display:flex;align-items:center;justify-content:center;padding:24px";
+    overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Pacientes que responderam" style="width:min(920px,96vw);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.35);overflow:hidden"><header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 22px;border-bottom:1px solid var(--line)"><div><small style="color:#7c3aed;font-weight:900;letter-spacing:.08em">RESPOSTAS DA CAMPANHA</small><h2 style="margin:5px 0 0;font-size:20px">${escapeHtml(campaign.name)}</h2><p style="margin:5px 0 0;color:var(--text2);font-size:13px">Carregando os pacientes e conferindo o vínculo com o Inbox…</p></div><button type="button" data-close style="width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer">×</button></header><div data-body style="padding:20px 22px;overflow:auto"><div style="padding:28px;text-align:center;color:var(--text2)">Carregando…</div></div></section>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector("[data-close]").onclick = () => overlay.remove();
+    overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+    const body = overlay.querySelector("[data-body]");
+    try {
+      const data = await n8nApi(`/api/crm/campaign-responses?days=${encodeURIComponent(days)}&campaign=${encodeURIComponent(campaign.campaign_key || campaign.name)}`);
+      const items = data.items || [];
+      overlay.querySelector("header p").textContent = `${items.length} paciente(s) identificado(s). A situação informa onde cada conversa está agora.`;
+      body.innerHTML = items.length ? `<div style="display:grid;gap:10px">${items.map((item,index) => `<article style="display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(130px,.8fr) minmax(150px,.8fr) auto;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)"><div><strong style="display:block">${escapeHtml(item.name)}</strong><small style="display:block;margin-top:3px;color:var(--text2)">${escapeHtml(item.phone || "Telefone não informado")}</small><span style="display:inline-flex;margin-top:7px;padding:3px 7px;border-radius:999px;background:#f1eaff;color:#6d36a6;font-size:10px;font-weight:850">${escapeHtml(item.campaign_tag)}</span></div><small style="color:var(--text2)">${campaignDate(item.replied_at)}</small><span style="justify-self:start;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;${campaignReplyStatusStyle(item.inbox_status)}">${escapeHtml(item.inbox_status)}</span>${item.conversation_id ? `<button type="button" data-locate="${index}" style="border:1px solid #25d366;border-radius:9px;background:rgba(37,211,102,.1);color:#138348;font-weight:850;padding:8px 10px;cursor:pointer">Localizar no Inbox</button>` : `<small style="max-width:145px;color:#b4232f">O n8n contou a resposta, mas não encontrou a conversa.</small>`}</article>`).join("")}</div>` : `<div style="padding:38px;text-align:center;color:var(--text2)"><strong style="display:block;color:var(--text);margin-bottom:6px">Nenhum paciente encontrado</strong>Não há respostas únicas para esta campanha no período selecionado.</div>`;
+      body.querySelectorAll("[data-locate]").forEach(button => {
+        button.onclick = () => locateCampaignPatient(overlay, items[Number(button.dataset.locate)]);
+      });
+    } catch (error) {
+      body.innerHTML = `<div style="padding:28px;text-align:center;color:#b4232f">${escapeHtml(error.message)}</div>`;
+    }
+  }
+
   async function enhanceCampaignScreen() {
     const title = [...document.querySelectorAll("h1")].find(element => text(element).startsWith("Campanhas &"));
     // Replace the complete legacy Campaigns screen. The old view has a header
@@ -159,7 +206,10 @@
         const items = data.items || [];
         const totals = items.reduce((sum, item) => ({patients:sum.patients+Number(item.patients||0),sent:sum.sent+Number(item.sent||0),replies:sum.replies+Number(item.replies||0),handoffs:sum.handoffs+Number(item.handoffs||0),appointments:sum.appointments+Number(item.appointments||0),appointments_ai:sum.appointments_ai+Number(item.appointments_ai||0),appointments_human:sum.appointments_human+Number(item.appointments_human||0),appointments_unclassified:sum.appointments_unclassified+Number(item.appointments_unclassified||0)}), {patients:0,sent:0,replies:0,handoffs:0,appointments:0,appointments_ai:0,appointments_human:0,appointments_unclassified:0});
         const appointmentRate = totals.patients ? ((totals.appointments / totals.patients) * 100).toFixed(1) + '%' : '0%';
-        content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:12px;margin-bottom:18px">${campaignMetric('Pacientes impactados',totals.patients)}${campaignMetric('Mensagens enviadas',totals.sent,'#159447')}${campaignMetric('Respostas',totals.replies,'#1976d2')}${campaignMetric('Agendamentos',totals.appointments,'#159447')}${campaignMetric('Agendados pela IA',totals.appointments_ai,'#7c3aed')}${campaignMetric('Agendados por humano',totals.appointments_human,'#b26a00')}</div>${totals.appointments_unclassified ? `<p style="margin:-7px 0 15px;color:var(--text3);font-size:12px">${totals.appointments_unclassified} agendamento(s) antigo(s) sem origem informada.</p>` : ''}<div style="border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)"><div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;padding:11px 14px;background:var(--panel2);font-size:11px;font-weight:850;color:var(--text3)"><span>CAMPANHA</span><span>ENVIOS</span><span>RESPOSTAS</span><span>PARA HUMANO</span><span>AGEND.</span><span>IA</span><span>HUMANO</span><span>CONV.</span><span>FALHAS</span><span>ÚLTIMO EVENTO</span></div>${items.map(item=>`<div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;align-items:center;padding:13px 14px;border-top:1px solid var(--line);font-size:13px"><strong>${escapeHtml(item.name)}</strong><span>${item.sent||0}</span><span style="color:#1976d2;font-weight:800">${item.replies||0}</span><span style="color:#b26a00;font-weight:800">${item.handoffs||0}</span><span style="color:#159447;font-weight:800">${item.appointments||0}</span><span style="color:#7c3aed;font-weight:800">${item.appointments_ai||0}</span><span style="color:#b26a00;font-weight:800">${item.appointments_human||0}</span><span style="color:#159447;font-weight:800">${Number(item.appointment_rate||0).toFixed(1)}%</span><span style="color:${Number(item.failures||0)?'#dc3545':'var(--text2)'}">${item.failures||0}</span><small style="color:var(--text3)">${campaignDate(item.last_event_at)}</small></div>`).join('') || '<div style="padding:32px;text-align:center;color:var(--text3)">Ainda não recebemos eventos de campanha neste período. Os números aparecerão aqui automaticamente quando um workflow enviar, receber resposta, transferir para humano ou confirmar agendamento.</div>'}</div>`;
+        content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:12px;margin-bottom:18px">${campaignMetric('Pacientes impactados',totals.patients)}${campaignMetric('Mensagens enviadas',totals.sent,'#159447')}${campaignMetric('Respostas',totals.replies,'#1976d2')}${campaignMetric('Agendamentos',totals.appointments,'#159447')}${campaignMetric('Agendados pela IA',totals.appointments_ai,'#7c3aed')}${campaignMetric('Agendados por humano',totals.appointments_human,'#b26a00')}</div>${totals.appointments_unclassified ? `<p style="margin:-7px 0 15px;color:var(--text3);font-size:12px">${totals.appointments_unclassified} agendamento(s) antigo(s) sem origem informada.</p>` : ''}<div style="border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)"><div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;padding:11px 14px;background:var(--panel2);font-size:11px;font-weight:850;color:var(--text3)"><span>CAMPANHA</span><span>ENVIOS</span><span>RESPOSTAS</span><span>PARA HUMANO</span><span>AGEND.</span><span>IA</span><span>HUMANO</span><span>CONV.</span><span>FALHAS</span><span>ÚLTIMO EVENTO</span></div>${items.map((item,index)=>`<div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;align-items:center;padding:13px 14px;border-top:1px solid var(--line);font-size:13px"><strong>${escapeHtml(item.name)}</strong><span>${item.sent||0}</span>${Number(item.replies||0) ? `<button type="button" data-campaign-replies="${index}" title="Ver pacientes que responderam" style="justify-self:start;border:0;background:#e8f2ff;color:#1976d2;font-weight:900;padding:5px 9px;border-radius:999px;cursor:pointer;text-decoration:underline">${item.replies}</button>` : '<span style="color:var(--text3)">0</span>'}<span style="color:#b26a00;font-weight:800">${item.handoffs||0}</span><span style="color:#159447;font-weight:800">${item.appointments||0}</span><span style="color:#7c3aed;font-weight:800">${item.appointments_ai||0}</span><span style="color:#b26a00;font-weight:800">${item.appointments_human||0}</span><span style="color:#159447;font-weight:800">${Number(item.appointment_rate||0).toFixed(1)}%</span><span style="color:${Number(item.failures||0)?'#dc3545':'var(--text2)'}">${item.failures||0}</span><small style="color:var(--text3)">${campaignDate(item.last_event_at)}</small></div>`).join('') || '<div style="padding:32px;text-align:center;color:var(--text3)">Ainda não recebemos eventos de campanha neste período. Os números aparecerão aqui automaticamente quando um workflow enviar, receber resposta, transferir para humano ou confirmar agendamento.</div>'}</div>`;
+        content.querySelectorAll("[data-campaign-replies]").forEach(button => {
+          button.onclick = () => openCampaignReplies(items[Number(button.dataset.campaignReplies)], days);
+        });
       } catch (error) {
         content.innerHTML = `<div style="padding:24px;text-align:center;color:#b4232f">${escapeHtml(error.message)}</div>`;
       }

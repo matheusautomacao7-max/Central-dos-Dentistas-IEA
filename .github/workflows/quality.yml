@@ -31,6 +31,7 @@ jobs:
           python ops/test_crm_admin_observer.py
           python ops/test_crm_assignment.py
           python ops/test_crm_claim.py
+          python ops/test_crm_campaign_tracking.py
           python ops/test_crm_feature_permissions.py
           python ops/test_crm_goals.py
           python ops/test_crm_manual_start.py

@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260802-spa-navigation-v1/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-alignment-v1/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
 assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
@@ -99,6 +99,22 @@ try {
   });
   assert.ok(controlGeometry.deltaX <= 0.5, `control icon must be centered; delta=${controlGeometry.deltaX}`);
   assert.deepEqual(controlGeometry, { deltaX: 0, width: 22, height: 22, label: "Controle" });
+
+  const alignment = await page.locator("aside > [data-iea-navigation-key]").evaluateAll(nodes => nodes.map(node => {
+    const item = node.getBoundingClientRect();
+    const icon = node.querySelector("svg")?.getBoundingClientRect();
+    const label = Array.from(node.querySelectorAll("span,div")).find(child => !child.children.length)?.getBoundingClientRect();
+    const center = item.left + item.width / 2;
+    return {
+      key: node.dataset.ieaNavigationKey,
+      iconDelta: icon ? Math.abs(center - (icon.left + icon.width / 2)) : 0,
+      labelDelta: label ? Math.abs(center - (label.left + label.width / 2)) : 0,
+    };
+  }));
+  alignment.forEach(item => {
+    assert.ok(item.iconDelta <= 0.5, `${item.key} icon must be centered`);
+    assert.ok(item.labelDelta <= 0.5, `${item.key} label must be centered`);
+  });
 
   await page.getByText("Funil", { exact: true }).click();
   assert.equal(await page.evaluate(() => window.clicks), 1, "reordering must preserve existing event listeners");

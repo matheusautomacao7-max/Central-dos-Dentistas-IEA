@@ -68,6 +68,9 @@ try {
   await theme.waitFor(); await theme.click();
   await page.waitForFunction(() => document.body.dataset.omtheme === "dark");
   assert.equal(await page.evaluate(() => localStorage.getItem("iea.crm.theme")), "dark");
+  await page.evaluate(() => document.body.dataset.omtheme = "light");
+  await page.waitForFunction(() => localStorage.getItem("iea.crm.theme") === "light");
+  await page.evaluate(() => document.body.dataset.omtheme = "dark");
 
   // The embedded CRM can rebuild <head>. The profile must recover its own
   // stylesheet before opening instead of rendering as raw, clipped markup.
@@ -97,6 +100,9 @@ try {
   assert.equal(await page.getByText("Administrador do CRM", {exact:true}).count(), 1);
   assert.equal(await page.getByText("22", {exact:true}).count(), 1);
   assert.equal(await page.getByText("Este perfil ainda não possui conquistas.").count(), 1);
+  const portrait = await page.locator(".iea-cp-avatar").boundingBox();
+  assert.ok(portrait.height > portrait.width, "a foto do perfil deve usar formato retrato");
+  assert.equal(await page.getByRole("heading", {name:"Mensagens de reconhecimento"}).count(), 1);
 
   await page.getByRole("button", {name:"+ Criar conquista"}).click();
   await page.getByLabel("Título da conquista").fill("Excelência no atendimento");
@@ -104,6 +110,8 @@ try {
   await page.getByLabel("Símbolo").selectOption("medal");
   await page.getByRole("button", {name:"Publicar conquista"}).click();
   await page.getByRole("heading", {name:"Excelência no atendimento"}).waitFor();
+  assert.equal(await page.locator(".iea-cp-trophy").count(), 1);
+  assert.equal(await page.locator(".iea-cp-recognition").count(), 1);
   assert.equal(await page.getByText("Destaque criado por Matheus Henrique", {exact:false}).count(), 1);
 
   await page.setViewportSize({width:390,height:844});

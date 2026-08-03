@@ -49,9 +49,12 @@ def test_goal_math() -> None:
     assert server.crm_open_days_remaining(date(2026, 9, 1), first) == 0
     assert server.crm_goal_progress(40, 28, 8) == {
         "target": 40,
+        "minimum": 0,
         "realized": 28,
         "percentage": 70.0,
         "gap": 12,
+        "minimum_gap": 0,
+        "minimum_reached": False,
         "required_per_open_day": 2,
         "reached": False,
     }
@@ -175,7 +178,8 @@ def test_achievements_are_emitted_once_per_target() -> None:
         );
         CREATE TABLE crm_goals(
           id INTEGER PRIMARY KEY,user_id INTEGER,month_start TEXT,metric_key TEXT,
-          monthly_target INTEGER,daily_target INTEGER,celebration_enabled INTEGER,celebration_message TEXT
+          monthly_target INTEGER,monthly_minimum INTEGER,daily_target INTEGER,daily_minimum INTEGER,
+          celebration_enabled INTEGER,celebration_message TEXT
         );
         CREATE TABLE crm_goal_achievements(
           id INTEGER PRIMARY KEY AUTOINCREMENT,goal_id INTEGER,user_id INTEGER,metric_key TEXT,
@@ -195,11 +199,11 @@ def test_achievements_are_emitted_once_per_target() -> None:
         ],
     )
     db.executemany(
-        "INSERT INTO crm_goals VALUES(?,?,?,?,?,?,?,?)",
+        "INSERT INTO crm_goals VALUES(?,?,?,?,?,?,?,?,?,?)",
         [
-            (1, 7, month_start, "first_consultations", 1, 1, 1, None),
-            (2, 7, month_start, "recoveries", 1, 1, 1, None),
-            (3, 7, month_start, "attendances", 2, 2, 1, None),
+            (1, 7, month_start, "first_consultations", 1, 0, 1, 0, 1, None),
+            (2, 7, month_start, "recoveries", 1, 0, 1, 0, 1, None),
+            (3, 7, month_start, "attendances", 2, 0, 2, 0, 1, None),
         ],
     )
     handler = server.ClinicHandler.__new__(server.ClinicHandler)
@@ -210,6 +214,50 @@ def test_achievements_are_emitted_once_per_target() -> None:
     assert db.execute("SELECT COUNT(*) FROM crm_goal_achievements").fetchone()[0] == 8
 
 
+def test_goal_configuration_can_be_applied_to_every_operational_agent() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript((ROOT / "app" / "schema.sql").read_text(encoding="utf-8"))
+    db.executemany(
+        """INSERT INTO users(
+               id,name,email,password_hash,access_role,crm_access_level,crm_operational_agent,active
+           ) VALUES(?,?,?,?,?,?,?,1)""",
+        (
+            (1, "Gestor", "gestor@example.test", "x", "crc", "admin", 0),
+            (2, "Isabela", "isabela@example.test", "x", "crc", "attendant", 1),
+            (3, "Defendi", "defendi@example.test", "x", "crc", "attendant", 1),
+        ),
+    )
+    original_connect = server.connect
+    server.connect = lambda: db
+    try:
+        handler = server.ClinicHandler.__new__(server.ClinicHandler)
+        sent = []
+        handler.send_json = lambda payload, status=200: sent.append((payload, status))
+        handler.authenticated_user = {
+            "id": 1, "name": "Gestor", "access_role": "crc",
+            "crm_access_level": "admin", "permissions_json": "{}",
+        }
+        goal = {
+            "monthly_target": 1000, "monthly_minimum": 800,
+            "daily_target": 50, "daily_minimum": 40,
+            "celebration_enabled": True, "celebration_message": "Meta alcançada",
+        }
+        handler.save_crm_goals({
+            "month": "2026-08", "user_id": 2, "apply_to_all": True,
+            "goals": {metric: dict(goal) for metric in server.CRM_GOAL_METRICS},
+        })
+        assert sent[-1][0]["applied_scope"] == "all"
+        assert sent[-1][0]["applied_user_count"] == 2
+        assert db.execute("SELECT COUNT(*) FROM crm_goals").fetchone()[0] == 6
+        rows = db.execute(
+            "SELECT DISTINCT monthly_target,monthly_minimum,daily_target,daily_minimum FROM crm_goals"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(1000, 800, 50, 40)]
+    finally:
+        server.connect = original_connect
+
+
 if __name__ == "__main__":
     test_goal_math()
     test_goal_actuals_are_individual_and_ignore_internal_contacts()
@@ -217,4 +265,5 @@ if __name__ == "__main__":
     test_crm_access_levels_are_separate_from_general_admin()
     test_crm_access_level_applies_safe_defaults()
     test_achievements_are_emitted_once_per_target()
+    test_goal_configuration_can_be_applied_to_every_operational_agent()
     print("crm-goals-regression-ok")

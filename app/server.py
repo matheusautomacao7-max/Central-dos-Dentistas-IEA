@@ -243,15 +243,19 @@ def crm_open_days_remaining(reference: date, month_start: date) -> int:
                if (cursor + timedelta(days=offset)).weekday() < 6)
 
 
-def crm_goal_progress(target: int, realized: int, remaining_days: int) -> dict:
+def crm_goal_progress(target: int, realized: int, remaining_days: int, minimum: int = 0) -> dict:
     target = max(0, int(target or 0))
     realized = max(0, int(realized or 0))
+    minimum = max(0, min(target, int(minimum or 0))) if target else 0
     gap = max(0, target - realized)
     return {
         "target": target,
+        "minimum": minimum,
         "realized": realized,
         "percentage": round(realized / target * 100, 1) if target else 0,
         "gap": gap,
+        "minimum_gap": max(0, minimum - realized),
+        "minimum_reached": bool(minimum and realized >= minimum),
         "required_per_open_day": math.ceil(gap / remaining_days) if gap and remaining_days else 0,
         "reached": bool(target and realized >= target),
     }
@@ -465,6 +469,10 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE crm_service_resolutions ADD COLUMN is_recovery INTEGER NOT NULL DEFAULT 0")
         db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_service_resolutions_goals
                       ON crm_service_resolutions(resolved_by_user_id,patient_type,is_recovery,outcome,resolved_at DESC)""")
+        crm_goal_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_goals)").fetchall()}
+        for column in ("monthly_minimum", "daily_minimum"):
+            if column not in crm_goal_columns:
+                db.execute(f"ALTER TABLE crm_goals ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
         crm_message_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_messages)").fetchall()}
         for column, definition in {
             "author_type": "TEXT NOT NULL DEFAULT 'unknown'",
@@ -1357,6 +1365,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_n8n_patient_events(parse_qs(parsed.query))
         if parsed.path == "/api/crm/campaigns":
             return self.get_crm_campaigns(parse_qs(parsed.query))
+        if parsed.path == "/api/crm/campaign-responses":
+            return self.get_crm_campaign_responses(parse_qs(parsed.query))
         if parsed.path == "/api/crm/n8n/versions":
             return self.get_crm_n8n_versions()
         if parsed.path == "/api/crm/n8n/callback-keys":
@@ -5408,6 +5418,122 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return "Confirmação de agenda"
         return raw or "Automação sem campanha"
 
+    def crm_attach_campaign_to_conversation(
+        self, db, conversation_id: int | None, campaign_id: str | None, flow_name: str | None = None
+    ) -> str | None:
+        """Persiste a origem da campanha como uma etiqueta real da conversa."""
+        if not conversation_id:
+            return None
+        raw_campaign = str(campaign_id or flow_name or "").strip()
+        if not raw_campaign:
+            return None
+        label = self.crm_campaign_label(raw_campaign)
+        if label == "Automação sem campanha":
+            return None
+        tag_name = f"Campanha: {label}"[:40]
+        db.execute("INSERT OR IGNORE INTO crm_tags(name,color) VALUES(?, '#7c3aed')", (tag_name,))
+        tag = db.execute("SELECT id FROM crm_tags WHERE name=? COLLATE NOCASE", (tag_name,)).fetchone()
+        if tag:
+            db.execute(
+                "INSERT OR IGNORE INTO crm_conversation_tags(conversation_id,tag_id) VALUES(?,?)",
+                (conversation_id, tag["id"]),
+            )
+        db.execute(
+            """UPDATE crm_conversations
+                  SET automation_flow=COALESCE(NULLIF(?,''),automation_flow),
+                      updated_at=datetime('now','localtime')
+                WHERE id=?""",
+            (str(flow_name or campaign_id or "")[:120], conversation_id),
+        )
+        return tag_name
+
+    def crm_find_campaign_conversation(self, db, instance: str, phone: str):
+        """Localiza a conversa mesmo quando o n8n omite a instância do WhatsApp."""
+        if not phone:
+            return None
+        if instance:
+            exact = db.execute(
+                """SELECT cv.id,ct.id AS contact_id,ct.name AS contact_name,
+                          ch.display_name AS channel_name
+                     FROM crm_conversations cv
+                     JOIN crm_channels ch ON ch.id=cv.channel_id
+                     JOIN crm_contacts ct ON ct.id=cv.contact_id
+                    WHERE ch.instance_name=? AND ct.phone=?
+                    ORDER BY COALESCE(cv.last_message_at,cv.created_at) DESC LIMIT 1""",
+                (instance, phone),
+            ).fetchone()
+            if exact:
+                return exact
+        return db.execute(
+            """SELECT cv.id,ct.id AS contact_id,ct.name AS contact_name,
+                      ch.display_name AS channel_name
+                 FROM crm_conversations cv
+                 JOIN crm_channels ch ON ch.id=cv.channel_id
+                 JOIN crm_contacts ct ON ct.id=cv.contact_id
+                WHERE ct.phone=?
+                ORDER BY CASE WHEN cv.status='Resolvida' THEN 1 ELSE 0 END,
+                         COALESCE(cv.last_message_at,cv.created_at) DESC
+                LIMIT 1""",
+            (phone,),
+        ).fetchone()
+
+    def crm_reconcile_campaign_links(self, db, event_scope_sql: str, event_scope_params: tuple) -> None:
+        """Repara eventos antigos que foram contabilizados antes de achar a conversa."""
+        rows = db.execute(
+            """SELECT e.event_key,e.conversation_id,e.campaign_id,e.flow_name,e.phone,e.event_type,
+                      COALESCE(e.occurred_at,e.received_at) AS event_at
+                 FROM crm_n8n_patient_events e
+                WHERE {event_scope_sql}
+                  AND (NULLIF(e.campaign_id,'') IS NOT NULL OR NULLIF(e.flow_name,'') IS NOT NULL)
+                  AND datetime(COALESCE(e.occurred_at,e.received_at)) >= datetime('now','localtime','-180 days')
+                  AND (e.conversation_id IS NULL OR NOT EXISTS (
+                        SELECT 1 FROM crm_conversation_tags ctt
+                        JOIN crm_tags t ON t.id=ctt.tag_id
+                        WHERE ctt.conversation_id=e.conversation_id AND t.name LIKE 'Campanha:%'))
+                ORDER BY e.id DESC LIMIT 1000""".format(event_scope_sql=event_scope_sql),
+            event_scope_params,
+        ).fetchall()
+        for event in rows:
+            conversation = None
+            if event["conversation_id"]:
+                conversation = db.execute(
+                    """SELECT cv.id,ct.id AS contact_id,ct.name AS contact_name,
+                              ch.display_name AS channel_name
+                         FROM crm_conversations cv
+                         JOIN crm_contacts ct ON ct.id=cv.contact_id
+                         JOIN crm_channels ch ON ch.id=cv.channel_id
+                        WHERE cv.id=?""",
+                    (event["conversation_id"],),
+                ).fetchone()
+            if not conversation:
+                conversation = self.crm_find_campaign_conversation(db, "", self.crm_phone(event["phone"]))
+            if not conversation:
+                continue
+            conversation_id = int(conversation["id"])
+            db.execute(
+                "UPDATE crm_n8n_patient_events SET conversation_id=?,contact_id=COALESCE(contact_id,?) WHERE event_key=?",
+                (conversation_id, conversation["contact_id"], event["event_key"]),
+            )
+            db.execute(
+                "UPDATE crm_automation_events SET conversation_id=? WHERE event_key=? AND conversation_id IS NULL",
+                (conversation_id, event["event_key"]),
+            )
+            self.crm_attach_campaign_to_conversation(
+                db, conversation_id, event["campaign_id"], event["flow_name"]
+            )
+            if event["event_type"] in {"patient.replied", "message.received"}:
+                # Só recoloca na fila quando existe uma mensagem inbound real.
+                # Assim a reconciliação não cria atendimentos fantasmas.
+                db.execute(
+                    """UPDATE crm_conversations SET
+                          queue_entered_at=COALESCE(queue_entered_at,?),
+                          handoff_reason=COALESCE(handoff_reason,'Resposta de campanha aguardando CRC'),
+                          updated_at=datetime('now','localtime')
+                        WHERE id=? AND status<>'Resolvida' AND assigned_user_id IS NULL
+                          AND last_direction='inbound'""",
+                    (event["event_at"], conversation_id),
+                )
+
     @staticmethod
     def crm_appointment_source(payload: dict) -> str | None:
         """Classifica apenas uma origem explicitamente enviada pela integração.
@@ -5438,12 +5564,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             days = 30
         event_scope_sql, event_scope_params = self.crm_event_channel_scope_clause("e")
         with connect() as db:
+            self.crm_reconcile_campaign_links(db, event_scope_sql, event_scope_params)
             rows = db.execute(
                 """SELECT COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'Automação sem campanha') AS campaign,
                           COUNT(DISTINCT COALESCE(NULLIF(phone,''),event_key)) AS patients,
                           SUM(CASE WHEN event_type IN ('message.sent','message.ai.sent') THEN 1 ELSE 0 END) AS sent,
                           SUM(CASE WHEN event_type IN ('message.delivered','message.read') THEN 1 ELSE 0 END) AS delivered,
-                          SUM(CASE WHEN event_type IN ('patient.replied','message.received') THEN 1 ELSE 0 END) AS replies,
+                          COUNT(DISTINCT CASE WHEN event_type IN ('patient.replied','message.received')
+                                              THEN COALESCE(NULLIF(phone,''),event_key) END) AS replies,
+                          COUNT(DISTINCT CASE WHEN event_type IN ('patient.replied','message.received')
+                                                   AND conversation_id IS NOT NULL
+                                              THEN COALESCE(NULLIF(phone,''),event_key) END) AS linked_replies,
                           SUM(CASE WHEN event_type IN ('ai.handoff.requested','human.required','opportunity.detected') THEN 1 ELSE 0 END) AS handoffs,
                           COUNT(DISTINCT CASE WHEN event_type IN ('appointment.confirmed','appointment.scheduled','appointment.created','patient.scheduled','booking.confirmed')
                                                     OR lower(COALESCE(outcome,'')) IN ('scheduled','booked','agendado','agendada')
@@ -5472,13 +5603,81 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         campaigns = []
         for row in rows:
             item = dict(row)
-            item["name"] = self.crm_campaign_label(item.pop("campaign", ""))
+            campaign_key = item.pop("campaign", "")
+            item["campaign_key"] = campaign_key
+            item["name"] = self.crm_campaign_label(campaign_key)
             # Conversion is based on unique patients impacted, so the same
             # patient cannot inflate a campaign simply by generating retries.
             patients = int(item.get("patients") or 0)
             item["appointment_rate"] = round((int(item.get("appointments") or 0) / patients) * 100, 1) if patients else 0
             campaigns.append(item)
         self.send_json({"days": days, "items": campaigns})
+
+    def get_crm_campaign_responses(self, query: dict) -> None:
+        """Lista os pacientes que responderam e mostra se chegaram ao Inbox."""
+        if not self.require_crc_access():
+            return
+        if not self.require_crm_feature("campaigns"):
+            return
+        campaign_key = str(query.get("campaign", [""])[0] or "").strip()[:160]
+        if not campaign_key:
+            return self.send_json({"error": "Selecione uma campanha."}, HTTPStatus.BAD_REQUEST)
+        try:
+            days = max(1, min(180, int(query.get("days", ["30"])[0] or 30)))
+        except (TypeError, ValueError):
+            days = 30
+        event_scope_sql, event_scope_params = self.crm_event_channel_scope_clause("e")
+        with connect() as db:
+            rows = db.execute(
+                """SELECT e.id,e.event_key,e.patient_name,e.phone,e.conversation_id,
+                          COALESCE(e.occurred_at,e.received_at) AS replied_at,
+                          cv.status AS conversation_status,cv.queue_entered_at,cv.assigned_user_id,
+                          ct.name AS contact_name,ct.phone AS contact_phone,u.name AS assigned_to,
+                          COALESCE((SELECT GROUP_CONCAT(t.name, '||')
+                                      FROM crm_conversation_tags ctt
+                                      JOIN crm_tags t ON t.id=ctt.tag_id
+                                     WHERE ctt.conversation_id=cv.id),'') AS tag_names
+                     FROM crm_n8n_patient_events e
+                     LEFT JOIN crm_conversations cv ON cv.id=e.conversation_id
+                     LEFT JOIN crm_contacts ct ON ct.id=COALESCE(e.contact_id,cv.contact_id)
+                     LEFT JOIN users u ON u.id=cv.assigned_user_id
+                    WHERE {event_scope_sql}
+                      AND COALESCE(NULLIF(e.campaign_id,''),NULLIF(e.flow_name,''),'Automação sem campanha')=?
+                      AND e.event_type IN ('patient.replied','message.received')
+                      AND datetime(COALESCE(e.occurred_at,e.received_at)) >= datetime('now','localtime', ?)
+                    ORDER BY datetime(COALESCE(e.occurred_at,e.received_at)) DESC,e.id DESC
+                    LIMIT 1000""".format(event_scope_sql=event_scope_sql),
+                (*event_scope_params, campaign_key, f"-{days} days"),
+            ).fetchall()
+        items = []
+        seen = set()
+        for row in rows:
+            item = dict(row)
+            patient_key = self.crm_phone(item.get("phone") or item.get("contact_phone")) or str(item.get("event_key") or item["id"])
+            if patient_key in seen:
+                continue
+            seen.add(patient_key)
+            item["name"] = item.get("contact_name") or item.get("patient_name") or "Paciente não identificado"
+            item["phone"] = self.crm_phone(item.get("phone") or item.get("contact_phone")) or ""
+            if item.get("assigned_user_id"):
+                item["inbox_status"] = "Em atendimento"
+            elif item.get("conversation_status") == "Resolvida":
+                item["inbox_status"] = "Resolvida"
+            elif item.get("conversation_id") and item.get("queue_entered_at"):
+                item["inbox_status"] = "Na fila"
+            elif item.get("conversation_id"):
+                item["inbox_status"] = "No Inbox"
+            else:
+                item["inbox_status"] = "Sem conversa vinculada"
+            item["campaign_tag"] = f"Campanha: {self.crm_campaign_label(campaign_key)}"[:40]
+            items.append(item)
+        self.send_json({
+            "campaign": self.crm_campaign_label(campaign_key),
+            "campaign_key": campaign_key,
+            "days": days,
+            "total": len(items),
+            "items": items,
+        })
 
     def get_crm_n8n_versions(self) -> None:
         if not self.require_crm_n8n_manager():
@@ -5962,7 +6161,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             day_actuals = {key: 0 for key in month_actuals}
         remaining_days = crm_open_days_remaining(today, month_start)
         goal_rows = db.execute(
-            """SELECT id,metric_key,monthly_target,daily_target,celebration_enabled,celebration_message
+            """SELECT id,metric_key,monthly_target,monthly_minimum,daily_target,daily_minimum,
+                      celebration_enabled,celebration_message
                  FROM crm_goals WHERE user_id=? AND month_start=?""",
             (user_id, month_start.isoformat()),
         ).fetchall()
@@ -5972,9 +6172,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             goal = configured.get(metric_key, {})
             month_progress = crm_goal_progress(
                 goal.get("monthly_target", 0), month_actuals.get(metric_key, 0), remaining_days,
+                goal.get("monthly_minimum", 0),
             )
             day_progress = crm_goal_progress(
                 goal.get("daily_target", 0), day_actuals.get(metric_key, 0), 1,
+                goal.get("daily_minimum", 0),
             )
             items.append({
                 "metric_key": metric_key,
@@ -6059,7 +6261,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         month_value = today.strftime("%Y-%m")
         month_start, month_end = crm_goal_month_bounds(month_value)
         goals = db.execute(
-            """SELECT id,metric_key,monthly_target,daily_target,celebration_enabled,celebration_message
+            """SELECT id,metric_key,monthly_target,monthly_minimum,daily_target,daily_minimum,
+                      celebration_enabled,celebration_message
                  FROM crm_goals WHERE user_id=? AND month_start=?""",
             (user_id, month_start.isoformat()),
         ).fetchall()
@@ -6132,6 +6335,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.FORBIDDEN,
             )
         month_value = str(payload.get("month") or "").strip()
+        apply_to_all = payload.get("apply_to_all") is True
         try:
             user_id = int(payload.get("user_id") or 0)
             month_start, _ = crm_goal_month_bounds(month_value)
@@ -6145,39 +6349,68 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             for metric_key in CRM_GOAL_METRICS:
                 item = raw_goals.get(metric_key) or {}
                 monthly_target = int(item.get("monthly_target") or 0)
+                monthly_minimum = int(item.get("monthly_minimum") or 0)
                 daily_target = int(item.get("daily_target") or 0)
-                if not 0 <= monthly_target <= 100000 or not 0 <= daily_target <= 10000:
+                daily_minimum = int(item.get("daily_minimum") or 0)
+                if (not 0 <= monthly_target <= 100000 or not 0 <= monthly_minimum <= 100000 or
+                        not 0 <= daily_target <= 10000 or not 0 <= daily_minimum <= 10000 or
+                        monthly_minimum > monthly_target or daily_minimum > daily_target):
                     raise ValueError
                 normalized[metric_key] = {
                     "monthly_target": monthly_target,
+                    "monthly_minimum": monthly_minimum,
                     "daily_target": daily_target,
+                    "daily_minimum": daily_minimum,
                     "celebration_enabled": 1 if item.get("celebration_enabled", True) else 0,
                     "celebration_message": str(item.get("celebration_message") or "").strip()[:180] or None,
                 }
         except (TypeError, ValueError):
-            return self.send_json({"error": "Use apenas números inteiros positivos nas metas."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json(
+                {"error": "Use números inteiros positivos e mantenha o mínimo menor ou igual à meta."},
+                HTTPStatus.BAD_REQUEST,
+            )
         with connect() as db:
-            user = db.execute(
-                "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1", (user_id,),
-            ).fetchone()
-            if not user:
+            agents = db.execute(
+                """SELECT id,name FROM users
+                    WHERE access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1
+                    ORDER BY name COLLATE NOCASE"""
+            ).fetchall()
+            agent_ids = [int(row["id"]) for row in agents]
+            if user_id not in agent_ids:
                 return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
-            for metric_key, item in normalized.items():
-                db.execute(
-                    """INSERT INTO crm_goals(user_id,month_start,metric_key,monthly_target,daily_target,
-                                              celebration_enabled,celebration_message,created_by_user_id)
-                         VALUES(?,?,?,?,?,?,?,?)
-                         ON CONFLICT(user_id,month_start,metric_key) DO UPDATE SET
-                           monthly_target=excluded.monthly_target,daily_target=excluded.daily_target,
-                           celebration_enabled=excluded.celebration_enabled,
-                           celebration_message=excluded.celebration_message,
-                           updated_at=datetime('now','localtime')""",
-                    (user_id, month_start.isoformat(), metric_key, item["monthly_target"], item["daily_target"],
-                     item["celebration_enabled"], item["celebration_message"], self.authenticated_user["id"]),
-                )
-            achievements = self.crm_evaluate_goal_achievements(db, user_id)
+            target_user_ids = agent_ids if apply_to_all else [user_id]
+            achievements = []
+            for target_user_id in target_user_ids:
+                for metric_key, item in normalized.items():
+                    db.execute(
+                        """INSERT INTO crm_goals(
+                               user_id,month_start,metric_key,monthly_target,monthly_minimum,
+                               daily_target,daily_minimum,celebration_enabled,celebration_message,created_by_user_id
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                           ON CONFLICT(user_id,month_start,metric_key) DO UPDATE SET
+                             monthly_target=excluded.monthly_target,
+                             monthly_minimum=excluded.monthly_minimum,
+                             daily_target=excluded.daily_target,
+                             daily_minimum=excluded.daily_minimum,
+                             celebration_enabled=excluded.celebration_enabled,
+                             celebration_message=excluded.celebration_message,
+                             updated_at=datetime('now','localtime')""",
+                        (
+                            target_user_id, month_start.isoformat(), metric_key,
+                            item["monthly_target"], item["monthly_minimum"],
+                            item["daily_target"], item["daily_minimum"],
+                            item["celebration_enabled"], item["celebration_message"],
+                            self.authenticated_user["id"],
+                        ),
+                    )
+                created = self.crm_evaluate_goal_achievements(db, target_user_id)
+                if target_user_id == user_id:
+                    achievements = created
             dashboard = self.crm_goal_dashboard_data(db, user_id, month_value)
         dashboard["can_configure"] = True
+        dashboard["agents"] = [dict(row) for row in agents]
+        dashboard["applied_scope"] = "all" if apply_to_all else "individual"
+        dashboard["applied_user_count"] = len(target_user_ids)
         dashboard["achievements"] = achievements
         self.send_json(dashboard)
 
@@ -6634,12 +6867,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         safe_payload.pop("crm_event_token", None)
         raw = json.dumps(safe_payload,ensure_ascii=False,sort_keys=True,separators=(",",":"))
         with connect() as db:
-            conversation = None
-            if instance and phone:
-                conversation = db.execute("""SELECT cv.id,ct.id AS contact_id,ct.name AS contact_name,
-                    ch.display_name AS channel_name FROM crm_conversations cv
-                    JOIN crm_channels ch ON ch.id=cv.channel_id JOIN crm_contacts ct ON ct.id=cv.contact_id
-                    WHERE ch.instance_name=? AND ct.phone=?""",(instance,phone)).fetchone()
+            conversation = self.crm_find_campaign_conversation(db, instance, phone)
             conversation_id = conversation["id"] if conversation else None
             try:
                 db.execute("""INSERT INTO crm_automation_events(event_key,conversation_id,campaign_id,flow_name,event_type,outcome,payload_json)
@@ -6706,13 +6934,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             try:
                 db.execute(
                     """INSERT INTO crm_n8n_patient_events
-                       (event_key,run_id,workflow_id,execution_id,conversation_id,campaign_id,
+                       (event_key,run_id,workflow_id,execution_id,conversation_id,campaign_id,flow_name,
                         contact_id,patient_name,phone,channel_name,event_type,outcome,
                         appointment_source,external_message_id,details_json,occurred_at)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         event_key, run_id, workflow_id or None, execution_id or None,
                         conversation_id, str(payload.get("campaign_id") or "")[:100] or None,
+                        flow_name,
                         conversation["contact_id"] if conversation else None,
                         patient_name, phone or None, channel_name, event_type,
                         str(payload.get("outcome") or "")[:80] or None,
@@ -6770,6 +6999,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     ),
                 )
             if conversation_id:
+                self.crm_attach_campaign_to_conversation(
+                    db, conversation_id, payload.get("campaign_id"), flow_name
+                )
                 if event_type in {"message.ai.sent","ai.started","campaign.started"}:
                     db.execute("""UPDATE crm_conversations SET automation_state='ai_active',automation_flow=COALESCE(?,automation_flow),
                                   automation_turns=automation_turns+CASE WHEN ?='message.ai.sent' THEN 1 ELSE 0 END,
@@ -6783,6 +7015,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 elif event_type in {"appointment.confirmed","conversation.closed","campaign.finished"}:
                     db.execute("""UPDATE crm_conversations SET automation_state='completed',automation_flow=COALESCE(?,automation_flow),
                                   updated_at=datetime('now','localtime') WHERE id=?""",(flow_name,conversation_id))
+                elif event_type in {"patient.replied", "message.received"}:
+                    reply_time = occurred_at or datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+                    db.execute(
+                        """UPDATE crm_conversations SET
+                              status='Aberta',pipeline_stage='Novo',
+                              assigned_user_id=CASE WHEN status='Resolvida' THEN NULL ELSE assigned_user_id END,
+                              assigned_at=CASE WHEN status='Resolvida' THEN NULL ELSE assigned_at END,
+                              resolved_at=NULL,resolved_by_user_id=NULL,
+                              queue_entered_at=CASE
+                                  WHEN status='Resolvida' OR assigned_user_id IS NULL
+                                  THEN COALESCE(queue_entered_at,?) ELSE queue_entered_at END,
+                              automation_state=CASE WHEN assigned_user_id IS NULL THEN 'handoff' ELSE automation_state END,
+                              handoff_reason=CASE WHEN assigned_user_id IS NULL THEN 'Resposta de campanha aguardando CRC' ELSE handoff_reason END,
+                              updated_at=datetime('now','localtime')
+                            WHERE id=?""",
+                        (reply_time, conversation_id),
+                    )
         self.send_json({"received":True,"conversation_id":conversation_id,"event_type":event_type})
 
     def receive_evolution_webhook(self, payload: dict, query: dict) -> None:
@@ -6890,6 +7139,44 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   ELSE crm_conversations.unread_count+excluded.unread_count END""",
                            (channel_id,contact_id,message_at,direction,0 if from_me else 1,direction,message_at))
                 conversation_id=db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?",(channel_id,contact_id)).fetchone()[0]
+                if not from_me:
+                    # O callback do n8n pode chegar antes do webhook da Evolution
+                    # ou sem informar a instância. Vinculamos retroativamente os
+                    # eventos pelo telefone para não perder Inbox nem campanha.
+                    pending_campaign = db.execute(
+                        """SELECT campaign_id,flow_name
+                             FROM crm_n8n_patient_events
+                            WHERE phone=?
+                              AND (NULLIF(campaign_id,'') IS NOT NULL OR NULLIF(flow_name,'') IS NOT NULL)
+                              AND datetime(COALESCE(occurred_at,received_at)) >= datetime(?, '-30 days')
+                            ORDER BY datetime(COALESCE(occurred_at,received_at)) DESC,id DESC
+                            LIMIT 1""",
+                        (phone, message_at),
+                    ).fetchone()
+                    if pending_campaign:
+                        db.execute(
+                            """UPDATE crm_n8n_patient_events
+                                  SET conversation_id=?,contact_id=COALESCE(contact_id,?)
+                                WHERE conversation_id IS NULL AND phone=?
+                                  AND COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''))=
+                                      COALESCE(NULLIF(?,''),NULLIF(?,''))""",
+                            (
+                                conversation_id, contact_id, phone,
+                                pending_campaign["campaign_id"], pending_campaign["flow_name"],
+                            ),
+                        )
+                        db.execute(
+                            """UPDATE crm_automation_events
+                                  SET conversation_id=?
+                                WHERE conversation_id IS NULL
+                                  AND event_key IN (SELECT event_key FROM crm_n8n_patient_events
+                                                     WHERE conversation_id=? AND phone=?)""",
+                            (conversation_id, conversation_id, phone),
+                        )
+                        self.crm_attach_campaign_to_conversation(
+                            db, conversation_id,
+                            pending_campaign["campaign_id"], pending_campaign["flow_name"],
+                        )
                 message_external_id = external_id or event_key
                 attribution = db.execute("SELECT author_type,author_label FROM crm_message_attributions WHERE external_message_id=?", (message_external_id,)).fetchone()
                 author_type = attribution["author_type"] if attribution else ("external" if from_me else "patient")

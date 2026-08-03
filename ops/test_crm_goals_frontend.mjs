@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260802-spa-navigation-v1/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260803-team-goals-minimum-v1/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
 assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
@@ -35,7 +35,7 @@ const goal = (metric_key, label, monthlyTarget, monthlyRealized, dailyTarget, da
 const dashboard = {
   month: "2026-08", month_label: "Agosto 2026", can_configure: true,
   user: { id: 20, name: "Matheus Henrique", email: "matheus@example.test" },
-  agents: [{ id: 20, name: "Matheus Henrique" }],
+  agents: [{ id: 20, name: "Matheus Henrique" }, { id: 21, name: "Isabela Cristina" }],
   schedule: {
     weekdays: "Segunda a sexta, 08h às 18h",
     saturday: "Sábado, 08h às 12h",
@@ -53,6 +53,7 @@ const dashboard = {
   history: []
 };
 
+let lastGoalPost = null;
 const server = http.createServer(async (request, response) => {
   if (request.url === "/crm-goals.js") {
     response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
@@ -72,10 +73,14 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.url.startsWith("/api/crm/goals")) {
     if (request.method === "POST") {
-      for await (const _chunk of request) { /* consume request body */ }
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      lastGoalPost = JSON.parse(raw);
       response.writeHead(200, { "Content-Type": "application/json" });
       return response.end(JSON.stringify({
         ...dashboard,
+        applied_scope: lastGoalPost.apply_to_all ? "all" : "individual",
+        applied_user_count: lastGoalPost.apply_to_all ? dashboard.agents.length : 1,
         achievements: [{
           metric_key: "first_consultations", achievement_type: "monthly",
           target: 40, realized: 40,
@@ -111,6 +116,9 @@ try {
   assert.equal(await page.getByText("26 dias de expediente restantes", { exact: true }).count(), 1);
   assert.equal(await page.locator(".iea-goals-avatar").textContent(), "MH");
   assert.equal(await page.locator(".iea-goals-screen").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(243, 246, 250)");
+  await page.evaluate(() => document.body.dataset.omtheme = "dark");
+  assert.equal(await page.locator(".iea-goals-screen").evaluate(element => getComputedStyle(element).backgroundColor), "rgb(11, 20, 26)");
+  await page.evaluate(() => document.body.dataset.omtheme = "light");
   assert.equal(await page.getByRole("button", { name: "Voltar" }).locator("svg").count(), 1);
   assert.equal(await page.locator(".iea-goal-card .iea-metric-icon").count(), 3);
   assert.equal(await page.locator('[data-metric-card="first_consultations"]').getAttribute("data-performance"), "low");
@@ -144,8 +152,21 @@ try {
   await page.getByRole("tab", { name: "Configuração" }).click();
   assert.equal(await page.locator(".iea-config-card").count(), 3);
   assert.equal(await page.getByRole("heading", { name: "Configuração e permissões" }).count(), 0);
+  assert.equal(await page.getByLabel("Mínimo diário").count(), 3);
+  const attendanceCard = page.locator('[data-metric="attendances"]');
+  await attendanceCard.locator("[data-daily]").fill("50");
+  await attendanceCard.locator("[data-daily-minimum]").fill("40");
+  await page.getByRole("button", { name: "Toda a equipe (2)" }).click();
+  assert.equal(await attendanceCard.locator("[data-daily]").inputValue(), "50", "trocar o escopo não pode apagar o formulário");
+  if (process.env.CRM_GOALS_SCREENSHOT) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.locator(".iea-goals-screen").screenshot({ path: process.env.CRM_GOALS_SCREENSHOT.replace(/\.png$/i, "-config.png") });
+  }
   await page.getByRole("button", { name: "Salvar metas" }).click();
-  await page.getByText("Metas salvas com sucesso.").waitFor();
+  await page.getByText("Metas aplicadas a 2 colaboradores.").waitFor();
+  assert.equal(lastGoalPost.apply_to_all, true);
+  assert.equal(lastGoalPost.goals.attendances.daily_target, 50);
+  assert.equal(lastGoalPost.goals.attendances.daily_minimum, 40);
   await page.getByRole("heading", { name: "🎉 Meta alcançada!" }).waitFor();
 
   await page.emulateMedia({ reducedMotion: "reduce" });

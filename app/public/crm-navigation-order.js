@@ -119,6 +119,36 @@
     }
   }
 
+  function normalizeNavigationItem(item, key) {
+    if (!item) return;
+    item.dataset.ieaNavigationKey = key;
+    const important = {
+      width: "60px", minHeight: "54px", height: "auto", margin: "0px auto",
+      padding: "7px 3px", boxSizing: "border-box", alignItems: "center",
+      justifyContent: "center", gap: "4px", textAlign: "center",
+      position: "relative", flex: "0 0 auto",
+    };
+    Object.entries(important).forEach(([property, value]) => {
+      item.style.setProperty(property.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`), value, "important");
+    });
+    item.querySelectorAll("svg").forEach(icon => {
+      icon.style.setProperty("display", "block", "important");
+      icon.style.setProperty("margin", "0 auto", "important");
+      icon.style.setProperty("flex", "0 0 auto", "important");
+    });
+    const label = leafWithLabel(item, [key, key === "integracao" ? "integração" : "", key === "configuracao" ? "configuração" : ""]);
+    if (label) {
+      label.style.setProperty("display", "block", "important");
+      label.style.setProperty("width", "100%", "important");
+      label.style.setProperty("margin", "0", "important");
+      label.style.setProperty("text-align", "center", "important");
+      label.style.setProperty("font-size", "9px", "important");
+      label.style.setProperty("line-height", "1.15", "important");
+      label.style.setProperty("white-space", "normal", "important");
+      label.style.setProperty("overflow-wrap", "anywhere", "important");
+    }
+  }
+
   function adminDivider(aside) {
     let divider = aside.querySelector(":scope > [data-iea-admin-navigation-divider]");
     if (divider) return divider;
@@ -146,6 +176,9 @@
     if (!items.has("inbox")) return;
 
     useCompleteAdminLabels(items);
+    aside.dataset.ieaNavigationRail = "1";
+    aside.style.setProperty("overflow-x", "hidden", "important");
+    items.forEach((item, key) => normalizeNavigationItem(item, key));
     const divider = adminDivider(aside);
     const hasVisibleAdmin = ADMIN_ORDER.some((key) => isDisplayed(items.get(key)));
     if (divider.hidden === hasVisibleAdmin) divider.hidden = !hasVisibleAdmin;
