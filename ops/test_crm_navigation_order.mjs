@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v6/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v7/);
 assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
