@@ -52,10 +52,22 @@
     marker.remove();
   }
   let scheduled = false;
+  let observedSidebar = null;
+  const sidebarObserver = new MutationObserver(schedule);
+  function observeSidebar() {
+    const aside = sidebar();
+    if (!aside || aside === observedSidebar) return;
+    sidebarObserver.disconnect();
+    observedSidebar = aside;
+    // Alterações no chat, gráficos e painéis não têm relação com a ordem da
+    // barra. Observar o documento inteiro fazia cada troca de tela acordar
+    // este código e causava a sensação de travamento.
+    sidebarObserver.observe(aside, { childList: true });
+  }
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => { scheduled = false; arrange(); });
+    requestAnimationFrame(() => { scheduled = false; observeSidebar(); arrange(); });
   }
   // O botão de Metas é criado pelo módulo próprio. Ao ser reposicionado,
   // mantemos uma abertura delegada para não depender do listener do nó que o
@@ -67,6 +79,6 @@
     event.stopImmediatePropagation();
     window.IEACrmGoals.open();
   }, true);
-  new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(schedule).observe(document.body, { childList: true });
   schedule();
 })();
