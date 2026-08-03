@@ -1,0 +1,1 @@
+(async()=>{const identity=document.querySelector('#identity');try{const response=await fetch('/api/auth/status');const data=await response.json();if(!data.authenticated)location.assign('/login');else identity.textContent=`${data.user?.name||'Colaborador'} · CRM separado da Central`;}catch{identity.textContent='Não foi possível carregar o perfil.';}})();

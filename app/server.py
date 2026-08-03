@@ -50,6 +50,7 @@ CRM_MEDIA_DIR = DATA / "crm-media"
 SEED_PATH = DATA / "patients.seed.json"
 ADMIN_ROUTE = os.environ.get("ADMIN_ROUTE", "/central-gestao-iea-6x9p4m2k")
 CRC_ROUTE = "/central-crc"
+CRM_NEXT_ROUTE = "/crm"
 STANDARD_PATIENT_STATUSES = {"Consulta", "Controle", "Tratamento", "Inativo"}
 RELEASE_ID = os.environ.get("APP_RELEASE_ID") or datetime.utcnow().strftime("%Y%m%d%H%M%S")
 MAX_BODY_BYTES = 60 * 1024 * 1024  # 60 MB: acomoda mídia de CRM em base64 (limite decodificado de 40 MB)
@@ -1416,7 +1417,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         match = re.fullmatch(r"/api/patients/(\d+)", parsed.path)
         if match:
             return self.get_patient(int(match.group(1)))
-        if parsed.path in {"", "/", ADMIN_ROUTE, f"{ADMIN_ROUTE}/", CRC_ROUTE, f"{CRC_ROUTE}/"} or parsed.path.startswith(f"{CRC_ROUTE}/"):
+        if parsed.path in {"", "/", ADMIN_ROUTE, f"{ADMIN_ROUTE}/", CRC_ROUTE, f"{CRC_ROUTE}/", CRM_NEXT_ROUTE, f"{CRM_NEXT_ROUTE}/"} or parsed.path.startswith(f"{CRC_ROUTE}/") or parsed.path.startswith(f"{CRM_NEXT_ROUTE}/"):
             user = self.current_user()
             if not user:
                 self.send_response(HTTPStatus.FOUND)
@@ -1434,6 +1435,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 return
             if parsed.path.startswith(CRC_ROUTE) and user["access_role"] != "crc":
+                self.send_response(HTTPStatus.FOUND)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            if parsed.path.startswith(CRM_NEXT_ROUTE) and user["access_role"] != "crc":
                 self.send_response(HTTPStatus.FOUND)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -9026,6 +9032,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             relative = "admin.html"
         elif request_path in (CRC_ROUTE, f"{CRC_ROUTE}/"):
             relative = "crc.html"
+        elif request_path in (CRM_NEXT_ROUTE, f"{CRM_NEXT_ROUTE}/"):
+            relative = "crm-next.html"
         elif request_path in (f"{CRC_ROUTE}/whatsapp", f"{CRC_ROUTE}/whatsapp/"):
             relative = "crm-whatsapp.html"
         elif request_path in (f"{CRC_ROUTE}/controle-pacientes", f"{CRC_ROUTE}/controle-pacientes/"):
