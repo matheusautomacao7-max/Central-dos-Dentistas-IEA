@@ -8,7 +8,7 @@ const script = await readFile(new URL("../app/public/crm-team-channel-bridge.js"
 const html = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 assert.match(script, /data-iea-inbox-tabs/);
 assert.match(script, /data-iea-inbox-tab/);
-assert.match(html, /crm-team-channel-bridge\.js\?v=20260803-inbox-tabs-v4/);
+assert.match(html, /crm-team-channel-bridge\.js\?v=20260803-inbox-tabs-v5/);
 
 const server = http.createServer((request, response) => {
   if (request.url.startsWith("/crm-team-channel-bridge.js")) {
@@ -18,9 +18,9 @@ const server = http.createServer((request, response) => {
   response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   response.end(`<!doctype html><html><body>
     <div id="tabs" style="display:flex;width:360px;overflow:hidden">
-      <button type="button" style="border:1px solid #e9edef">Recentes</button>
-      <button type="button" style="border:1px solid #25d366;color:#15a34a">Fila (10)</button>
-      <button type="button" style="border:1px solid #e9edef">Meus atendimentos</button>
+      <div role="tab" style="border:1px solid #e9edef">Recentes</div>
+      <div role="tab" style="border:1px solid #25d366;color:#15a34a">Fila (10)</div>
+      <div role="tab" style="border:1px solid #e9edef">Meus atendimentos</div>
     </div>
     <script src="/crm-team-channel-bridge.js"></script>
   </body></html>`);
@@ -45,7 +45,7 @@ try {
     return { text: node.textContent.trim(), height: node.getBoundingClientRect().height, radius: style.borderRadius, active: node.dataset.ieaActive };
   }));
   assert.equal(tabs.length, 4);
-  assert.ok(tabs.every((tab) => Math.abs(tab.height - 38) <= 0.5));
+  assert.ok(tabs.every((tab) => Math.abs(tab.height - 40) <= 0.5));
   assert.ok(tabs.every((tab) => tab.radius === "12px"));
   assert.equal(tabs.find((tab) => tab.text.startsWith("Fila")).active, "true");
   assert.equal(tabs.find((tab) => tab.text === "Time").active, "false");

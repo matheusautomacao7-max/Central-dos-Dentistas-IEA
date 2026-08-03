@@ -21,7 +21,7 @@ const pageHtml = `<!doctype html><html><body data-omtheme="light" style="margin:
   <aside style="width:80px;height:100vh;display:flex;flex-direction:column;align-items:center;background:#122b46">
     <div style="flex:1"></div>
     <div id="theme" style="width:44px;height:38px;cursor:pointer"><svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3"></path></svg></div>
-    <div id="user-menu" style="position:relative;cursor:pointer"><div id="avatar" style="width:42px;height:42px;border-radius:50%;cursor:pointer">AS</div><span style="position:absolute;width:13px;height:13px"></span></div>
+    <div id="user-menu" style="position:relative;cursor:pointer"><div id="avatar" style="width:42px;height:42px;border-radius:50%;cursor:pointer">AS<span aria-hidden="true" style="position:absolute;width:13px;height:13px"></span></div></div>
   </aside><script>
     document.getElementById("theme").addEventListener("click", function () {
       document.body.dataset.omtheme = document.body.dataset.omtheme === "dark" ? "light" : "dark";

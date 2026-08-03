@@ -110,7 +110,7 @@
          em larguras menores, sem cortar o Ãºltimo filtro. */
       '[data-iea-inbox-tabs]{display:flex!important;align-items:stretch!important;gap:6px!important;min-width:0!important;padding:2px 0 5px!important;overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;overscroll-behavior-x:contain}',
       '[data-iea-inbox-tabs]::-webkit-scrollbar{display:none}',
-      '[data-iea-inbox-tabs] [data-iea-inbox-tab]{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:38px!important;max-height:38px!important;flex:0 0 auto!important;gap:5px!important;padding:0 13px!important;border:1px solid transparent!important;border-radius:12px!important;background:transparent!important;color:var(--text2,#667781)!important;font:700 12px/1.15 Manrope,system-ui,sans-serif!important;letter-spacing:-.08px!important;white-space:nowrap!important;box-shadow:none!important;cursor:pointer!important;transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease!important}',
+      '[data-iea-inbox-tabs] [data-iea-inbox-tab]{display:inline-flex!important;align-items:center!important;justify-content:center!important;box-sizing:border-box!important;height:40px!important;min-height:40px!important;max-height:40px!important;flex:0 0 auto!important;gap:5px!important;padding:0 13px!important;border:1px solid transparent!important;border-radius:12px!important;background:transparent!important;color:var(--text2,#667781)!important;font:700 12px/1.15 Manrope,system-ui,sans-serif!important;letter-spacing:-.08px!important;white-space:nowrap!important;box-shadow:none!important;cursor:pointer!important;transition:background .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease!important}',
       '[data-iea-inbox-tabs] [data-iea-inbox-tab]:hover{background:var(--panel2,#f3f6f8)!important;color:var(--text,#11243d)!important}',
       '[data-iea-inbox-tabs] [data-iea-inbox-tab][data-iea-active="true"]{border-color:#22c55e!important;background:#ecfdf3!important;color:#168448!important;box-shadow:inset 0 0 0 1px rgba(34,197,94,.06)!important}',
       '[data-iea-inbox-tabs] [data-iea-inbox-tab]:focus-visible{outline:3px solid rgba(37,211,102,.28)!important;outline-offset:2px!important}',
@@ -364,11 +364,15 @@
 
   function addControls() {
     ensureStyles();
-    /* O bundle pode renderizar os filtros como button ou como elemento com role=button. */
-    var candidates = Array.from(document.querySelectorAll('button,[role="button"]'));
-    var allButton = candidates.find(function (button) { return button.textContent.trim() === 'Todos os canais'; });
-    var recentButton = candidates.find(function (button) { return button.textContent.trim() === 'Recentes'; });
-    var anchor = allButton || recentButton;
+    /* O bundle usa div role=tab para os filtros principais e botÃµes para os
+       canais. Eles sÃ£o grupos diferentes e precisam ser tratados separadamente. */
+    var channelCandidates = Array.from(document.querySelectorAll('button,[role="button"],[role="tab"]'));
+    var allButton = channelCandidates.find(function (button) { return button.textContent.trim() === 'Todos os canais'; });
+    var tabCandidates = Array.from(document.querySelectorAll('button,[role="button"],[role="tab"],div')).filter(function (item) {
+      return item.children.length === 0 && /^(Recentes|Fila(?:\s*\(\d+\))?|Meus\s+atendimentos|Equipe|Time)$/.test(String(item.textContent || '').replace(/\s+/g, ' ').trim());
+    });
+    var recentButton = tabCandidates.find(function (button) { return button.textContent.trim() === 'Recentes'; });
+    var anchor = recentButton || allButton;
     if (!anchor) return;
     if (allButton && allButton.dataset.ieaChannelPill !== '1') {
       allButton.dataset.ieaChannelPill = '1';
@@ -378,9 +382,11 @@
         event.preventDefault(); event.stopImmediatePropagation(); openChannels();
       }, true);
     }
-    var container = anchor.parentElement;
+    var container = (recentButton && recentButton.parentElement) || anchor.parentElement;
     container.dataset.ieaInboxTabs = '1';
-    Array.from(container.querySelectorAll('button,[role="button"]')).forEach(function (button) {
+    Array.from(container.children).filter(function (button) {
+      return /^(Recentes|Fila(?:\s*\(\d+\))?|Meus\s+atendimentos|Equipe|Time)$/.test(String(button.textContent || '').replace(/\s+/g, ' ').trim());
+    }).forEach(function (button) {
       if (!button.dataset.ieaChannelPill) {
         button.dataset.ieaChannelPill = '1';
         button.dataset.ieaChannelLabel = button.textContent.trim();
@@ -388,7 +394,14 @@
       button.dataset.ieaInboxTab = '1';
       button.dataset.ieaActive = isActiveInboxTab(button) ? 'true' : 'false';
     });
-    if (!container.querySelector('[data-iea-team-button]')) {
+    var nativeTeam = Array.from(container.children).find(function (button) {
+      return /^(Equipe|Time)$/.test(String(button.textContent || '').replace(/\s+/g, ' ').trim());
+    });
+    if (nativeTeam) {
+      nativeTeam.dataset.ieaInboxTab = '1';
+      nativeTeam.dataset.ieaActive = 'false';
+    }
+    if (!nativeTeam && !container.querySelector('[data-iea-team-button]')) {
       var team = document.createElement('button');
       team.type = 'button'; team.dataset.ieaTeamButton = '1'; team.textContent = 'Time';
       team.dataset.ieaInboxTab = '1';

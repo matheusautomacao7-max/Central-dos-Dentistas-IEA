@@ -232,7 +232,33 @@
     avatar.dataset.ieaCpBound = "true"; avatar.dataset.ieaCpTrigger = "true";
     avatar.classList.add("iea-cp-trigger"); avatar.setAttribute("role", "button"); avatar.setAttribute("tabindex", "0");
     avatar.setAttribute("aria-label", "Abrir meu perfil e conquistas"); avatar.setAttribute("title", "Abrir perfil");
-    if (avatar.children.length === 0) avatar.textContent = initials(currentUser.name);
+    setFooterAvatarInitials(avatar, initials(currentUser.name));
+  }
+
+  function setFooterAvatarInitials(avatar, value) {
+    if (!avatar || !value) return;
+    // O indicador de presenÃ§a Ã© um filho do avatar. Substituir textContent
+    // removeria esse indicador; trocamos somente o nÃ³ de texto legado ("AS").
+    var textNode = Array.from(avatar.childNodes).find(function (node) {
+      return node.nodeType === Node.TEXT_NODE && String(node.nodeValue || '').trim();
+    });
+    if (textNode) {
+      textNode.nodeValue = value;
+      return;
+    }
+    if (avatar.children.length === 0) {
+      avatar.textContent = value;
+      return;
+    }
+    var label = avatar.querySelector('[data-iea-cp-initials]');
+    if (!label) {
+      label = document.createElement('span');
+      label.dataset.ieaCpInitials = 'true';
+      label.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none';
+      avatar.style.position = avatar.style.position || 'relative';
+      avatar.insertBefore(label, avatar.firstChild);
+    }
+    label.textContent = value;
   }
 
   function clickedFooterAvatar(target) {
