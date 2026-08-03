@@ -19,7 +19,7 @@
 
   function exactLabels(item) {
     const values = [item.title, item.getAttribute("aria-label")];
-    item.querySelectorAll("span,div,p,small,strong,label").forEach((node) => {
+    descendants(item, "span,div,p,small,strong,label").forEach((node) => {
       if (!node.children.length) values.push(node.textContent);
     });
     return values.map(normalized).filter(Boolean);
@@ -109,13 +109,26 @@
   }
 
   function leafWithLabel(item, accepted) {
-    return Array.from(item.querySelectorAll("span,div,p,small,strong,label")).find((node) =>
+    return descendants(item, "span,div,p,small,strong,label").find((node) =>
       !node.children.length && accepted.includes(normalized(node.textContent))
     );
   }
 
+  function descendants(root, selector) {
+    const result = [];
+    const visit = (container) => {
+      Array.from(container && container.children || []).forEach((child) => {
+        if (child.matches(selector)) result.push(child);
+        visit(child);
+        if (child.shadowRoot) visit(child.shadowRoot);
+      });
+    };
+    visit(root);
+    return result;
+  }
+
   function navigationTextLeaves(item) {
-    return Array.from(item.querySelectorAll("span,div,p,small,strong,label"))
+    return descendants(item, "span,div,p,small,strong,label")
       .filter((node) => !node.children.length && normalized(node.textContent));
   }
 
@@ -124,7 +137,7 @@
     // O runtime do bundle pode inserir <sc-if>/<sc-scope> entre o <aside>
     // e o div clicável. Procurar apenas o primeiro filho estiliza o wrapper e
     // deixa ícone/texto reais com a aparência padrão (preta e desalinhada).
-    const candidates = [item, ...item.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+    const candidates = [item, ...descendants(item, "a,button,div,[role='button'],[role='tab']")];
     return candidates.find((candidate) =>
       candidate.matches("a,button,div,[role='button'],[role='tab']") &&
       candidate.querySelector("svg") &&
@@ -190,7 +203,7 @@
     const surface = visibleNavigationSurface(item);
     if (surface.style.display !== "none") setLayoutStyle(surface, "display", "flex");
     Object.entries(important).forEach(([property, value]) => setImportantStyle(surface, property, value));
-    surface.querySelectorAll("svg").forEach(icon => {
+    descendants(item, "svg").forEach(icon => {
       setImportantStyle(icon, "display", "block");
       setImportantStyle(icon, "margin", "0px auto");
       setImportantStyle(icon, "flex", "0 0 auto");
@@ -202,8 +215,8 @@
       campanhas: ["campanhas"], integracao: ["integra", "integracao", "integrações"],
       configuracao: ["config", "configuracao"],
     };
-    const labels = navigationTextLeaves(surface);
-    const preferredLabel = leafWithLabel(surface, labelAliases[key] || [key]);
+    const labels = navigationTextLeaves(item);
+    const preferredLabel = leafWithLabel(item, labelAliases[key] || [key]);
     if (preferredLabel && !labels.includes(preferredLabel)) labels.push(preferredLabel);
     labels.forEach((label) => {
       label.dataset.ieaNavigationLabel = key;

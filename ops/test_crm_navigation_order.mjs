@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v7/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v8/);
 assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
@@ -59,6 +59,12 @@ const server = http.createServer((request, response) => {
     </aside>
     <form action="/unexpected-reload"><button data-open-conversation>Abrir conversa</button></form>
     <script>
+      customElements.define("sc-scope", class extends HTMLElement {
+        connectedCallback() {
+          const root = this.attachShadow({ mode: "open" });
+          while (this.firstChild) root.append(this.firstChild);
+        }
+      });
       window.clicks=0; window.goalsOpened=0;
       window.IEACrmGoals={open:()=>window.goalsOpened++};
       document.querySelectorAll('[data-nav]')[2].addEventListener('click',()=>window.clicks++);
@@ -85,7 +91,7 @@ try {
   await page.locator("[data-iea-patient-control]").waitFor();
   await page.waitForFunction(() => document.querySelector("[data-iea-admin-navigation-divider]"));
   const order = await page.locator("aside > [data-nav], aside > [data-iea-patient-control], aside > [data-iea-admin-navigation-divider]").evaluateAll((nodes) =>
-    nodes.map((node) => node.dataset.ieaAdminNavigationDivider ? "ADMIN" : node.textContent.trim())
+    nodes.map((node) => node.dataset.ieaAdminNavigationDivider ? "ADMIN" : node.dataset.ieaNavigationKey === "pacientes" ? "Pacientes" : node.textContent.trim())
   );
   assert.deepEqual(order, ["Inbox", "Funil", "Filas", "Metas", "Pacientes", "Controle", "ADMIN", "Gestão", "Campanhas", "Integração", "Configuração"]);
 
@@ -103,7 +109,17 @@ try {
   assert.deepEqual(controlGeometry, { deltaX: 0, width: 22, height: 22, label: "Controle" });
 
   const alignment = await page.locator("aside > [data-iea-navigation-key]").evaluateAll(nodes => nodes.map(node => {
-    const candidates = [node, ...node.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+    const descendants = (root, selector) => {
+      const found = [];
+      const visit = container => Array.from(container.children || []).forEach(child => {
+        if (child.matches(selector)) found.push(child);
+        visit(child);
+        if (child.shadowRoot) visit(child.shadowRoot);
+      });
+      visit(root);
+      return found;
+    };
+    const candidates = [node, ...descendants(node, "a,button,div,[role='button'],[role='tab']")];
     const surface = candidates.find(candidate => candidate.matches("a,button,div,[role='button'],[role='tab']") && candidate.querySelector("svg")) || node;
     const item = surface.getBoundingClientRect();
     const icon = surface.querySelector("svg")?.getBoundingClientRect();
@@ -142,11 +158,24 @@ try {
     clientWidth: aside.clientWidth,
     patientWidth: (() => {
       const patient = aside.querySelector("[data-iea-navigation-key='pacientes']");
-      const candidates = [patient, ...patient.querySelectorAll("a,button,div,[role='button'],[role='tab']")];
+      const descendants = (root, selector) => {
+        const found = [];
+        const visit = container => Array.from(container.children || []).forEach(child => {
+          if (child.matches(selector)) found.push(child);
+          visit(child);
+          if (child.shadowRoot) visit(child.shadowRoot);
+        });
+        visit(root);
+        return found;
+      };
+      const candidates = [patient, ...descendants(patient, "a,button,div,[role='button'],[role='tab']")];
       const surface = candidates.find(candidate => candidate.matches("a,button,div,[role='button'],[role='tab']") && candidate.querySelector("svg")) || patient;
       return surface.getBoundingClientRect().width;
     })(),
-    patientLabelWidth: aside.querySelector("[data-iea-navigation-key='pacientes'] [data-iea-navigation-label]").getBoundingClientRect().width,
+    patientLabelWidth: (() => {
+      const patient = aside.querySelector("[data-iea-navigation-key='pacientes']");
+      return patient.querySelector("sc-scope").shadowRoot.querySelector("[data-iea-navigation-label]").getBoundingClientRect().width;
+    })(),
   }));
   assert.ok(sidebarOverflow.scrollWidth <= sidebarOverflow.clientWidth, "compact rail must never acquire horizontal overflow");
   assert.ok(sidebarOverflow.patientWidth <= 74.5, "wrapped patient navigation must remain compact");
