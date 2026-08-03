@@ -33,6 +33,15 @@ try {
   result.forEach(item => assert.equal(item.style, "color:white"));
   await page.getByRole("button", { name: "Metas" }).click();
   assert.equal(await page.evaluate(() => window.opens), 1, "Metas must open after reordering");
+  const mutations = await page.evaluate(async () => {
+    let count = 0;
+    const observer = new MutationObserver(records => { count += records.length; });
+    observer.observe(document.querySelector("aside"), { childList: true });
+    await new Promise(resolve => setTimeout(resolve, 180));
+    observer.disconnect();
+    return count;
+  });
+  assert.equal(mutations, 0, "the sidebar must settle without a mutation loop");
   console.log("crm-navigation-order-lite-e2e-ok");
 } finally {
   await browser.close();

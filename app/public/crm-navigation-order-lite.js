@@ -36,11 +36,16 @@
       if (key && !items.has(key)) items.set(key, item);
     });
     if (!items.has("inbox")) return;
+    const desired = [...operational, ...admin].filter(key => items.has(key));
+    const current = Array.from(aside.children).map(keyOf).filter(Boolean);
+    // Não mova nós se já estão no lugar. Mover sempre dispara o próprio
+    // MutationObserver e cria um ciclo de renderização que trava o CRM.
+    if (current.join("|") === desired.join("|")) return;
     const first = Array.from(aside.children).find(item => keyOf(item));
     if (!first) return;
     const marker = document.createComment("iea-navigation-order-lite");
     aside.insertBefore(marker, first);
-    [...operational, ...admin].forEach(key => {
+    desired.forEach(key => {
       const item = items.get(key);
       if (item) aside.insertBefore(item, marker);
     });
