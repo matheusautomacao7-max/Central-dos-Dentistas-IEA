@@ -9,10 +9,10 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v8/);
+assert.doesNotMatch(htmlSource, /crm-navigation-order\.js/);
+assert.match(htmlSource, /navStyle\(a\)\{ return `display:flex;flex-direction:column;align-items:center;width:60px;[\s\S]*color:\$\{a\?'#fff':'rgba\(255,255,255,\.55\)'\}/);
 assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
-assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
 assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
 assert.match(resolutionScript, /style="display:block;flex:0 0 22px;margin:0 auto"/);
 assert.doesNotMatch(resolutionScript, /<circle cx="9" cy="7" r="3"><\/circle>/);
