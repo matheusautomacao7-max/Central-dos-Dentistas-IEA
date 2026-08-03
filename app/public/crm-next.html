@@ -4,8 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CRM IEA</title>
-  <style>[hidden]{display:none!important}</style>
-  <link rel="stylesheet" href="/crm-next.css?v=crm-funnel-v2">
+  <style>
+    [hidden]{display:none!important}
+    .thread-actions{display:flex;align-items:center;gap:10px}.owner-badge{padding:7px 10px;border-radius:999px;background:#eef2f7;color:#52667c;font-size:12px;font-weight:800}.action-primary{border:0;border-radius:10px;padding:10px 14px;background:#16a34a;color:#fff;font:800 13px inherit;cursor:pointer}.action-primary:disabled{opacity:.55;cursor:not-allowed}.composer{display:flex;gap:10px;align-items:flex-end;padding:15px 18px;border-top:1px solid #e4ebf3;background:#fff}.composer textarea{min-height:44px;max-height:130px;resize:vertical;flex:1;border:1px solid #cbd7e5;border-radius:12px;padding:11px 13px;font:inherit}.composer-button{height:44px;border:1px solid #cbd7e5;border-radius:11px;padding:0 14px;background:#fff;color:#315f94;font-weight:800;cursor:pointer}.composer-button.send{border-color:#16a34a;background:#16a34a;color:#fff}.composer-status{margin:0;padding:8px 18px;background:#fff;color:#62758a;font-size:12px}.media-preview{display:block;max-width:320px;max-height:260px;border-radius:10px}.message audio,.message video{width:min(320px,100%)}.media-link{color:#175da8;font-weight:800}
+  </style>
+  <link rel="stylesheet" href="/crm-next.css?v=crm-operational-v1">
 </head>
 <body>
   <main class="crm-shell">
@@ -20,11 +23,11 @@
     <nav class="module-nav" aria-label="Módulos do CRM paralelo">
       <button class="module-tab" type="button" data-screen="inbox" aria-current="page">Inbox</button>
       <button class="module-tab" type="button" data-screen="funnel">Funil</button>
-      <span class="module-note">Ambiente de validação</span>
+      <span class="module-note">Migração operacional em andamento</span>
     </nav>
     <section class="notice">
-      <strong>Modo de leitura para validação</strong>
-      <p>As conversas abaixo são as conversas reais do CRM atual. Nesta etapa não há envio, atribuição ou alteração de dados.</p>
+      <strong>Inbox conectado ao atendimento real</strong>
+      <p>Assumir e enviar respeitam as mesmas permissões, canais e travas do CRM atual.</p>
     </section>
     <section id="inbox-screen" class="inbox" aria-label="Inbox de conversas">
       <aside class="conversation-panel">
@@ -40,11 +43,22 @@
             <h2 id="thread-title">Selecione uma conversa</h2>
             <p id="thread-subtitle">As mensagens serão carregadas sem alterar o atendimento.</p>
           </div>
-          <span class="read-only-badge">Somente leitura</span>
+          <div class="thread-actions">
+            <span id="owner-badge" class="owner-badge">Nenhum atendimento selecionado</span>
+            <button id="claim-button" class="action-primary" type="button" hidden>Iniciar atendimento</button>
+          </div>
         </header>
         <div id="messages" class="messages" aria-live="polite">
           <div class="empty-state"><strong>Inbox paralelo pronto.</strong><span>Escolha uma conversa à esquerda para conferir o histórico.</span></div>
         </div>
+        <p id="composer-status" class="composer-status" hidden></p>
+        <form id="composer" class="composer" hidden>
+          <input id="attachment-input" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" hidden>
+          <button id="record-button" class="composer-button" type="button">Gravar áudio</button>
+          <button id="attachment-button" class="composer-button" type="button">Anexar</button>
+          <textarea id="message-input" placeholder="Digite uma mensagem" aria-label="Mensagem"></textarea>
+          <button id="send-button" class="composer-button send" type="submit">Enviar</button>
+        </form>
       </article>
     </section>
     <section id="funnel-screen" class="funnel-screen" hidden aria-label="Funil de atendimentos">
@@ -55,6 +69,6 @@
       <div id="funnel-columns" class="funnel-columns"></div>
     </section>
   </main>
-  <script src="/crm-next.js?v=crm-funnel-v2"></script>
+  <script src="/crm-next.js?v=crm-operational-v1"></script>
 </body>
 </html>

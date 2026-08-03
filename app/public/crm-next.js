@@ -1,5 +1,5 @@
 (() => {
-  const state = { items: [], selectedId: null, funnelLoaded: false };
+  const state = { items: [], selectedId: null, selected: null, user: null, funnelLoaded: false, busy: false };
   const byId = (id) => document.getElementById(id);
   const list = byId("conversations");
   const messages = byId("messages");
@@ -10,10 +10,67 @@
   const funnelScreen = byId("funnel-screen");
   const funnelColumns = byId("funnel-columns");
   const funnelStatus = byId("funnel-status");
+  const ownerBadge = byId("owner-badge");
+  const claimButton = byId("claim-button");
+  const composer = byId("composer");
+  const composerStatus = byId("composer-status");
+  const messageInput = byId("message-input");
+  const sendButton = byId("send-button");
+  const attachmentButton = byId("attachment-button");
+  const attachmentInput = byId("attachment-input");
+  const recordButton = byId("record-button");
+  let recorder = null;
+  let recordingStream = null;
+  let recordingChunks = [];
 
   const escape = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const displayName = (item) => item.name || item.phone || "Contato sem identificação";
   const date = (value) => value ? new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "";
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, options);
+    let payload = {};
+    try { payload = await response.json(); } catch { payload = {}; }
+    if (!response.ok) throw new Error(payload.error || `Falha no atendimento (${response.status}).`);
+    return payload;
+  }
+
+  function setBusy(busy, label = "") {
+    state.busy = busy;
+    sendButton.disabled = busy;
+    attachmentButton.disabled = busy;
+    recordButton.disabled = busy;
+    claimButton.disabled = busy;
+    composerStatus.hidden = !label;
+    composerStatus.textContent = label;
+  }
+
+  function updateAccess() {
+    const item = state.selected;
+    if (!item || !state.user) {
+      ownerBadge.textContent = "Nenhum atendimento selecionado";
+      claimButton.hidden = true;
+      composer.hidden = true;
+      return;
+    }
+    const internal = Number(item.is_internal) === 1;
+    const mine = Number(item.assigned_user_id) === Number(state.user.id);
+    const unassigned = !item.assigned_user_id;
+    ownerBadge.textContent = internal ? "Contato interno da equipe" : mine ? `Atendimento com ${state.user.name}` : item.assigned_to ? `Em atendimento por ${item.assigned_to}` : "Aguardando atendimento";
+    claimButton.hidden = internal || !unassigned || item.status === "Resolvida";
+    composer.hidden = !(internal || mine);
+    if (!composer.hidden) messageInput.focus();
+  }
+
+  function mediaMarkup(message) {
+    if (!message.media_url) return "";
+    const url = escape(message.media_url);
+    const type = String(message.message_type || "").toLowerCase();
+    if (type === "audio") return `<audio controls preload="metadata" src="${url}"></audio>`;
+    if (type === "image" || type === "sticker") return `<img class="media-preview" loading="lazy" src="${url}" alt="Imagem da conversa">`;
+    if (type === "video") return `<video controls preload="metadata" src="${url}"></video>`;
+    return `<a class="media-link" href="${url}" target="_blank" rel="noopener">Abrir arquivo</a>`;
+  }
 
   function stageLabel(stage, status) {
     const value = String(stage || status || "").trim().toLowerCase();
@@ -81,19 +138,21 @@
     const item = state.items.find((conversation) => String(conversation.id) === String(id));
     if (!item) return;
     state.selectedId = item.id;
+    state.selected = item;
     renderList();
+    updateAccess();
     byId("thread-title").textContent = displayName(item);
     byId("thread-subtitle").textContent = `${item.phone || "Sem telefone"} · ${item.channel_name || "Canal não identificado"}`;
     messages.innerHTML = '<div class="empty-state"><strong>Carregando mensagens…</strong></div>';
     try {
-      const response = await fetch(`/api/crm/conversations/${encodeURIComponent(item.id)}/messages?read_only=1`);
+      const response = await fetch(`/api/crm/conversations/${encodeURIComponent(item.id)}/messages`);
       if (!response.ok) throw new Error("Não foi possível carregar as mensagens.");
       const payload = await response.json();
       const items = Array.isArray(payload.items) ? payload.items : [];
       messages.innerHTML = items.length ? items.map((message) => {
         const outgoing = ["out", "outbound", "sent"].includes(String(message.direction || "").toLowerCase());
-        const body = message.body || (message.media_url ? "Mídia anexada (prévia de leitura)" : "Mensagem sem conteúdo textual");
-        return `<article class="message ${outgoing ? "outbound" : "inbound"}"><div class="message-meta"><span>${outgoing ? "Enviada" : "Recebida"}</span><time>${escape(date(message.message_at || message.created_at))}</time></div><p class="message-body ${message.media_url ? "message-media" : ""}">${escape(body)}</p></article>`;
+        const body = message.body || (message.media_url ? "Mídia anexada" : "Mensagem sem conteúdo textual");
+        return `<article class="message ${outgoing ? "outbound" : "inbound"}"><div class="message-meta"><span>${escape(message.author_label || (outgoing ? "Enviada" : "Recebida"))}</span><time>${escape(date(message.message_at || message.created_at))}</time></div>${mediaMarkup(message)}<p class="message-body">${escape(body)}</p></article>`;
       }).join("") : '<div class="empty-state"><strong>Sem mensagens para exibir.</strong><span>Este histórico foi carregado sem alterações no atendimento.</span></div>';
       messages.scrollTop = messages.scrollHeight;
     } catch (error) {
@@ -106,6 +165,7 @@
       const authResponse = await fetch("/api/auth/status");
       const auth = await authResponse.json();
       if (!auth.authenticated) { location.assign("/login"); return; }
+      state.user = auth.user;
       identity.textContent = `${auth.user?.name || "Colaborador"} · CRM separado da Central`;
       const response = await fetch("/api/crm/conversations?view=workspace");
       if (!response.ok) throw new Error("Não foi possível carregar o Inbox.");
@@ -118,6 +178,80 @@
     }
   }
 
+  async function claimSelected() {
+    if (!state.selected || state.busy) return;
+    setBusy(true, "Iniciando atendimento…");
+    try {
+      await api(`/api/crm/conversations/${state.selected.id}/claim`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      state.selected.assigned_user_id = state.user.id;
+      state.selected.assigned_to = state.user.name;
+      state.selected.pipeline_stage = "Em atendimento";
+      updateAccess();
+      setBusy(false, "Atendimento iniciado e atribuído a você.");
+    } catch (error) { setBusy(false, error.message); }
+  }
+
+  async function sendPayload(payload, progress) {
+    if (!state.selected || state.busy) return;
+    setBusy(true, progress);
+    try {
+      await api(`/api/crm/conversations/${state.selected.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      messageInput.value = "";
+      await selectConversation(state.selected.id);
+      setBusy(false, "Mensagem enviada.");
+    } catch (error) { setBusy(false, error.message); }
+  }
+
+  function fileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function sendAttachment(file) {
+    if (!file) return;
+    const type = file.type.startsWith("image/") ? "image" : file.type === "video/mp4" ? "video" : "document";
+    try {
+      const media = await fileAsBase64(file);
+      await sendPayload({ message_type: type, media_base64: media, mime_type: file.type || "application/octet-stream", file_name: file.name, text: file.name }, "Enviando arquivo…");
+    } catch (error) { setBusy(false, error.message); }
+    attachmentInput.value = "";
+  }
+
+  async function toggleRecording() {
+    if (recorder?.state === "recording") {
+      recorder.stop();
+      recordButton.textContent = "Gravar áudio";
+      return;
+    }
+    try {
+      recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferred = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => window.MediaRecorder?.isTypeSupported(type));
+      recorder = new MediaRecorder(recordingStream, preferred ? { mimeType: preferred } : undefined);
+      recordingChunks = [];
+      recorder.addEventListener("dataavailable", (event) => { if (event.data.size) recordingChunks.push(event.data); });
+      recorder.addEventListener("stop", async () => {
+        const mimeType = String(recorder.mimeType || "audio/webm").split(";", 1)[0];
+        const blob = new Blob(recordingChunks, { type: mimeType });
+        recordingStream?.getTracks().forEach((track) => track.stop());
+        recordingStream = null;
+        try {
+          const audio = await fileAsBase64(blob);
+          await sendPayload({ message_type: "audio", audio_base64: audio, mime_type: mimeType }, "Enviando áudio…");
+        } catch (error) { setBusy(false, error.message); }
+      });
+      recorder.start();
+      recordButton.textContent = "Enviar áudio";
+      composerStatus.hidden = false;
+      composerStatus.textContent = "Gravando áudio… clique novamente para enviar.";
+    } catch {
+      setBusy(false, "Não foi possível acessar o microfone. Verifique a permissão do navegador.");
+    }
+  }
+
   list.addEventListener("click", (event) => {
     const button = event.target.closest("[data-id]");
     if (button) selectConversation(button.dataset.id);
@@ -127,5 +261,14 @@
     if (tab) showScreen(tab.dataset.screen);
   });
   search.addEventListener("input", renderList);
+  claimButton.addEventListener("click", claimSelected);
+  composer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = messageInput.value.trim();
+    if (text) sendPayload({ message_type: "text", text }, "Enviando mensagem…");
+  });
+  attachmentButton.addEventListener("click", () => attachmentInput.click());
+  attachmentInput.addEventListener("change", () => sendAttachment(attachmentInput.files?.[0]));
+  recordButton.addEventListener("click", toggleRecording);
   load();
 })();
