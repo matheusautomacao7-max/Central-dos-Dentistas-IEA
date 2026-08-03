@@ -1392,7 +1392,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         crm_message_media_match = re.fullmatch(r"/api/crm/messages/(\d+)/media", parsed.path)
         if crm_message_media_match:
             return self.get_crm_message_media(int(crm_message_media_match.group(1)))
-        crm_media_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", parsed.path)
+        crm_media_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", parsed.path)
         if crm_media_match:
             return self.get_crm_media(crm_media_match.group(1))
         if parsed.path == "/api/crm/webhook-events":
@@ -5893,7 +5893,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND cv.assigned_user_id=?")
             params.append(self.authenticated_user["id"])
         elif view == "operational":
-            conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL))")
+            # O funil possui uma coluna "Resolvidos". A consulta anterior
+            # eliminava todas as conversas resolvidas antes que o front-end
+            # pudesse colocá-las nessa coluna, por isso um atendimento sumia
+            # imediatamente após a conclusão. Mantemos os ativos e os
+            # resolvidos de hoje, evitando transformar o quadro operacional
+            # em um histórico ilimitado (o histórico completo fica em
+            # Controle de pacientes).
+            conditions.append("""ct.is_internal=0 AND (
+                (cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR
+                    (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL)))
+                OR (cv.status='Resolvida' AND date(cv.resolved_at)=CURRENT_DATE)
+            )""")
         elif view == "active":
             conditions.append("cv.status<>'Resolvida'")
         elif view == "internal":
@@ -6555,7 +6566,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         for row in rows:
             item = dict(row)
             if item["message_type"] == "audio" and not item.get("duration_seconds"):
-                cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a))", str(item.get("media_url") or ""))
+                cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a))", str(item.get("media_url") or ""))
                 if cached_match:
                     media_file = CRM_MEDIA_DIR / cached_match.group(1)
                     if media_file.is_file():
@@ -6571,14 +6582,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_media_extension(mime_type: str | None, file_name: str | None = None) -> str:
-        allowed = {"webm", "ogg", "oga", "mp4", "m4a", "jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip"}
+        allowed = {"webm", "ogg", "oga", "mp3", "mp4", "m4a", "jpg", "jpeg", "png", "webp", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "zip"}
         suffix = Path(str(file_name or "")).suffix.lower().lstrip(".")
         if suffix in allowed:
             return suffix
         clean_mime = str(mime_type or "application/octet-stream").split(";", 1)[0].strip().lower()
         known = {
             "audio/ogg": "ogg", "audio/opus": "ogg", "audio/webm": "webm",
-            "audio/mp4": "m4a", "audio/mpeg": "mp4", "video/mp4": "mp4",
+            "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "m4a",
+            "audio/mpeg": "mp3", "video/mp4": "mp4",
             "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
             "application/pdf": "pdf", "application/msword": "doc",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
@@ -6657,7 +6669,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not row or not row["external_message_id"]:
             return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
         cached = str(row["media_url"] or "")
-        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", cached)
+        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", cached)
         if cached_match:
             return self.get_crm_media(cached_match.group(1))
         try:
@@ -6732,10 +6744,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
             return
-        if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin)", file_name):
+        if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin)", file_name):
             return self.send_json({"error": "Arquivo de mídia inválido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
-            media_channels = db.execute("""SELECT DISTINCT cv.channel_id
+            media_channels = db.execute("""SELECT DISTINCT cv.channel_id,m.mime_type,m.message_type
                 FROM crm_messages m
                 JOIN crm_conversations cv ON cv.id=m.conversation_id
                 WHERE m.media_url=?""", (f"/api/crm/media/{file_name}",)).fetchall()
@@ -6746,10 +6758,59 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         target = (CRM_MEDIA_DIR / file_name).resolve()
         if target.parent != CRM_MEDIA_DIR.resolve() or not target.is_file():
             return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
-        content = target.read_bytes()
-        self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream")
+        file_size = target.stat().st_size
+        start, end = 0, max(0, file_size - 1)
+        status = HTTPStatus.OK
+        range_header = str(self.headers.get("Range") or "").strip()
+        if range_header and file_size:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header)
+            valid_range = bool(match and (match.group(1) or match.group(2)))
+            if valid_range:
+                if match.group(1):
+                    start = int(match.group(1))
+                    end = int(match.group(2)) if match.group(2) else file_size - 1
+                else:
+                    suffix_length = int(match.group(2))
+                    valid_range = suffix_length > 0
+                    start = max(0, file_size - suffix_length)
+                    end = file_size - 1
+                end = min(end, file_size - 1)
+                valid_range = valid_range and 0 <= start <= end < file_size
+            if not valid_range:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.send_security_headers()
+                self.end_headers()
+                return
+            status = HTTPStatus.PARTIAL_CONTENT
+        content_length = 0 if not file_size else end - start + 1
+        with target.open("rb") as media_file:
+            media_file.seek(start)
+            content = media_file.read(content_length)
+        stored_mime = next((str(row["mime_type"] or "").split(";", 1)[0].strip().lower()
+                            for row in media_channels if row["mime_type"]), "")
+        if stored_mime in {"application/octet-stream", "binary/octet-stream"}:
+            stored_mime = ""
+        message_type = next((str(row["message_type"] or "").lower() for row in media_channels), "")
+        guessed_mime = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        if message_type == "audio" and not stored_mime.startswith("audio/"):
+            guessed_mime = {
+                ".mp3": "audio/mpeg",
+                ".m4a": "audio/mp4",
+                ".mp4": "audio/mp4",
+                ".ogg": "audio/ogg",
+                ".oga": "audio/ogg",
+                ".webm": "audio/webm",
+            }.get(target.suffix.lower(), guessed_mime)
+        self.send_response(status)
+        self.send_header("Content-Type", stored_mime or guessed_mime)
         self.send_header("Content-Length", str(len(content)))
+        self.send_header("Accept-Ranges", "bytes")
+        if status == HTTPStatus.PARTIAL_CONTENT:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
         self.send_header("Content-Disposition", f'inline; filename="{file_name}"')
         self.send_header("Cache-Control", "private, max-age=86400")
         self.send_security_headers()

@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-alignment-v1/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-stability-v2/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
 assert.match(resolutionScript, /<circle cx="12" cy="7" r="4"><\/circle><path d="M20 21a8 8 0 0 0-16 0"><\/path>/);
@@ -56,6 +56,7 @@ const server = http.createServer((request, response) => {
       <button type="button" data-nav data-iea-goals-nav><span>Metas</span></button>
       <div style="flex:1"></div>
     </aside>
+    <form action="/unexpected-reload"><button data-open-conversation>Abrir conversa</button></form>
     <script>
       window.clicks=0; window.goalsOpened=0;
       window.IEACrmGoals={open:()=>window.goalsOpened++};
@@ -116,6 +117,23 @@ try {
     assert.ok(item.labelDelta <= 0.5, `${item.key} label must be centered`);
   });
 
+  await page.getByRole("button", { name: "Abrir conversa" }).click();
+  assert.equal(new URL(page.url()).pathname, "/", "patient start actions must never submit the page");
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
+
+  const styleMutations = await page.evaluate(async () => {
+    const aside = document.querySelector("aside");
+    let count = 0;
+    const observer = new MutationObserver(records => {
+      count += records.filter(record => record.type === "attributes" && record.attributeName === "style").length;
+    });
+    observer.observe(aside, { attributes: true, subtree: true, attributeFilter: ["style"] });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    observer.disconnect();
+    return count;
+  });
+  assert.ok(styleMutations <= 2, `sidebar must settle instead of looping style mutations; received ${styleMutations}`);
+
   await page.getByText("Funil", { exact: true }).click();
   assert.equal(await page.evaluate(() => window.clicks), 1, "reordering must preserve existing event listeners");
   assert.equal(new URL(page.url()).pathname, "/", "sidebar navigation must not load another document");
@@ -149,6 +167,7 @@ try {
     for (const node of nodes) {
       if (["Gestão", "Campanhas", "Integração", "Configuração"].includes(node.textContent.trim())) node.style.display = "none";
     }
+    window.IEACrmNavigationOrder.maintain();
   });
   await page.waitForFunction(() => document.querySelector("[data-iea-admin-navigation-divider]").hidden);
   assert.equal(await page.locator("[data-iea-admin-navigation-divider]").isVisible(), false);

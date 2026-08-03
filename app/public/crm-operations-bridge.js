@@ -97,7 +97,10 @@
       try {
         const data = await request(`/api/crm/patient-control?${params}`);
         const summary = data.summary || {};
-        const items = data.items || [];
+        // /api/crm/patient-control devolve um ledger paginado em `rows`.
+        // A tela antiga procurava `items`, então exibia zero linhas mesmo
+        // depois de a finalização ter sido persistida corretamente.
+        const items = data.rows || data.items || [];
         const filterData = data.filters || {};
         fillOptions(body.querySelector("[data-category]"), filterData.categories || [], category);
         fillOptions(body.querySelector("[data-outcome]"), filterData.outcomes || [], outcome);
@@ -105,7 +108,10 @@
           ${stat("Atendimentos", summary.total)}${stat("Agendamentos", summary.scheduled)}
           ${stat("Com participação da IA", summary.ai_involved)}${stat("Finalizados por humano", summary.human_finalized)}
         </div><div class="iea-panel" style="overflow:auto"><table class="iea-table"><thead><tr><th>Paciente</th><th>Finalizado em</th><th>Atendente</th><th>Categoria</th><th>Resultado</th><th>Agendamento</th><th>Canal</th><th>Profissional</th></tr></thead><tbody>
-          ${items.length ? items.map(row => `<tr><td><b>${esc(row.patient_name || row.name)}</b><br><small>${esc(row.phone)}</small></td><td>${esc(row.resolved_at || row.finished_at)}</td><td>${esc(row.agent_name || row.attendant_name)}</td><td>${esc(row.category)}</td><td>${esc(row.outcome || row.result)}</td><td>${esc(row.scheduled_at || "-")}</td><td>${esc(row.channel_name || row.channel)}</td><td>${esc(row.professional_name || "-")}</td></tr>`).join("") : `<tr><td colspan="8" style="text-align:center;padding:35px;color:#718295">Nenhum atendimento corresponde aos filtros.</td></tr>`}
+          ${items.length ? items.map(row => {
+            const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" · ") || row.scheduled_at || "-";
+            return `<tr><td><b>${esc(row.contact_name || row.patient_name || row.name)}</b><br><small>${esc(row.phone)}</small></td><td>${esc(row.resolved_at || row.finished_at)}</td><td>${esc(row.resolved_by_name || row.agent_name || row.attendant_name)}</td><td>${esc(row.category)}</td><td>${esc(row.outcome || row.result)}</td><td>${esc(scheduled)}</td><td>${esc(row.channel_name || row.channel)}</td><td>${esc(row.responsible_professional || row.professional_name || "-")}</td></tr>`;
+          }).join("") : `<tr><td colspan="8" style="text-align:center;padding:35px;color:#718295">Nenhum atendimento corresponde aos filtros.</td></tr>`}
         </tbody></table></div>`;
       } catch (error) {
         body.querySelector("[data-results]").innerHTML = `<div class="iea-panel" style="color:#bd2436">${esc(error.message)}</div>`;

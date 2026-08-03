@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  // CRM_MEDIA_BRIDGE_INCREMENTAL_SAFE_V13
+  // CRM_MEDIA_BRIDGE_PLAYBACK_RANGE_SAFE_V14
   // Respostas incrementais vazias não podem apagar os controles já exibidos.
 
   var nativeFetch = window.fetch.bind(window);
@@ -34,7 +34,7 @@
   }
 
   function itemTimestamp(item) {
-    var raw = item && (item.created_at || item.timestamp || item.sent_at);
+    var raw = item && (item.created_at || item.timestamp || item.sent_at || item.message_at);
     var parsed = raw ? new Date(raw) : null;
     return parsed && !isNaN(parsed.getTime()) ? parsed : null;
   }
@@ -148,16 +148,71 @@
     var element;
 
     if (type === "audio") {
+      var wrapper = document.createElement("div");
+      var status = document.createElement("small");
+      var fallbackAttempted = false;
+      var playRequested = false;
+
       element = document.createElement("audio");
       element.controls = true;
       element.preload = "metadata";
       element.src = url;
-      element.style.width = "280px";
+      element.style.width = "100%";
       element.style.maxWidth = "100%";
+      Object.assign(wrapper.style, {
+        width: "280px",
+        maxWidth: "100%"
+      });
+      status.hidden = true;
+      status.setAttribute("role", "status");
+      Object.assign(status.style, {
+        display: "block",
+        color: "#b91c1c",
+        fontSize: "12px",
+        marginTop: "4px"
+      });
+      element.addEventListener("play", function () {
+        playRequested = true;
+      });
       element.addEventListener("loadedmetadata", function () {
         element.setAttribute("aria-label", "Áudio de " + Math.round(element.duration || 0) + " segundos");
+        status.hidden = true;
       });
-      return element;
+      element.addEventListener("error", async function () {
+        if (fallbackAttempted || !url) return;
+        fallbackAttempted = true;
+        status.hidden = false;
+        status.textContent = "Carregando áudio...";
+        try {
+          var response = await nativeFetch(url, {
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { Accept: "audio/*" }
+          });
+          if (!response.ok) {
+            var detail = "HTTP " + response.status;
+            try {
+              var body = await response.json();
+              detail = body.error || body.message || detail;
+            } catch (_ignored) {}
+            throw new Error(detail);
+          }
+          var blob = await response.blob();
+          if (!blob.size) throw new Error("arquivo vazio");
+          element.src = URL.createObjectURL(blob);
+          element.load();
+          status.hidden = true;
+          if (playRequested) {
+            element.play().catch(function () {});
+          }
+        } catch (error) {
+          status.textContent =
+            "Não foi possível carregar o áudio. " + (error.message || "Tente novamente.");
+        }
+      });
+      wrapper.appendChild(element);
+      wrapper.appendChild(status);
+      return wrapper;
     }
 
     if (type === "image") {

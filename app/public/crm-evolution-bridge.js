@@ -52,12 +52,14 @@
     const sharedItems = window.__ieaCrmConversationItems || [];
     const sharedAt = Number(window.__ieaCrmConversationItemsAt || 0);
     if (sharedItems.length && now - sharedAt < 90000) {
-      conversationOriginItems = sharedItems.filter(item => item.campaign_name || item.automation_flow);
+      conversationOriginItems = sharedItems.filter(item => item.campaign_name || item.automation_flow || /(^|\|\|)Campanha:/i.test(String(item.tag_names || "")));
       conversationOriginLoadedAt = sharedAt;
     } else if (!conversationOriginItems.length || now - conversationOriginLoadedAt > 60000) {
       try {
         const payload = await api("/api/crm/conversations?view=active");
-        conversationOriginItems = (payload.items || []).filter(item => (item.campaign_name || item.automation_flow) && item.phone);
+        conversationOriginItems = (payload.items || []).filter(item =>
+          (item.campaign_name || item.automation_flow || /(^|\|\|)Campanha:/i.test(String(item.tag_names || ""))) && item.phone
+        );
         conversationOriginLoadedAt = now;
       } catch (_) {
         return;
@@ -75,12 +77,18 @@
           (phone && (contentDigits.includes(phone) || (suffix.length === 8 && contentDigits.includes(suffix))));
       });
     };
-    const makeBadge = item => {
+    const campaignLabel = item => {
+      const tags = String(item.tag_names || "").split("||").map(value => value.trim()).filter(Boolean);
+      return tags.find(value => normalized(value).startsWith("campanha:")) ||
+        `Campanha: ${item.campaign_name || item.automation_flow}`;
+    };
+    const makeBadge = (item, placement = "after") => {
       const badge = document.createElement("span");
       badge.dataset.crmOriginBadge = String(item.id || item.conversation_id || "1");
+      badge.dataset.crmOriginPlacement = placement;
       badge.title = "Campanha que originou esta conversa";
-      badge.textContent = `Campanha: ${item.campaign_name || item.automation_flow}`;
-      badge.style.cssText = "display:inline-flex;align-items:center;margin-left:6px;font-size:10px;font-weight:850;padding:3px 7px;border-radius:20px;line-height:1.2;white-space:nowrap;background:#efe4ff;color:#6d36a6;border:1px solid #dfcff3";
+      badge.textContent = campaignLabel(item);
+      badge.style.cssText = `display:inline-flex;align-items:center;${placement === "before" ? "margin-right:6px" : "margin-left:6px"};font-size:10px;font-weight:850;padding:3px 7px;border-radius:20px;line-height:1.2;white-space:nowrap;background:#efe4ff;color:#6d36a6;border:1px solid #dfcff3`;
       return badge;
     };
 
@@ -115,7 +123,13 @@
     if (!item) return;
     const title = header.querySelector("h1,h2,h3,strong");
     if (!title || header.querySelector("[data-crm-origin-badge]")) return;
-    title.insertAdjacentElement("afterend", makeBadge(item));
+    const priority = [...header.querySelectorAll("span,button")].find(element =>
+      /^(média|alta|baixa)$/i.test(text(element))
+    );
+    // No cabeçalho a origem deve ficar imediatamente antes da prioridade,
+    // tornando a campanha visível sem abrir o painel lateral.
+    if (priority) priority.insertAdjacentElement("beforebegin", makeBadge(item, "before"));
+    else title.insertAdjacentElement("afterend", makeBadge(item));
   }
 
   function scheduleConversationOrigin() {
