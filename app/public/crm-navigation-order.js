@@ -169,7 +169,12 @@
     // internos. Estilizar somente o wrapper deixa o controle interno livre para
     // vazar para fora da rail. Aplicamos a mesma caixa compacta Ã  superfÃ­cie
     // clicÃ¡vel, sem tocar na aÃ§Ã£o ou no listener original.
-    const surfaces = [item, ...Array.from(item.querySelectorAll("a,button,[role='button']"))];
+    // Em produÃ§Ã£o os itens ficam dentro de <sc-if>. O elemento direto do
+    // <aside> Ã© apenas o wrapper; o <div> filho Ã© a superfÃ­cie que recebe o
+    // estilo do bundle e era ele que deixava rÃ³tulos longos escaparem.
+    const surfaces = [item, ...Array.from(item.children).filter((child) =>
+      child.matches("a,button,div,[role='button'],[role='tab']")
+    )];
     surfaces.forEach((surface) => {
       Object.entries(important).forEach(([property, value]) => setImportantStyle(surface, property, value));
     });

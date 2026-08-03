@@ -50,7 +50,7 @@ const server = http.createServer((request, response) => {
       <a href="/reload?screen=queue" data-nav><span>Filas</span></a>
       <a href="/reload?screen=funnel" data-nav><span>Funil</span></a>
       <a href="/reload?screen=management" data-nav><span>Gestão</span></a>
-      <div data-nav data-iea-patients-nav><a href="/reload?screen=contacts"><p>Contatos</p></a></div>
+      <sc-if data-nav><div data-iea-patients-nav><p>Contatos</p></div></sc-if>
       <a href="/reload?screen=campaigns" data-nav><span>Campanhas</span></a>
       <a href="/reload?screen=integrations" data-nav><span>Integra</span></a>
       <a href="/reload?screen=settings" data-nav><span>Config</span></a>
