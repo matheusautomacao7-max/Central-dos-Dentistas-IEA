@@ -1,15 +1,62 @@
 (() => {
-  const state = { items: [], selectedId: null };
+  const state = { items: [], selectedId: null, funnelLoaded: false };
   const byId = (id) => document.getElementById(id);
   const list = byId("conversations");
   const messages = byId("messages");
   const status = byId("list-status");
   const search = byId("search");
   const identity = byId("identity");
+  const inboxScreen = byId("inbox-screen");
+  const funnelScreen = byId("funnel-screen");
+  const funnelColumns = byId("funnel-columns");
+  const funnelStatus = byId("funnel-status");
 
   const escape = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
   const displayName = (item) => item.name || item.phone || "Contato sem identificação";
   const date = (value) => value ? new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "";
+
+  function stageLabel(stage, status) {
+    const value = String(stage || status || "").trim().toLowerCase();
+    if (value.includes("resolv")) return "Resolvidos";
+    if (value.includes("atend") || value.includes("andamento")) return "Em atendimento";
+    if (value.includes("aguard") || value.includes("fila")) return "Aguardando";
+    return "Novos";
+  }
+
+  function renderFunnel(items) {
+    const stages = ["Novos", "Aguardando", "Em atendimento", "Resolvidos"];
+    const groups = Object.fromEntries(stages.map((stage) => [stage, []]));
+    items.forEach((item) => groups[stageLabel(item.pipeline_stage, item.status)].push(item));
+    funnelColumns.innerHTML = stages.map((stage) => {
+      const cards = groups[stage];
+      return `<section class="funnel-column"><h3>${stage}<span class="funnel-count">${cards.length}</span></h3><div class="funnel-cards">${cards.length ? cards.map((item) => `<article class="funnel-card"><strong>${escape(displayName(item))}</strong><span>${escape(item.channel_name || "Canal não identificado")}</span><span>${escape(item.assigned_to || "Sem atendente")}</span></article>`).join("") : '<p class="funnel-empty">Nenhum atendimento nesta etapa.</p>'}</div></section>`;
+    }).join("");
+  }
+
+  async function loadFunnel() {
+    funnelStatus.textContent = "Carregando atendimentos…";
+    funnelColumns.innerHTML = "";
+    try {
+      const response = await fetch("/api/crm/conversations?view=operational");
+      if (!response.ok) throw new Error("Não foi possível carregar o Funil.");
+      const payload = await response.json();
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      renderFunnel(items);
+      funnelStatus.textContent = `${items.length} atendimento${items.length === 1 ? "" : "s"} carregado${items.length === 1 ? "" : "s"} sem alterações.`;
+      state.funnelLoaded = true;
+    } catch (error) {
+      funnelStatus.textContent = error.message || "Não foi possível carregar o Funil.";
+      funnelStatus.classList.add("error");
+    }
+  }
+
+  function showScreen(screen) {
+    const isInbox = screen === "inbox";
+    inboxScreen.hidden = !isInbox;
+    funnelScreen.hidden = isInbox;
+    document.querySelectorAll(".module-tab").forEach((tab) => tab.setAttribute("aria-current", tab.dataset.screen === screen ? "page" : "false"));
+    if (!isInbox && !state.funnelLoaded) loadFunnel();
+  }
 
   function renderList() {
     const term = search.value.trim().toLowerCase();
@@ -62,6 +109,10 @@
   list.addEventListener("click", (event) => {
     const button = event.target.closest("[data-id]");
     if (button) selectConversation(button.dataset.id);
+  });
+  document.querySelector(".module-nav").addEventListener("click", (event) => {
+    const tab = event.target.closest("[data-screen]");
+    if (tab) showScreen(tab.dataset.screen);
   });
   search.addEventListener("input", renderList);
   load();

@@ -16,11 +16,16 @@
       </div>
       <a href="/central-crc/whatsapp">Abrir CRM atual</a>
     </header>
+    <nav class="module-nav" aria-label="Módulos do CRM paralelo">
+      <button class="module-tab" type="button" data-screen="inbox" aria-current="page">Inbox</button>
+      <button class="module-tab" type="button" data-screen="funnel">Funil</button>
+      <span class="module-note">Ambiente de validação</span>
+    </nav>
     <section class="notice">
       <strong>Modo de leitura para validação</strong>
       <p>As conversas abaixo são as conversas reais do CRM atual. Nesta etapa não há envio, atribuição ou alteração de dados.</p>
     </section>
-    <section class="inbox" aria-label="Inbox de conversas">
+    <section id="inbox-screen" class="inbox" aria-label="Inbox de conversas">
       <aside class="conversation-panel">
         <label class="search-label" for="search">Buscar conversa</label>
         <input id="search" type="search" placeholder="Nome ou telefone">
@@ -40,6 +45,13 @@
           <div class="empty-state"><strong>Inbox paralelo pronto.</strong><span>Escolha uma conversa à esquerda para conferir o histórico.</span></div>
         </div>
       </article>
+    </section>
+    <section id="funnel-screen" class="funnel-screen" hidden aria-label="Funil de atendimentos">
+      <header class="funnel-header">
+        <div><p class="eyebrow">Dados reais · modo de leitura</p><h2>Funil de atendimentos</h2><p id="funnel-status">Carregando atendimentos…</p></div>
+        <span class="read-only-badge">Somente leitura</span>
+      </header>
+      <div id="funnel-columns" class="funnel-columns"></div>
     </section>
   </main>
   <script src="/crm-next.js"></script>
