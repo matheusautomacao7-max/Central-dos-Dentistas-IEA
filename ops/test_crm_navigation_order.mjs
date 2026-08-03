@@ -9,7 +9,7 @@ const resolutionScript = await readFile(new URL("../app/public/crm-resolution-fl
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const htmlSource = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
-assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v3/);
+assert.match(htmlSource, /crm-navigation-order\.js\?v=20260803-sidebar-compact-v4/);
 assert.match(navigationScript, /CRM_NAVIGATION_COMPACT_RAIL_V3/);
 assert.match(htmlSource, /crm-resolution-flow\.js\?v=20260802-spa-navigation-v1/);
 assert.ok(htmlSource.lastIndexOf("crm-navigation-order.js") > htmlSource.lastIndexOf("crm-goals.js"));
@@ -50,7 +50,7 @@ const server = http.createServer((request, response) => {
       <a href="/reload?screen=queue" data-nav><span>Filas</span></a>
       <a href="/reload?screen=funnel" data-nav><span>Funil</span></a>
       <a href="/reload?screen=management" data-nav><span>Gestão</span></a>
-      <a href="/reload?screen=contacts" data-nav data-iea-patients-nav><span>Contatos</span></a>
+      <div data-nav data-iea-patients-nav><a href="/reload?screen=contacts"><p>Contatos</p></a></div>
       <a href="/reload?screen=campaigns" data-nav><span>Campanhas</span></a>
       <a href="/reload?screen=integrations" data-nav><span>Integra</span></a>
       <a href="/reload?screen=settings" data-nav><span>Config</span></a>
@@ -131,6 +131,15 @@ try {
     assert.equal(label.overflow, "hidden");
     assert.equal(label.whiteSpace, "nowrap");
   });
+  const sidebarOverflow = await page.locator("aside").evaluate((aside) => ({
+    scrollWidth: aside.scrollWidth,
+    clientWidth: aside.clientWidth,
+    patientWidth: aside.querySelector("[data-iea-navigation-key='pacientes']").getBoundingClientRect().width,
+    patientLabelWidth: aside.querySelector("[data-iea-navigation-key='pacientes'] [data-iea-navigation-label]").getBoundingClientRect().width,
+  }));
+  assert.ok(sidebarOverflow.scrollWidth <= sidebarOverflow.clientWidth, "compact rail must never acquire horizontal overflow");
+  assert.ok(sidebarOverflow.patientWidth <= 64.5, "wrapped patient navigation must remain compact");
+  assert.ok(sidebarOverflow.patientLabelWidth <= 58.5, "wrapped patient label must remain within the rail");
 
   await page.getByRole("button", { name: "Abrir conversa" }).click();
   assert.equal(new URL(page.url()).pathname, "/", "patient start actions must never submit the page");

@@ -19,7 +19,7 @@
 
   function exactLabels(item) {
     const values = [item.title, item.getAttribute("aria-label")];
-    item.querySelectorAll("span,div").forEach((node) => {
+    item.querySelectorAll("span,div,p,small,strong,label").forEach((node) => {
       if (!node.children.length) values.push(node.textContent);
     });
     return values.map(normalized).filter(Boolean);
@@ -88,7 +88,8 @@
 
     // The CRM sidebar is SPA navigation. A legacy anchor may still appear
     // during a render, but it must never load a new document.
-    if (item.tagName === "A") event.preventDefault();
+    const navigationAnchor = event.target && event.target.closest && event.target.closest("a");
+    if (item.tagName === "A" || (navigationAnchor && item.contains(navigationAnchor))) event.preventDefault();
 
     if (key === "metas" && window.IEACrmGoals && window.IEACrmGoals.open) {
       event.preventDefault();
@@ -108,9 +109,14 @@
   }
 
   function leafWithLabel(item, accepted) {
-    return Array.from(item.querySelectorAll("span,div")).find((node) =>
+    return Array.from(item.querySelectorAll("span,div,p,small,strong,label")).find((node) =>
       !node.children.length && accepted.includes(normalized(node.textContent))
     );
+  }
+
+  function navigationTextLeaves(item) {
+    return Array.from(item.querySelectorAll("span,div,p,small,strong,label"))
+      .filter((node) => !node.children.length && normalized(node.textContent));
   }
 
   function setImportantStyle(element, property, value) {
@@ -139,6 +145,16 @@
     }
   }
 
+  function useCompleteOperationalLabels(items) {
+    const patients = items.get("pacientes");
+    const patientLabel = patients && leafWithLabel(patients, ["contatos", "pacientes"]);
+    if (patientLabel && patientLabel.textContent !== "Pacientes") patientLabel.textContent = "Pacientes";
+    if (patients) {
+      patients.title = "Pacientes";
+      patients.setAttribute("aria-label", "Pacientes");
+    }
+  }
+
   function normalizeNavigationItem(item, key) {
     if (!item) return;
     item.dataset.ieaNavigationKey = key;
@@ -149,7 +165,14 @@
       position: "relative", flex: "0 0 auto", overflow: "hidden",
       borderWidth: "0px",
     };
-    Object.entries(important).forEach(([property, value]) => setImportantStyle(item, property, value));
+    // O bundle do CRM alterna entre itens diretos e wrappers com <a>/<button>
+    // internos. Estilizar somente o wrapper deixa o controle interno livre para
+    // vazar para fora da rail. Aplicamos a mesma caixa compacta Ã  superfÃ­cie
+    // clicÃ¡vel, sem tocar na aÃ§Ã£o ou no listener original.
+    const surfaces = [item, ...Array.from(item.querySelectorAll("a,button,[role='button']"))];
+    surfaces.forEach((surface) => {
+      Object.entries(important).forEach(([property, value]) => setImportantStyle(surface, property, value));
+    });
     item.querySelectorAll("svg").forEach(icon => {
       setImportantStyle(icon, "display", "block");
       setImportantStyle(icon, "margin", "0px auto");
@@ -161,8 +184,10 @@
       campanhas: ["campanhas"], integracao: ["integra", "integracao", "integrações"],
       configuracao: ["config", "configuracao"],
     };
-    const label = leafWithLabel(item, labelAliases[key] || [key]);
-    if (label) {
+    const labels = navigationTextLeaves(item);
+    const preferredLabel = leafWithLabel(item, labelAliases[key] || [key]);
+    if (preferredLabel && !labels.includes(preferredLabel)) labels.push(preferredLabel);
+    labels.forEach((label) => {
       label.dataset.ieaNavigationLabel = key;
       setImportantStyle(label, "display", "block");
       setImportantStyle(label, "width", "58px");
@@ -176,7 +201,7 @@
       setImportantStyle(label, "textOverflow", "clip");
       setImportantStyle(label, "overflowWrap", "normal");
       setImportantStyle(label, "wordBreak", "keep-all");
-    }
+    });
   }
 
   function adminDivider(aside) {
@@ -205,6 +230,7 @@
     });
     if (!items.has("inbox")) return;
 
+    useCompleteOperationalLabels(items);
     useCompleteAdminLabels(items);
     aside.dataset.ieaNavigationRail = "1";
     setImportantStyle(aside, "overflowX", "hidden");
