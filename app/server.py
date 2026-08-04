@@ -4721,7 +4721,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                             category COLLATE NOCASE,title COLLATE NOCASE""".format(where=where)
             ).fetchall()
         self.send_json({
-            "assistant": {"name": "Lia", "mode": "knowledge_only", "message": "A Lia consulta somente conteúdos oficiais aprovados no CRM."},
+            "assistant": {"name": "Lia Ayub", "mode": "knowledge_only", "message": "A Lia consulta somente conteúdos oficiais aprovados no CRM."},
             "can_manage": can_manage,
             "categories": list(CRM_LIA_KNOWLEDGE_CATEGORIES),
             "items": [dict(row) for row in rows],

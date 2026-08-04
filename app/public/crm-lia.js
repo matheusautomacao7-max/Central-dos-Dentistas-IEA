@@ -61,8 +61,8 @@
     if (state.panel) return;
     var panel = document.createElement('aside');
     panel.className = 'iea-lia-panel';
-    panel.setAttribute('aria-label', 'Lia, assistente interna do CRM');
-    panel.innerHTML = '<div class="iea-lia-head"><div class="iea-lia-avatar">' + icon('spark') + '</div><div class="iea-lia-title">Lia <small>Assistente da recepção</small></div><div class="iea-lia-head-actions"><button class="iea-lia-icon-btn" data-lia-manage title="Gerenciar base oficial" aria-label="Gerenciar base oficial">' + icon('book') + '</button><button class="iea-lia-icon-btn" data-lia-close title="Fechar" aria-label="Fechar Lia">' + icon('close') + '</button></div></div><div class="iea-lia-body" data-lia-body></div>';
+    panel.setAttribute('aria-label', 'Lia Ayub, assistente de IA do CRM');
+    panel.innerHTML = '<div class="iea-lia-head"><div class="iea-lia-avatar">' + icon('spark') + '</div><div class="iea-lia-title">Lia Ayub <small>Assistente de IA</small></div><div class="iea-lia-head-actions"><button class="iea-lia-icon-btn" data-lia-manage title="Gerenciar base oficial e configurações" aria-label="Gerenciar base oficial e configurações">' + icon('book') + '</button><button class="iea-lia-icon-btn" data-lia-close title="Fechar" aria-label="Fechar Lia Ayub">' + icon('close') + '</button></div></div><div class="iea-lia-body" data-lia-body></div>';
     document.body.appendChild(panel);
     state.panel = panel;
     state.body = panel.querySelector('[data-lia-body]');
@@ -74,7 +74,7 @@
     return request('/api/crm/lia/knowledge').then(function (data) { state.data = data; return data; });
   }
   function introMarkup() {
-    return '<div class="iea-lia-intro"><strong>Como posso ajudar?</strong><br>Uso a base oficial do CRM para orientar scripts, metas e processos. Não envio mensagens nem altera atendimentos.</div>';
+    return '<div class="iea-lia-intro"><strong>Como posso ajudar?</strong></div>';
   }
   function showChat() {
     state.manager = false;
