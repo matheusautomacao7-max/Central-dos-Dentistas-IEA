@@ -20,6 +20,8 @@ services:
     build: .
     container_name: instituto-ayub
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       HOST: 0.0.0.0
       PORT: 8000
@@ -28,7 +30,6 @@ services:
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
       EVOLUTION_WEBHOOK_TOKEN: ${EVOLUTION_WEBHOOK_TOKEN}
       APP_SECRET_KEY: ${APP_SECRET_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       APP_RELEASE_ID: ${APP_RELEASE_ID:-dev}
       WEBHOOK_PAYLOAD_RETENTION_DAYS: ${WEBHOOK_PAYLOAD_RETENTION_DAYS:-90}
       SECURITY_EVENT_RETENTION_DAYS: ${SECURITY_EVENT_RETENTION_DAYS:-365}
