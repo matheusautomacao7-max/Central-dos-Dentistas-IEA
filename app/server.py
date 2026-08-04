@@ -2497,6 +2497,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchone()
             if not user:
                 return self.send_json({"error": "Usuário CRC não encontrado."}, HTTPStatus.NOT_FOUND)
+            # A lista marcada é a fonte de verdade também para canais. Sem
+            # isso, desmarcar um número e deixar a opção de escopo desligada
+            # acabava liberando todos os números novamente.
+            available_channel_ids = {
+                int(row["id"]) for row in db.execute("SELECT id FROM crm_channels").fetchall()
+            }
+            if set(channel_ids) != available_channel_ids:
+                scope_enabled = 1
             if "operational_agent" not in payload:
                 operational_agent = 1 if user["crm_operational_agent"] else 0
             is_crm_admin = user["crm_access_level"] == "admin"
@@ -3718,23 +3726,25 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif capability == "automation":
             permission = " AND cuc.can_manage_automation=1"
         return (
-            f"(COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 "
+            f"((COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 "
+            f"AND NOT EXISTS (SELECT 1 FROM crm_user_channels legacy_scope WHERE legacy_scope.user_id=?)) "
             f"OR EXISTS (SELECT 1 FROM crm_user_channels cuc WHERE cuc.user_id=? "
             f"AND cuc.channel_id={channel_expression}{permission}))",
-            [user_id, user_id],
+            [user_id, user_id, user_id],
         )
 
     def crm_event_channel_scope_clause(self, event_alias: str = "e") -> tuple[str, list]:
         user_id = int(self.authenticated_user["id"])
         return (
-            f"(COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 OR EXISTS ("
+            f"((COALESCE((SELECT crm_channel_scope_enabled FROM users WHERE id=?),0)=0 "
+            f"AND NOT EXISTS (SELECT 1 FROM crm_user_channels legacy_scope WHERE legacy_scope.user_id=?)) OR EXISTS ("
             f"SELECT 1 FROM crm_user_channels scoped_access "
             f"LEFT JOIN crm_conversations scoped_cv ON scoped_cv.id={event_alias}.conversation_id "
             f"LEFT JOIN crm_channels scoped_ch ON scoped_ch.id=scoped_access.channel_id "
             f"WHERE scoped_access.user_id=? AND (scoped_access.channel_id=scoped_cv.channel_id "
             f"OR LOWER(COALESCE(scoped_ch.instance_name,''))=LOWER(COALESCE({event_alias}.channel_name,'')) "
             f"OR LOWER(COALESCE(scoped_ch.display_name,''))=LOWER(COALESCE({event_alias}.channel_name,'')))))",
-            [user_id, user_id],
+            [user_id, user_id, user_id],
         )
 
     def crm_channel_scope_clause(self, channel_alias: str = "ch", capability: str | None = None) -> tuple[str, list]:
@@ -3755,11 +3765,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return False
         if capability == "automation" and not user["crm_manage_automation"]:
             return False
-        if not user["crm_channel_scope_enabled"]:
-            return True
         permission = ""
         if capability == "reply": permission = " AND can_reply=1"
         elif capability == "automation": permission = " AND can_manage_automation=1"
+        has_selected_channels = bool(db.execute(
+            "SELECT 1 FROM crm_user_channels WHERE user_id=? LIMIT 1", (user_id,)
+        ).fetchone())
+        if not user["crm_channel_scope_enabled"] and not has_selected_channels:
+            return True
         return bool(db.execute(
             f"SELECT 1 FROM crm_user_channels WHERE user_id=? AND channel_id=?{permission}",
             (user_id, channel_id),
@@ -7720,14 +7733,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             active_owner = self.crm_contact_active_owner(db, contact["id"])
             if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.reject_crm_contact_owner_conflict(active_owner)
+            # Nunca reaproveite uma conversa de outro canal: o atendente
+            # escolheu explicitamente o número de saída. Reutilizar somente
+            # pelo contato fazia uma conversa Zero Carie receber mensagens que
+            # deveriam sair pelo IEA.
             existing = db.execute("""SELECT cv.id,cv.channel_id,cv.assigned_user_id,u.name AS assigned_to
                                      FROM crm_conversations cv
                                      LEFT JOIN users u ON u.id=cv.assigned_user_id
-                                     WHERE contact_id=? AND status<>'Resolvida'
+                                     WHERE contact_id=? AND channel_id=? AND status<>'Resolvida'
                                      ORDER BY CASE WHEN assigned_user_id=? THEN 0 ELSE 1 END,
-                                              CASE WHEN channel_id=? THEN 0 ELSE 1 END,
                                               datetime(cv.updated_at) DESC,cv.id DESC LIMIT 1""",
-                                  (contact["id"], self.authenticated_user["id"], channel_id)).fetchone()
+                                  (contact["id"], channel_id, self.authenticated_user["id"])).fetchone()
             if existing:
                 if existing["assigned_user_id"] and existing["assigned_user_id"] != self.authenticated_user["id"]:
                     return self.send_json({

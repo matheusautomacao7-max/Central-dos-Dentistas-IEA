@@ -108,7 +108,12 @@ assert permission_save.count(" is True") >= 3, "permission writes must use stric
 assert "crm_manage_automation" in permission_save
 assert "crm_operational_agent" in permission_save
 assert "set(feature_keys) != set(CRM_FEATURE_KEYS)" in permission_save, "unselected screens must enforce the feature scope"
+assert "set(channel_ids) != available_channel_ids" in permission_save, "unselected channels must enforce the channel scope"
 assert "permission.can_manage_automation=1" in server_source
+
+start_conversation = methods["start_crm_conversation"]
+assert "WHERE contact_id=? AND channel_id=? AND status<>'Resolvida'" in start_conversation
+assert '(contact["id"], channel_id, self.authenticated_user["id"])' in start_conversation
 
 n8n_manager = methods["require_crm_n8n_manager"]
 assert "crm_can_manage_automation" in n8n_manager, "n8n management must require the explicit automation capability"
@@ -170,10 +175,12 @@ assert "featureMatches.length === 1" in bridge
 assert "originalNavDisplays = new WeakMap()" in bridge
 assert 'nav.style.display = visible ? originalNavDisplays.get(nav) : "none"' in bridge
 assert 'card.querySelectorAll("[data-feature]:checked").length !== FEATURES.length' in bridge
+assert 'card.querySelectorAll("[data-channel]:checked").length !== card.querySelectorAll("[data-channel]").length' in bridge
 assert 'if (features.some(item => !item.checked)) scope.checked = true;' in bridge
-assert "crm-operations-bridge.js?v=20260804-contacts-new-search-perf-v2" in crm_html
+assert "crm-operations-bridge.js?v=20260804-channel-scope-routing-v3" in crm_html
 
 assert "featureKeys.length !== featureInputs.length" in admin_js
+assert "channelIds.length !== channelInputs.length" in admin_js
 assert "Ao desmarcar uma tela, a restrição é ativada automaticamente ao salvar." in admin_js
 
 print("crm-feature-permission-tests-ok")

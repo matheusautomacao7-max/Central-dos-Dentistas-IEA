@@ -274,6 +274,18 @@
       const data = await request("/api/admin/crm-channel-access");
       body.innerHTML = `<div class="iea-grid">${(data.users || []).map(user => userCard(user, data.channels || [])).join("")}</div>`;
       body.querySelectorAll("[data-user]").forEach(card => {
+        const channelScope = card.querySelector("[data-channel-scope]");
+        const channels = [...card.querySelectorAll("[data-channel]")];
+        if (channelScope && channels.length) {
+          channels.forEach(input => {
+            input.onchange = () => {
+              if (channels.some(item => !item.checked)) channelScope.checked = true;
+            };
+          });
+          channelScope.onchange = () => {
+            if (!channelScope.checked) channels.forEach(input => { input.checked = true; });
+          };
+        }
         const scope = card.querySelector("[data-feature-scope]");
         const features = [...card.querySelectorAll("[data-feature]")];
         if (!scope || !features.length) return;
@@ -330,7 +342,7 @@
           channel_ids: [...card.querySelectorAll("[data-channel]:checked")].map(input => Number(input.dataset.channel)),
           feature_keys: [...card.querySelectorAll("[data-feature]:checked")].map(input => input.dataset.feature),
           can_manage_automation: card.querySelector("[data-automation]").checked,
-          scope_enabled: card.querySelector("[data-channel-scope]").checked,
+          scope_enabled: card.querySelector("[data-channel-scope]").checked || card.querySelectorAll("[data-channel]:checked").length !== card.querySelectorAll("[data-channel]").length,
           feature_scope_enabled: card.querySelector("[data-feature-scope]").checked || card.querySelectorAll("[data-feature]:checked").length !== FEATURES.length
         })
       });

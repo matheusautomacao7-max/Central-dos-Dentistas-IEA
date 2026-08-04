@@ -59,6 +59,16 @@ function renderCrmAccess() {
     </article>`;
   }).join("") : '<p class="empty-state">Nenhum acesso CRC cadastrado.</p>';
   $$('[data-crm-access-user]').forEach(card => {
+    const channelScope = card.querySelector('[data-crm-scope]');
+    const channels = [...card.querySelectorAll('[data-crm-channel]')];
+    if (channelScope && channels.length) {
+      channels.forEach(input => input.addEventListener('change', () => {
+        if (channels.some(item => !item.checked)) channelScope.checked = true;
+      }));
+      channelScope.addEventListener('change', () => {
+        if (!channelScope.checked) channels.forEach(input => { input.checked = true; });
+      });
+    }
     const scope = card.querySelector('[data-crm-feature-scope]');
     const features = [...card.querySelectorAll('[data-crm-feature]')];
     if (!scope || !features.length) return;
@@ -78,7 +88,9 @@ async function saveCrmAccess(userId) {
   const card = $(`[data-crm-access-user="${userId}"]`);
   const featureInputs = [...card.querySelectorAll('[data-crm-feature]')];
   const featureKeys = featureInputs.filter(input => input.checked).map(input => input.value);
-  const payload = {user_id: Number(userId), operational_agent: card.querySelector('[data-crm-operational-agent]').checked, scope_enabled: card.querySelector('[data-crm-scope]').checked, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: [...card.querySelectorAll('[data-crm-channel]:checked')].map(input => Number(input.value)), feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked || featureKeys.length !== featureInputs.length, feature_keys: featureKeys};
+  const channelInputs = [...card.querySelectorAll('[data-crm-channel]')];
+  const channelIds = channelInputs.filter(input => input.checked).map(input => Number(input.value));
+  const payload = {user_id: Number(userId), operational_agent: card.querySelector('[data-crm-operational-agent]').checked, scope_enabled: card.querySelector('[data-crm-scope]').checked || channelIds.length !== channelInputs.length, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: channelIds, feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked || featureKeys.length !== featureInputs.length, feature_keys: featureKeys};
   if (payload.scope_enabled && !payload.channel_ids.length && !confirm("Esta atendente ficará sem acesso a nenhum número. Continuar?")) return;
   if (payload.feature_scope_enabled && !payload.feature_keys.length && !confirm("Esta atendente ficará sem nenhuma tela do CRM. Continuar?")) return;
   try { await api("/api/admin/crm-channel-access", {method:"POST", body:JSON.stringify(payload)}); await loadCrmAccess(); showToast("Permissões do CRM salvas."); } catch (error) { showToast(error.message, true); }
