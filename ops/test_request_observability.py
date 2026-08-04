@@ -59,5 +59,14 @@ assert event["duration_ms"] == 125
 assert "segredo" not in json.dumps(event)
 assert event["remote_ip"] == "127.0.0.1"
 
+# O handler padrão usa %d ao registrar respostas de erro. Os tipos precisam
+# ser preservados até a formatação, ou uma simples resposta 404 vira conexão
+# encerrada/502 no proxy.
+error_output = io.StringIO()
+with redirect_stdout(error_output):
+    handler.log_message("code %d, message %s", 404, "Not Found")
+error_event = json.loads(error_output.getvalue())
+assert error_event["message"] == "code 404, message Not Found"
+
 assert "X-Request-ID" in (PROJECT_ROOT / "app" / "server.py").read_text(encoding="utf-8")
 print("request-observability-tests-ok")

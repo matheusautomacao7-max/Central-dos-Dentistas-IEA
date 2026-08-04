@@ -848,7 +848,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         )
 
     def log_message(self, fmt: str, *args) -> None:
-        safe_args = tuple(self.redact_log_value(value) for value in args)
+        try:
+            rendered_message = fmt % args
+        except (TypeError, ValueError):
+            rendered_message = " ".join((fmt, *(str(value) for value in args)))
         started_at = getattr(self, "request_started_at", time.monotonic())
         event = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -859,7 +862,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "path": self.redact_log_value(getattr(self, "path", "")),
             "remote_ip": (getattr(self, "client_address", (None,))[0]),
             "duration_ms": round((time.monotonic() - started_at) * 1000),
-            "message": self.redact_log_value(fmt % safe_args),
+            "message": self.redact_log_value(rendered_message),
         }
         print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
 
