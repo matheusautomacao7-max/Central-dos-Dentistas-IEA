@@ -44,13 +44,14 @@
       .iea-table tr:last-child td{border-bottom:0}.iea-table .iea-action-cell{text-align:right}.iea-btn-sm{padding:7px 10px;border-radius:8px;font-size:12px}
       .iea-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}.iea-detail{padding:11px 12px;border-radius:10px;background:#f5f8fb;border:1px solid #e1e8ef}.iea-detail small{display:block;color:#718295;font-weight:700;margin-bottom:4px}.iea-detail b{word-break:break-word}.iea-detail-wide{grid-column:1/-1}.iea-detail-note{white-space:pre-wrap;line-height:1.45}
       .iea-funnel-columns{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:16px;align-items:start}.iea-funnel-column{min-height:390px;background:#eef3f7;border:1px solid #dfe7ed;border-radius:16px;overflow:hidden}.iea-funnel-title{display:flex;justify-content:space-between;align-items:center;padding:16px;background:#fff;border-bottom:1px solid #e1e9ef;font-weight:850}.iea-funnel-count{background:#e9f0f5;border-radius:999px;padding:3px 10px;font-size:12px}.iea-funnel-cards{display:grid;gap:10px;padding:12px}.iea-funnel-card{background:#fff;border:1px solid #dce6ed;border-radius:13px;padding:13px;box-shadow:0 2px 7px rgba(20,48,74,.04)}.iea-funnel-card h3{font-size:14px;margin:0 0 5px}.iea-funnel-card p{color:#708397;font-size:12px;margin:0 0 11px}.iea-badge{display:inline-flex;align-items:center;max-width:100%;box-sizing:border-box;border-radius:999px;padding:5px 8px;font-size:11px;font-weight:800;background:#eaf1ff;color:#2459b1}.iea-badge-success{background:#e8f8ef;color:#147a43}.iea-badge-danger{background:#fff0f0;color:#ba2638}.iea-badge-warning{background:#fff6de;color:#9a6500}
+      .iea-contacts-toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px}.iea-contacts-toolbar .iea-field{flex:1}.iea-contact-list{max-height:calc(100vh - 250px);min-height:380px;overflow-y:auto;padding-right:6px}.iea-contact-list::-webkit-scrollbar{width:10px}.iea-contact-list::-webkit-scrollbar-thumb{background:#b7c6d5;border-radius:999px;border:3px solid #fff}.iea-contact-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 4px;border-bottom:1px solid #e8eef3}.iea-contact-card:last-child{border-bottom:0}.iea-contact-card h3{margin:0 0 4px;font-size:15px}.iea-contact-card p{margin:0;color:#718295;font-size:13px}.iea-contact-avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:#e5efff;color:#2459b1;font-weight:850;flex:0 0 auto}
       .iea-user{border:1px solid #dce5eb;border-radius:14px;padding:16px;background:#fff}.iea-user h3{margin:0 0 4px}.iea-user small{color:#718295}
       .iea-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.iea-checks label{display:flex;gap:8px;align-items:center;font-size:13px}
       .iea-modal-bg{position:fixed;inset:0;z-index:100;background:rgba(8,26,42,.54);display:grid;place-items:center;padding:20px}
       .iea-modal{width:min(560px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.25)}
       .iea-modal h2{margin:0 0 5px}.iea-form{display:grid;gap:13px;margin-top:20px}.iea-form label{font-size:12px;font-weight:800;color:#607488}.iea-form label .iea-field{margin-top:6px}
-      body[data-omtheme='dark'] .iea-ops-screen{background:#0b141a;color:#e9edef}body[data-omtheme='dark'] .iea-panel,body[data-omtheme='dark'] .iea-stat,body[data-omtheme='dark'] .iea-user,body[data-omtheme='dark'] .iea-modal,body[data-omtheme='dark'] .iea-funnel-column,body[data-omtheme='dark'] .iea-funnel-card{border-color:#2a3942;background:#111b21;color:#e9edef}body[data-omtheme='dark'] .iea-field,body[data-omtheme='dark'] .iea-btn,body[data-omtheme='dark'] .iea-funnel-title{border-color:#2a3942;background:#182229;color:#e9edef}body[data-omtheme='dark'] .iea-btn-primary{border-color:#17c964;background:#17c964;color:#fff}body[data-omtheme='dark'] .iea-btn-dark{border-color:#31516b;background:#183653;color:#fff}body[data-omtheme='dark'] .iea-ops-head p,body[data-omtheme='dark'] .iea-stat small,body[data-omtheme='dark'] .iea-user small,body[data-omtheme='dark'] .iea-form label,body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-funnel-card p,body[data-omtheme='dark'] .iea-detail small{color:#9aa9b2}body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-table td{border-color:#2a3942}body[data-omtheme='dark'] .iea-funnel-column{background:#0d171d}body[data-omtheme='dark'] .iea-detail{background:#182229;border-color:#2a3942}
-      @media(max-width:1100px){.iea-funnel-columns{grid-template-columns:repeat(2,minmax(240px,1fr))}}@media(max-width:900px){.iea-ops-screen{left:74px;padding:20px 16px}.iea-filters{grid-template-columns:1fr}.iea-checks{grid-template-columns:1fr}.iea-detail-grid,.iea-funnel-columns{grid-template-columns:1fr}}
+      body[data-omtheme='dark'] .iea-ops-screen{background:#0b141a;color:#e9edef}body[data-omtheme='dark'] .iea-panel,body[data-omtheme='dark'] .iea-stat,body[data-omtheme='dark'] .iea-user,body[data-omtheme='dark'] .iea-modal,body[data-omtheme='dark'] .iea-funnel-column,body[data-omtheme='dark'] .iea-funnel-card{border-color:#2a3942;background:#111b21;color:#e9edef}body[data-omtheme='dark'] .iea-field,body[data-omtheme='dark'] .iea-btn,body[data-omtheme='dark'] .iea-funnel-title{border-color:#2a3942;background:#182229;color:#e9edef}body[data-omtheme='dark'] .iea-btn-primary{border-color:#17c964;background:#17c964;color:#fff}body[data-omtheme='dark'] .iea-btn-dark{border-color:#31516b;background:#183653;color:#fff}body[data-omtheme='dark'] .iea-ops-head p,body[data-omtheme='dark'] .iea-stat small,body[data-omtheme='dark'] .iea-user small,body[data-omtheme='dark'] .iea-form label,body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-funnel-card p,body[data-omtheme='dark'] .iea-detail small,body[data-omtheme='dark'] .iea-contact-card p{color:#9aa9b2}body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-table td,body[data-omtheme='dark'] .iea-contact-card{border-color:#2a3942}body[data-omtheme='dark'] .iea-funnel-column{background:#0d171d}body[data-omtheme='dark'] .iea-detail{background:#182229;border-color:#2a3942}body[data-omtheme='dark'] .iea-contact-list::-webkit-scrollbar-thumb{background:#4c6375;border-color:#111b21}
+      @media(max-width:1100px){.iea-funnel-columns{grid-template-columns:repeat(2,minmax(240px,1fr))}}@media(max-width:900px){.iea-ops-screen{left:74px;padding:20px 16px}.iea-filters{grid-template-columns:1fr}.iea-checks{grid-template-columns:1fr}.iea-detail-grid,.iea-funnel-columns{grid-template-columns:1fr}.iea-contacts-toolbar{align-items:stretch;flex-direction:column}.iea-contact-card{align-items:flex-start;flex-direction:column}.iea-contact-list{max-height:none}}
     `;
     document.head.appendChild(style);
   }
@@ -229,6 +230,43 @@
     body.addEventListener("change", render);
   }
 
+  function contactInitials(name) {
+    return String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
+  }
+
+  function compactPhone(value) {
+    return String(value || "").replace(/\D/g, "");
+  }
+
+  async function openContacts() {
+    const body = screen("Pacientes", "Encontre um contato por nome ou telefone e inicie novos atendimentos.");
+    body.innerHTML = `<div class="iea-panel"><div class="iea-contacts-toolbar"><input class="iea-field" data-contact-search placeholder="Buscar por nome ou qualquer parte do telefone"><button class="iea-btn iea-btn-primary" data-new-contact>+ Iniciar contato novo</button></div><div class="iea-contact-list" data-contact-list>Carregando contatos...</div></div>`;
+    let contacts = [];
+    const render = () => {
+      const rawQuery = body.querySelector("[data-contact-search]").value.trim();
+      const queryText = normalize(rawQuery);
+      const queryPhone = compactPhone(rawQuery);
+      const filtered = contacts.filter(contact => {
+        const textMatch = !queryText || normalize(contact.name).includes(queryText);
+        const phoneMatch = !queryPhone || compactPhone(contact.phone).includes(queryPhone);
+        return textMatch || phoneMatch;
+      });
+      body.querySelector("[data-contact-list]").innerHTML = filtered.length ? filtered.map(contact => `<article class="iea-contact-card"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="iea-contact-avatar">${esc(contactInitials(contact.name))}</span><div><h3>${esc(contact.name)}</h3><p>${esc(contact.phone || "Sem telefone")}</p></div></div><button class="iea-btn iea-btn-sm" data-start-contact="${esc(contact.id)}">Iniciar conversa</button></article>`).join("") : `<p style="text-align:center;color:#718295;padding:36px 10px">Nenhum contato encontrado.</p>`;
+      body.querySelectorAll("[data-start-contact]").forEach(button => {
+        button.onclick = () => openConversationModal(contacts.find(contact => String(contact.id) === button.dataset.startContact));
+      });
+    };
+    body.querySelector("[data-contact-search]").oninput = render;
+    body.querySelector("[data-new-contact]").onclick = () => openConversationModal();
+    try {
+      const data = await request("/api/crm/contacts");
+      contacts = data.items || [];
+      render();
+    } catch (error) {
+      body.querySelector("[data-contact-list]").innerHTML = `<p style="color:#bd2436">${esc(error.message)}</p>`;
+    }
+  }
+
   async function openSettings() {
     const body = screen("Configuração e permissões", "Controle quais módulos e canais cada pessoa pode visualizar no CRM.");
     body.innerHTML = `<div class="iea-panel">Carregando usuários e permissões...</div>`;
@@ -291,16 +329,19 @@
     }
   }
 
-  async function openConversationModal() {
+  async function openConversationModal(contact) {
     css();
+    const savedContact = contact || null;
+    const title = savedContact ? "Iniciar conversa" : "Iniciar contato novo";
+    const description = savedContact ? "Escolha o canal e envie a primeira mensagem." : "Cadastre o nome e o telefone do novo contato.";
     const overlay = document.createElement("div");
     overlay.className = "iea-modal-bg";
-    overlay.innerHTML = `<div class="iea-modal"><h2>Iniciar conversa</h2><p style="color:#718295">Informe um número real com DDD.</p><form class="iea-form">
-      <label>Nome do contato<input class="iea-field" name="name" required placeholder="Nome do paciente"></label>
-      <label>Telefone com DDD<input class="iea-field" name="phone" required inputmode="tel" placeholder="(65) 99999-9999"></label>
+    overlay.innerHTML = `<div class="iea-modal"><h2>${esc(title)}</h2><p style="color:#718295">${esc(description)}</p><form class="iea-form">
+      <label>Nome do contato<input class="iea-field" name="name" required placeholder="Nome do paciente" value="${esc(savedContact?.name || "")}"></label>
+      <label>Telefone com DDD<input class="iea-field" name="phone" required inputmode="tel" placeholder="(65) 99999-9999" value="${esc(savedContact?.phone || "")}"></label>
       <label>Canal<select class="iea-field" name="channel_id" required><option value="">Selecione o número de saída</option></select></label>
-      <label>Primeira mensagem<textarea class="iea-field" name="text" rows="4" required placeholder="Digite a mensagem"></textarea></label>
-      <div style="display:flex;justify-content:flex-end;gap:9px"><button type="button" class="iea-btn" data-cancel>Cancelar</button><button class="iea-btn iea-btn-primary">Iniciar conversa</button></div>
+      <label>Primeira mensagem <span style="font-weight:400">(opcional)</span><textarea class="iea-field" name="text" rows="4" placeholder="Digite a mensagem ou deixe em branco para apenas abrir o atendimento"></textarea></label>
+      <div style="display:flex;justify-content:flex-end;gap:9px"><button type="button" class="iea-btn" data-cancel>Cancelar</button><button class="iea-btn iea-btn-primary">${savedContact ? "Iniciar conversa" : "Criar e iniciar atendimento"}</button></div>
       <div data-error style="color:#bd2436;font-size:13px"></div>
     </form></div>`;
     document.body.appendChild(overlay);
@@ -324,9 +365,10 @@
         return;
       }
       try {
+        const text = String(form.get("text") || "").trim();
         await request("/api/crm/conversations", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text: form.get("text") })
+          body: JSON.stringify({ name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text, open_only: !text })
         });
         overlay.remove();
         window.dispatchEvent(new CustomEvent("iea:crm-conversation-created"));
@@ -442,7 +484,10 @@
   }
 
   document.addEventListener("click", event => {
-    const target = event.target.closest("button,a,[role=button]");
+    // A navegaÃ§Ã£o original usa divs clicÃ¡veis em algumas versÃµes do bundle.
+    // IncluÃ­mos somente filhos diretos da lateral para nÃ£o interceptar o
+    // conteÃºdo principal nem reintroduzir o atraso de eventos genÃ©ricos.
+    const target = event.target.closest("button,a,[role=button],aside > div,[class*='sidebar'] > div,[class*='side-bar'] > div");
     if (!target) return;
     if (target.closest("[data-iea-open-permissions]")) {
       event.preventDefault(); event.stopImmediatePropagation(); openSettings(); return;
@@ -459,15 +504,21 @@
     if (isSidebarTarget(target) && (label === "funil" || label.includes("funil operacional"))) {
       event.preventDefault(); event.stopImmediatePropagation(); openFunnel(); return;
     }
+    if (isSidebarTarget(target) && (label === "pacientes" || label === "contatos" || label.includes("lista de pacientes"))) {
+      event.preventDefault(); event.stopImmediatePropagation(); openContacts(); return;
+    }
     if (isSidebarTarget(target) && (label === "config" || label.startsWith("configur"))) {
       event.preventDefault(); event.stopImmediatePropagation(); openSettings();
     }
   }, true);
 
-  window.IEACrmOperations = { openControl, openFunnel, closeScreen, openSettings, openConversationModal };
+  window.IEACrmOperations = { openControl, openFunnel, openContacts, closeScreen, openSettings, openConversationModal };
   css();
   applyPermissions();
-  new MutationObserver(() => { observePermissionSidebar(); scheduleSettingsPermissionsButton(); }).observe(document.body, { childList: true, subtree: true });
+  // Observar toda a Ã¡rvore do CRM fazia a ponte executar em cada render de
+  // conversa/mensagem. A barra Ã© recriada como filho direto do body quando
+  // necessÃ¡rio; esse escopo Ã© suficiente e evita travar a interface.
+  new MutationObserver(observePermissionSidebar).observe(document.body, { childList: true });
   observePermissionSidebar();
   injectSettingsPermissionsButton();
 })();

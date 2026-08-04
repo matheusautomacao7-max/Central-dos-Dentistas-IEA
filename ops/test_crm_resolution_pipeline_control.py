@@ -112,6 +112,12 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         handler.require_crm_any_feature = lambda _features: True
         handler.crm_channel_allowed = lambda *_args, **_kwargs: True
 
+        # RegressÃ£o do clique "Iniciar atendimento": a atualizaÃ§Ã£o precisa
+        # aceitar a atribuiÃ§Ã£o sem enviar um parÃ¢metro nulo sem tipo ao PostgreSQL.
+        handler.update_crm_conversation(conversation_id, {"assigned_user_id": "me"})
+        update_status, update_payload = handler.responses[-1]
+        assert update_status == 200, update_payload
+
         handler.resolve_crm_conversation(conversation_id, {
             "patient_type": "Retorno s/ Tratamento",
             "category": "Controle",
@@ -224,8 +230,17 @@ assert "Exportar informaÃ§Ãµes" in operations
 assert "Detalhar" in operations
 assert "openResolutionDetails" in operations
 assert "openFunnel" in operations
+assert "openContacts" in operations
+assert "Iniciar contato novo" in operations
+assert "compactPhone" in operations
+assert "open_only: !text" in operations
+assert "observe(document.body, { childList: true });" in operations
+assert "[class*='sidebar'] > div" in operations
 assert "Gerenciar permissões do CRM" in operations
 assert "injectSettingsPermissionsButton" in operations
 assert "resolution_reason" in server.ClinicHandler.get_crm_conversations.__code__.co_consts.__repr__()
+server_source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+assert "(assigned_user_id IS NULL OR assigned_user_id<>?)" in server_source
+assert "(? IS NULL OR ?<>?)" not in server_source
 
 print("crm-resolution-pipeline-control-regression-ok")

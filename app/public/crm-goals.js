@@ -443,7 +443,7 @@
     if (!aside || aside === observedNavigationAside) return;
     navigationObserver.disconnect();
     observedNavigationAside = aside;
-    navigationObserver.observe(aside, { childList: true, subtree: true });
+    navigationObserver.observe(aside, { childList: true });
     scheduleMount();
   }
 

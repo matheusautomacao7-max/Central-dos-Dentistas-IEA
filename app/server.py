@@ -8325,13 +8325,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 status = "Resolvida"
             resolved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if status == "Resolvida" else None
             db.execute("""UPDATE crm_conversations SET priority=?,queue_name=?,pipeline_stage=?,internal_note=?,
-                          assigned_user_id=?,assigned_at=CASE WHEN ? IS NOT NULL AND (? IS NULL OR ?<>?) THEN datetime('now','localtime') ELSE assigned_at END,
+                          assigned_user_id=?,assigned_at=CASE WHEN ? IS NOT NULL AND (assigned_user_id IS NULL OR assigned_user_id<>?) THEN datetime('now','localtime') ELSE assigned_at END,
                           automation_state=CASE WHEN ? IS NOT NULL THEN 'paused' ELSE automation_state END,
                           status=?,resolved_at=?,scheduled_return_at=?,resolved_by_user_id=CASE WHEN ?='Resolvida' THEN ? ELSE resolved_by_user_id END,
                           updated_at=datetime('now','localtime') WHERE id=?""",
                        (priority, queue, stage, note, assigned_user_id, assigned_user_id,
-                        current["assigned_user_id"], current["assigned_user_id"], assigned_user_id,
-                        assigned_user_id,
+                        assigned_user_id, assigned_user_id,
                         status, resolved_at, scheduled_return_at, status, self.authenticated_user["id"], conversation_id))
             if scheduled_return_at and scheduled_return_at != current["scheduled_return_at"]:
                 self.crm_record_event(db, conversation_id, "return.scheduled", {"scheduled_return_at": scheduled_return_at})
