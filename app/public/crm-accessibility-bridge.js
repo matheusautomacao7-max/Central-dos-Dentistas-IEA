@@ -133,9 +133,7 @@
 
   new MutationObserver(scheduleEnhance).observe(document.documentElement, {
     childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ["title", "placeholder", "style"]
+    subtree: true
   });
   scheduleEnhance();
 })();

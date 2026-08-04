@@ -237,7 +237,7 @@
           body: JSON.stringify({ name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text: form.get("text") })
         });
         overlay.remove();
-        location.reload();
+        window.dispatchEvent(new CustomEvent("iea:crm-conversation-created"));
       } catch (error) {
         overlay.querySelector("[data-error]").textContent = error.message;
       }
@@ -311,9 +311,6 @@
     // below and opens a second modal instead of sending the form.
     if (target.closest(".iea-modal")) return;
     const label = normalizedLabel(target.textContent);
-    if (label.includes("iniciar conversa")) {
-      event.preventDefault(); event.stopImmediatePropagation(); openConversationModal(); return;
-    }
     if (target.closest("[data-iea-patient-control]") ||
         (isSidebarTarget(target) && (label === "controle" || label.includes("controle de pacientes")))) {
       event.preventDefault(); event.stopImmediatePropagation(); openControl(); return;

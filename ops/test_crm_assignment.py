@@ -1,5 +1,6 @@
 import sqlite3
 import base64
+import json
 import sys
 import tempfile
 import types
@@ -120,13 +121,28 @@ with tempfile.TemporaryDirectory() as directory:
 
         isabela = handler_for(1, "Isabela")
         isabela.get_crm_conversations({"view": ["active"], "search": ["Paciente Teste"]})
-        assert isabela.responses[-1][1]["total"] == 1
+        full_conversation_payload = isabela.responses[-1][1]
+        assert full_conversation_payload["total"] == 1
+        isabela.get_crm_conversations({"view": ["active"], "search": ["Paciente Teste"], "compact": ["workspace"]})
+        compact_conversation_payload = isabela.responses[-1][1]
+        assert compact_conversation_payload["total"] == 1
+        assert compact_conversation_payload["raw_total_exact"] is True
+        compact_item = compact_conversation_payload["items"][0]
+        assert {"id", "contact_id", "name", "snippet", "assigned_user_id", "tag_names"} <= set(compact_item)
+        assert "profile_picture_url" not in compact_item and "journey_count" not in compact_item
+        assert len(json.dumps(compact_conversation_payload)) < len(json.dumps(full_conversation_payload)) * 0.8
         metric_period = {"period": ["custom"], "start": ["2026-07-21"], "end": ["2026-07-21"]}
         isabela.get_crm_metrics(metric_period)
         assert isabela.responses[-1][1]["summary"]["waiting"] == 1
         assert isabela.responses[-1][1]["summary"]["active"] == 1
         assert isabela.responses[-1][1]["summary"]["unread"] == 1
         assert isabela.responses[-1][1]["summary"]["unread_messages"] == 1
+        # Indicadores de estoque representam o estado atual, não apenas as
+        # conversas que tiveram atividade dentro do filtro histórico.
+        isabela.get_crm_metrics({"period": ["custom"], "start": ["2026-07-22"], "end": ["2026-07-22"]})
+        assert isabela.responses[-1][1]["summary"]["active"] == 1
+        assert isabela.responses[-1][1]["summary"]["waiting"] == 1
+        assert isabela.responses[-1][1]["summary"]["resolved_today"] == 0
         isabela.get_crm_conversations({"view": ["queue"]})
         assert isabela.responses[-1][1]["total"] == 1
         assert len(isabela.responses[-1][1]["items"]) == 1
@@ -345,6 +361,16 @@ with tempfile.TemporaryDirectory() as directory:
         def fake_audio_urlopen(request, **kwargs):
             captured_audio_request["url"] = request.full_url
             captured_audio_request["payload"] = server.json.loads(request.data.decode())
+            # Simula o webhook da Evolution chegando antes de a rota terminar
+            # a persistência local do mesmo ID externo.
+            with sqlite3.connect(server.DB_PATH) as webhook_db:
+                webhook_db.execute(
+                    """INSERT OR IGNORE INTO crm_messages(
+                           conversation_id,external_message_id,direction,message_type,body,
+                           sender_name,author_type,author_label,source_channel,delivery_status,message_at)
+                       VALUES(1,'audio-1','outbound','audio','Áudio','WhatsApp','external',
+                              'Enviado fora do CRM','evolution','Enviada',datetime('now','localtime'))"""
+                )
             return FakeAudioResponse()
 
         original_audio_converter = server.convert_crm_audio_to_ogg
@@ -364,6 +390,7 @@ with tempfile.TemporaryDirectory() as directory:
             with sqlite3.connect(server.DB_PATH) as db:
                 sent_audio = db.execute("SELECT message_type,media_url,mime_type,author_type FROM crm_messages WHERE external_message_id='audio-1'").fetchone()
                 assert sent_audio[0] == "audio" and sent_audio[2:] == ("audio/ogg", "human")
+                assert db.execute("SELECT COUNT(*) FROM crm_messages WHERE external_message_id='audio-1'").fetchone()[0] == 1
                 assert (server.CRM_MEDIA_DIR / Path(sent_audio[1]).name).read_bytes() == b"OggSconverted-audio-test"
         finally:
             server.convert_crm_audio_to_ogg = original_audio_converter

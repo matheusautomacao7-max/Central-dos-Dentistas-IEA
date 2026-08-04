@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -6,10 +7,13 @@ import { chromium } from "playwright";
 const sourceHtml = await readFile(new URL("../app/public/crm-next.html", import.meta.url), "utf8");
 const html = sourceHtml.replace("<head>", '<head><base href="https://crm.test/">');
 const scriptPath = fileURLToPath(new URL("../app/public/crm-next.js", import.meta.url));
-const browser = await chromium.launch({
-  headless: true,
-  executablePath: process.env.PLAYWRIGHT_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe",
-});
+const executablePath = [
+  process.env.PLAYWRIGHT_CHROME,
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+].find(candidate => candidate && existsSync(candidate));
+const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 const page = await browser.newPage();
 let claimCalled = false;
 let sentText = "";

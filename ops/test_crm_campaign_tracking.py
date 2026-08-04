@@ -180,7 +180,7 @@ html = (ROOT / "app" / "public" / "crm-whatsapp.html").read_text(encoding="utf-8
 assert "data-campaign-replies" in bridge
 assert "/api/crm/campaign-responses" in bridge
 assert "Localizar no Inbox" in bridge
-assert "20260803-campaign-header-v2" in html
+assert "20260803-campaign-header-v3" in html
 assert 'priority.insertAdjacentElement("beforebegin", makeBadge(item, "before"))' in bridge
 
 print("crm-campaign-tracking-regression-ok")

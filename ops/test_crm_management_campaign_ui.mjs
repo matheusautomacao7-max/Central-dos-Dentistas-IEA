@@ -10,7 +10,7 @@ const evolutionScript = await readFile(new URL("../app/public/crm-evolution-brid
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
 
 assert.match(crmHtml, /crm-management-dashboard\.js\?v=20260803-live-management-v1/);
-assert.match(crmHtml, /crm-evolution-bridge\.js\?v=20260803-campaign-header-v2/);
+assert.match(crmHtml, /crm-evolution-bridge\.js\?v=20260803-campaign-header-v3/);
 
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");

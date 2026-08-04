@@ -72,6 +72,8 @@ class FakeDatabase:
             return FakeCursor({"id": 34})
         if compact.startswith("SELECT id FROM crm_contacts"):
             return FakeCursor({"id": 316842})
+        if compact == "SELECT contact_id FROM crm_conversations WHERE id=?":
+            return FakeCursor({"contact_id": 316842})
         if compact.startswith("SELECT cv.channel_id,cv.contact_id,cv.assigned_user_id,cv.status"):
             return FakeCursor({
                 "channel_id": 34,
@@ -116,6 +118,7 @@ class FakeDatabase:
                 "contact_id": 316842,
                 "assigned_user_id": 20,
                 "assigned_to": "Matheus Henrique",
+                "status": "Aberta",
                 "automation_state": "paused",
                 "automation_flow": None,
                 "queue_entered_at": None,

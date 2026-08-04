@@ -489,30 +489,8 @@
         .catch(function () {});
     }
 
-    if (conversationId && init && String(init.method || "").toUpperCase() === "POST") {
-      response
-        .clone()
-        .json()
-        .then(function () {
-          setTimeout(refreshActiveConversation, 400);
-        })
-        .catch(function () {});
-    }
     return response;
   };
-
-  async function refreshActiveConversation() {
-    if (!activeConversationId || !composerInput()) {
-      return;
-    }
-    try {
-      var response = await nativeFetch(
-        "/api/crm/conversations/" + activeConversationId + "/messages?media_refresh=" + Date.now(),
-        { credentials: "same-origin", cache: "no-store" }
-      );
-      if (response.ok) ingestMessages(await response.json(), false);
-    } catch (_error) {}
-  }
 
   function startObserver() {
     if (observer) observer.disconnect();

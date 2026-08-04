@@ -118,6 +118,20 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         assert status == 200, payload
         assert payload["resolved"] is True
 
+        handler.resolve_crm_conversation(conversation_id, {
+            "patient_type": "Retorno s/ Tratamento",
+            "category": "Controle",
+            "outcome": "Outros",
+            "loss_reason": "Tentativa duplicada.",
+        })
+        duplicate_status, duplicate_payload = handler.responses[-1]
+        assert duplicate_status == 409, duplicate_payload
+        with sqlite3.connect(database) as db:
+            assert db.execute(
+                "SELECT COUNT(*) FROM crm_service_resolutions WHERE conversation_id=?",
+                (conversation_id,),
+            ).fetchone()[0] == 1
+
         handler.get_crm_conversations({"view": ["operational"]})
         status, funnel = handler.responses[-1]
         assert status == 200, funnel
@@ -134,6 +148,50 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         assert row["contact_name"] == "Paciente Resolvido"
         assert row["resolved_by_name"] == "Atendente Teste"
         assert row["outcome"] == "Outros"
+
+        # O relatório pode limitar as linhas visíveis, mas totais e grupos
+        # precisam considerar todo o filtro, inclusive acima de 500 itens.
+        with sqlite3.connect(database) as db:
+            db.executemany(
+                """INSERT INTO crm_service_resolutions(
+                       conversation_id,contact_id,channel_id,category,outcome,
+                       resolved_by_user_id,resolved_by_name,resolved_at,final_actor)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                [
+                    (
+                        conversation_id, contact_id, channel_id,
+                        "Orçamento" if index == 499 else "Controle",
+                        "Agendou" if index % 2 == 0 else "Retorno",
+                        user_id, "Atendente Teste", now, "Humano",
+                    )
+                    for index in range(500)
+                ],
+            )
+        handler.get_crm_resolution_reports({"period": ["today"]})
+        status, report = handler.responses[-1]
+        assert status == 200, report
+        assert report["summary"]["total"] == 501
+        assert report["summary"]["budgets"] == 1
+        assert len(report["rows"]) == 500
+        assert sum(item["total"] for item in report["by_category"]) == 501
+
+        with sqlite3.connect(database) as db:
+            due_contact_id = db.execute(
+                "INSERT INTO crm_contacts(name,phone,is_internal) VALUES('Retorno Vencido','65999990001',0)"
+            ).lastrowid
+            due_conversation_id = db.execute(
+                """INSERT INTO crm_conversations(
+                       channel_id,contact_id,status,pipeline_stage,scheduled_return_at,created_at)
+                   VALUES(?,?,'Resolvida','Aguardando cliente','2026-01-01 08:00:00',?)""",
+                (channel_id, due_contact_id, now),
+            ).lastrowid
+        with SQLiteTestConnection(database) as db:
+            assert handler.crm_activate_due_returns(db) == 1
+            assert handler.crm_activate_due_returns(db) == 0
+            assert db.execute(
+                "SELECT COUNT(*) FROM crm_conversation_events WHERE conversation_id=? AND event_type='return.reopened'",
+                (due_conversation_id,),
+            ).fetchone()[0] == 1
     finally:
         server.connect = original_connect
         server.DATA = original_data

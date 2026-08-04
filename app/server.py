@@ -3777,9 +3777,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def evolution_api_request(self, path: str, method: str = "GET", payload: dict | None = None,
                               base_url: str | None = None, api_key: str | None = None) -> dict | list:
-        configured_url, configured_key = self.evolution_credentials()
-        base_url = (base_url or configured_url).rstrip("/")
-        api_key = api_key or configured_key
+        if not base_url or not api_key:
+            configured_url, configured_key = self.evolution_credentials()
+            base_url = base_url or configured_url
+            api_key = api_key or configured_key
+        base_url = base_url.rstrip("/")
         if not base_url or not api_key:
             raise RuntimeError("A Evolution API ainda não está configurada no servidor.")
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -4514,16 +4516,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_activate_due_returns(db) -> int:
-        due = db.execute("""SELECT id FROM crm_conversations
+        # A seleção e a reabertura precisam ser uma única operação: dois GETs
+        # simultâneos não podem criar dois eventos nem executar 2N+1 comandos.
+        due = db.execute("""UPDATE crm_conversations
+                            SET status='Aberta',pipeline_stage='Novo',queue_name='Retorno programado',
+                                assigned_user_id=NULL,assigned_at=NULL,resolved_at=NULL,resolved_by_user_id=NULL,
+                                queue_entered_at=scheduled_return_at,scheduled_return_at=NULL,
+                                reopened_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
                             WHERE scheduled_return_at IS NOT NULL
-                              AND datetime(scheduled_return_at)<=datetime('now','localtime')""").fetchall()
-        for row in due:
-            db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Novo',queue_name='Retorno programado',
-                          assigned_user_id=NULL,assigned_at=NULL,resolved_at=NULL,resolved_by_user_id=NULL,
-                          queue_entered_at=scheduled_return_at,scheduled_return_at=NULL,reopened_at=datetime('now','localtime'),
-                          updated_at=datetime('now','localtime') WHERE id=?""", (row["id"],))
-            db.execute("""INSERT INTO crm_conversation_events(conversation_id,event_type,actor_name,details_json)
-                          VALUES(?,'return.reopened','Sistema','{}')""", (row["id"],))
+                              AND datetime(scheduled_return_at)<=datetime('now','localtime')
+                            RETURNING id""").fetchall()
+        if due:
+            db.executemany("""INSERT INTO crm_conversation_events(conversation_id,event_type,actor_name,details_json)
+                              VALUES(?,'return.reopened','Sistema','{}')""",
+                           [(row["id"],) for row in due])
         return len(due)
 
     @staticmethod
@@ -5880,6 +5886,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         status = str(query.get("status", [""])[0]).strip()
         search = str(query.get("search", [""])[0]).strip()
         view = str(query.get("view", ["workspace"])[0]).strip().lower()
+        compact_mode = str(query.get("compact", [""])[0]).strip().lower()
+        if compact_mode not in {"workspace", "pipeline", "campaign"}:
+            compact_mode = ""
         if not self.require_crm_feature(self.crm_conversation_view_feature(view)):
             return
         channel_id = str(query.get("channel_id", [""])[0]).strip()
@@ -5909,7 +5918,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             conditions.append("""ct.is_internal=0 AND (
                 (cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR
                     (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL)))
-                OR (cv.status='Resolvida' AND date(cv.resolved_at)=CURRENT_DATE)
+                OR (cv.status='Resolvida' AND date(cv.resolved_at)=date('now','localtime'))
             )""")
         elif view == "active":
             conditions.append("cv.status<>'Resolvida'")
@@ -5922,26 +5931,42 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         else:
             conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND (cv.assigned_user_id=? OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL))")
             params.append(self.authenticated_user["id"])
+        if compact_mode == "campaign":
+            # O bridge de campanhas só precisa das conversas que realmente
+            # possuem uma origem de automação. Filtrar no banco evita baixar
+            # centenas de atendimentos sem campanha a cada atualização.
+            conditions.append("""(
+                NULLIF(cv.automation_flow,'') IS NOT NULL
+                OR EXISTS (SELECT 1 FROM crm_automation_events origin_event
+                           WHERE origin_event.conversation_id=cv.id
+                             AND NULLIF(origin_event.campaign_id,'') IS NOT NULL)
+                OR EXISTS (SELECT 1 FROM crm_conversation_tags origin_link
+                           JOIN crm_tags origin_tag ON origin_tag.id=origin_link.tag_id
+                           WHERE origin_link.conversation_id=cv.id
+                             AND lower(origin_tag.name) LIKE 'campanha:%')
+            )""")
         # A visão "operational" (funil/pipeline) só usa id, name, channel,
         # pipeline_stage, assigned_to e tag_names no front-end (ver loadPipeline
         # em crm-whatsapp.html) — as 5 subconsultas correlacionadas abaixo
         # rodavam para cada uma das até 500 linhas mesmo assim, multiplicando
         # o custo da tela mais lenta do CRM sem nenhum ganho visível. Elas só
         # são executadas fora dessa visão, onde o valor é realmente exibido.
-        skip_heavy_fields = view == "operational"
+        skip_heavy_fields = view == "operational" or bool(compact_mode)
         journey_count_sql = "0" if skip_heavy_fields else "(SELECT COUNT(*) FROM crm_conversations sibling WHERE sibling.contact_id=cv.contact_id)"
-        campaign_name_sql = "cv.automation_flow" if skip_heavy_fields else """COALESCE((SELECT NULLIF(ae.campaign_id,'') FROM crm_automation_events ae
+        campaign_name_sql = "cv.automation_flow" if compact_mode not in {"", "campaign"} or view == "operational" else """COALESCE((SELECT NULLIF(ae.campaign_id,'') FROM crm_automation_events ae
                                  WHERE ae.conversation_id=cv.id AND NULLIF(ae.campaign_id,'') IS NOT NULL
                                  ORDER BY ae.id DESC LIMIT 1),cv.automation_flow)"""
         automation_last_event_sql = "NULL" if skip_heavy_fields else "(SELECT ae.event_type FROM crm_automation_events ae WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1)"
         automation_last_event_at_sql = "NULL" if skip_heavy_fields else "(SELECT ae.received_at FROM crm_automation_events ae WHERE ae.conversation_id=cv.id ORDER BY ae.id DESC LIMIT 1)"
-        snippet_sql = "''" if skip_heavy_fields else "COALESCE((SELECT m.body FROM crm_messages m WHERE m.conversation_id=cv.id ORDER BY datetime(m.message_at) DESC,m.id DESC LIMIT 1),'')"
+        snippet_sql = "COALESCE((SELECT m.body FROM crm_messages m WHERE m.conversation_id=cv.id ORDER BY datetime(m.message_at) DESC,m.id DESC LIMIT 1),'')" if compact_mode in {"", "workspace"} and view != "operational" else "''"
         with connect() as db:
             self.crm_activate_due_returns(db)
-            total = db.execute(f"""SELECT COUNT(*) FROM crm_conversations cv
-                                  JOIN crm_contacts ct ON ct.id=cv.contact_id
-                                  JOIN crm_channels ch ON ch.id=cv.channel_id
-                                  WHERE {' AND '.join(conditions)}""", params).fetchone()[0]
+            total = None
+            if not compact_mode:
+                total = db.execute(f"""SELECT COUNT(*) FROM crm_conversations cv
+                                      JOIN crm_contacts ct ON ct.id=cv.contact_id
+                                      JOIN crm_channels ch ON ch.id=cv.channel_id
+                                      WHERE {' AND '.join(conditions)}""", params).fetchone()[0]
             rows = db.execute(f"""SELECT cv.id,cv.status,cv.priority,cv.queue_name,cv.pipeline_stage,cv.internal_note,
                        cv.assigned_user_id,cv.assigned_at,cv.queue_entered_at,cv.first_response_at,cv.resolved_by_user_id,
                        cv.automation_state,cv.automation_flow,cv.automation_turns,cv.handoff_reason,
@@ -5968,6 +5993,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 ORDER BY COALESCE(cv.last_message_at,cv.created_at) DESC LIMIT 500""", params).fetchall()
         items = []
         seen_phones = set()
+        compact_fields = {
+            "workspace": {
+                "id", "contact_id", "is_internal", "name", "phone", "channel_name",
+                "instance_name", "channel_id", "channel_phone", "priority", "unread_count",
+                "last_message_at", "queue_entered_at", "last_direction", "snippet", "tag_names",
+                "pipeline_stage", "status", "assigned_to", "assigned_user_id", "queue_name",
+                "internal_note", "created_at", "automation_state", "automation_flow",
+                "automation_turns", "handoff_reason",
+            },
+            "pipeline": {
+                "id", "contact_id", "name", "channel_name", "instance_name", "pipeline_stage",
+                "assigned_to", "tag_names",
+            },
+            "campaign": {"id", "name", "phone", "campaign_name", "automation_flow", "tag_names"},
+        }
         for row in rows:
             item = dict(row)
             phone_key = self.crm_phone(item.get("phone"))
@@ -5978,10 +6018,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             # Sempre exponha a rota protegida do CRM. Ela devolve a foto que
             # está em cache ou tenta obtê-la sob demanda na Evolution; quando
             # o perfil não possui foto, o front preserva as iniciais.
-            if item.get("contact_id") and self.crm_phone(item.get("phone")):
+            if not compact_mode and item.get("contact_id") and self.crm_phone(item.get("phone")):
                 item["profile_picture_url"] = f"/api/crm/contacts/{item['contact_id']}/profile-photo"
+            if compact_mode:
+                allowed = compact_fields[compact_mode]
+                item = {key: value for key, value in item.items() if key in allowed}
             items.append(item)
-        self.send_json({"items": items, "total": len(items), "raw_total": total, "view": view})
+        response = {"items": items, "total": len(items),
+                    "raw_total": total if total is not None else len(rows), "view": view}
+        if compact_mode:
+            response["raw_total_exact"] = len(rows) < 500
+        self.send_json(response)
 
     def get_crm_agents(self) -> None:
         if not self.require_crc_access(): return
@@ -5992,7 +6039,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             rows = db.execute("""SELECT u.id,u.name,u.email,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,COALESCE(u.crm_channel_scope_enabled,0) AS crm_channel_scope_enabled,
                     (SELECT STRING_AGG(cuc.channel_id::text, ',' ORDER BY cuc.channel_id) FROM crm_user_channels cuc WHERE cuc.user_id=u.id AND cuc.can_reply=1) AS crm_channel_ids,
                     COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida' THEN ct.id END) AS active_count,
-                    COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=CURRENT_DATE THEN ct.id END) AS resolved_today
+                    COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND date(cv.resolved_at)=date('now','localtime') THEN ct.id END) AS resolved_today
                 FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id AND {scope_sql}
                 LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
                 WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1
@@ -6455,13 +6502,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except (TypeError, ValueError):
             channel_id = 0
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
-        metric_conditions = ["ch.active=1", "ch.sync_enabled=1", "ct.is_internal=0", scope_sql,
-                             "date(COALESCE(cv.resolved_at,cv.last_message_at,cv.created_at)) BETWEEN ? AND ?"]
-        metric_params = [*scope_params, start_date.isoformat(), end_date.isoformat()]
+        current_conditions = ["ch.active=1", "ch.sync_enabled=1", "ct.is_internal=0", scope_sql]
+        current_params = list(scope_params)
         if channel_id:
-            metric_conditions.append("ch.id=?")
-            metric_params.append(channel_id)
-        metric_where = " AND ".join(metric_conditions)
+            current_conditions.append("ch.id=?")
+            current_params.append(channel_id)
+        current_where = " AND ".join(current_conditions)
+        # Estoque atual precisa incluir todos os abertos, mas não há motivo
+        # para varrer resoluções antigas em cada atualização do dashboard.
+        current_window_where = (
+            f"{current_where} AND (cv.status<>'Resolvida' OR "
+            "date(cv.resolved_at) BETWEEN ? AND ?)"
+        )
+        current_window_params = [*current_params, start_date.isoformat(), end_date.isoformat()]
         with connect() as db:
             self.crm_activate_due_returns(db)
             summary = db.execute(f"""SELECT
@@ -6476,13 +6529,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
               FROM crm_conversations cv
               JOIN crm_contacts ct ON ct.id=cv.contact_id
               JOIN crm_channels ch ON ch.id=cv.channel_id
-              WHERE {metric_where}""",
+              WHERE {current_window_where}""",
               (self.authenticated_user["id"], start_date.isoformat(), end_date.isoformat(),
-               start_date.isoformat(), end_date.isoformat(), self.authenticated_user["id"], *metric_params)).fetchone()
+               start_date.isoformat(), end_date.isoformat(), self.authenticated_user["id"], *current_window_params)).fetchone()
             sla = db.execute(f"""SELECT
                 COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL
                   AND (julianday('now','localtime')-julianday(cv.queue_entered_at))*1440>ch.sla_minutes THEN ct.id END) AS overdue,
                 ROUND(COALESCE(AVG(CASE WHEN cv.first_response_at IS NOT NULL AND cv.queue_entered_at IS NOT NULL
+                  AND date(cv.first_response_at) BETWEEN ? AND ?
                   AND datetime(cv.first_response_at)>=datetime(cv.queue_entered_at)
                   THEN (julianday(cv.first_response_at)-julianday(cv.queue_entered_at))*1440 END),0),1) AS avg_first_response_minutes,
                 ROUND(COALESCE(AVG(CASE WHEN cv.resolved_at IS NOT NULL AND cv.assigned_at IS NOT NULL
@@ -6491,23 +6545,25 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                   THEN (julianday(cv.resolved_at)-julianday(cv.assigned_at))*1440 END),0),1) AS avg_resolution_minutes
               FROM crm_conversations cv JOIN crm_contacts ct ON ct.id=cv.contact_id
               JOIN crm_channels ch ON ch.id=cv.channel_id
-              WHERE {metric_where}""", (start_date.isoformat(), end_date.isoformat(), *metric_params)).fetchone()
+              WHERE {current_window_where}""", (start_date.isoformat(), end_date.isoformat(),
+                                                  start_date.isoformat(), end_date.isoformat(), *current_window_params)).fetchone()
             agent_scope_sql, agent_scope_params = self.crm_channel_id_scope_clause("cv.channel_id")
             agent_performance = db.execute(f"""SELECT u.id,u.name,COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,
-                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' AND date(COALESCE(cv.last_message_at,cv.created_at)) BETWEEN ? AND ? THEN ct.id END) AS active,
+                COUNT(DISTINCT CASE WHEN cv.status<>'Resolvida' THEN ct.id END) AS active,
                 COUNT(DISTINCT CASE WHEN date(cv.resolved_at) BETWEEN ? AND ? THEN ct.id END) AS resolved_today,
                 ROUND(COALESCE(AVG(CASE WHEN cv.first_response_at IS NOT NULL AND cv.queue_entered_at IS NOT NULL
                   AND date(cv.first_response_at) BETWEEN ? AND ?
                   AND datetime(cv.first_response_at)>=datetime(cv.queue_entered_at)
                   THEN (julianday(cv.first_response_at)-julianday(cv.queue_entered_at))*1440 END),0),1) AS avg_first_response_minutes
               FROM users u LEFT JOIN crm_conversations cv ON cv.assigned_user_id=u.id AND {agent_scope_sql}
+                AND (cv.status<>'Resolvida' OR date(cv.resolved_at) BETWEEN ? AND ?)
               LEFT JOIN crm_contacts ct ON ct.id=cv.contact_id
               LEFT JOIN crm_channels ch ON ch.id=cv.channel_id
               WHERE u.access_role='crc' AND u.active=1 AND COALESCE(u.crm_operational_agent,1)=1 AND (cv.id IS NULL OR ct.is_internal=0)
                 AND (?=0 OR ch.id=?)
               GROUP BY u.id,u.name,u.service_sector ORDER BY resolved_today DESC,u.name""",
               (start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat(),
-               start_date.isoformat(), end_date.isoformat(), *agent_scope_params, channel_id, channel_id)).fetchall()
+               *agent_scope_params, start_date.isoformat(), end_date.isoformat(), channel_id, channel_id)).fetchall()
             volume_scope_sql, volume_scope_params = self.crm_channel_id_scope_clause("cv.channel_id")
             volume_channel_sql = ""
             volume_params: list = [start_date.isoformat(), end_date.isoformat(), *volume_scope_params]
@@ -6575,15 +6631,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         items = []
         for row in rows:
             item = dict(row)
-            if item["message_type"] == "audio" and not item.get("duration_seconds"):
-                cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a))", str(item.get("media_url") or ""))
-                if cached_match:
-                    media_file = CRM_MEDIA_DIR / cached_match.group(1)
-                    if media_file.is_file():
-                        item["duration_seconds"] = crm_audio_duration_seconds(media_file.read_bytes())
-                        if item["duration_seconds"]:
-                            with connect() as duration_db:
-                                duration_db.execute("UPDATE crm_messages SET duration_seconds=? WHERE id=?", (item["duration_seconds"], item["id"]))
+            # Duração é calculada na ingestão/envio. Um GET de histórico
+            # nunca deve abrir ffprobe e novas conexões para cada áudio antigo;
+            # o próprio player lê os metadados quando o legado ainda está nulo.
             if item["message_type"] in {"audio", "image", "video", "document", "sticker"} and item["external_message_id"]:
                 if not str(item["media_url"] or "").startswith("/api/crm/media/"):
                     item["media_url"] = f"/api/crm/messages/{item['id']}/media"
@@ -7388,91 +7438,107 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error":f"Este atendimento já está atribuído a {row['assigned_to']}. Transfira antes de responder."},HTTPStatus.CONFLICT)
             if not row["assigned_user_id"] and not row["is_internal"]:
                 return self.send_json({"error":"Inicie o atendimento antes de enviar mensagens para um contato externo."},HTTPStatus.CONFLICT)
-            configured_url, configured_key = self.evolution_credentials()
-            base_url = row["evolution_base_url"] or configured_url
-            api_key = (
-                decrypt_integration_secret(row["evolution_api_key"])
-                if row["evolution_api_key"] else configured_key
-            )
-            if not base_url or not api_key: return self.send_json({"error":"Configure a URL e a chave da Evolution neste canal antes de enviar."},HTTPStatus.CONFLICT)
-            try:
-                connection_state = self.crm_evolution_connection_state(row["instance_name"], base_url, api_key)
-            except RuntimeError as error:
-                return self.send_json({"error":f"Não foi possível verificar a conexão do canal {row['display_name']}: {error}"},HTTPStatus.BAD_GATEWAY)
-            if connection_state != "open":
-                db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
+            row = dict(row)
+        configured_url, configured_key = ("", "")
+        if not row["evolution_base_url"] or not row["evolution_api_key"]:
+            configured_url, configured_key = self.evolution_credentials()  # CRM_OUTBOUND_SHORT_TRANSACTIONS_V1
+        base_url = row["evolution_base_url"] or configured_url
+        api_key = (
+            decrypt_integration_secret(row["evolution_api_key"])
+            if row["evolution_api_key"] else configured_key
+        )
+        if not base_url or not api_key: return self.send_json({"error":"Configure a URL e a chave da Evolution neste canal antes de enviar."},HTTPStatus.CONFLICT)
+        try:
+            connection_state = self.crm_evolution_connection_state(row["instance_name"], base_url, api_key)
+        except RuntimeError as error:
+            return self.send_json({"error":f"Não foi possível verificar a conexão do canal {row['display_name']}: {error}"},HTTPStatus.BAD_GATEWAY)
+        if connection_state != "open":
+            with connect() as status_db:
+                status_db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
+            return self.send_json({
+                "error": f"O WhatsApp do canal {row['display_name']} está desconectado. Reconecte o número por QR Code em Integrações antes de enviar.",
+                "code": "WHATSAPP_DISCONNECTED",
+            }, HTTPStatus.CONFLICT)
+        with connect() as status_db:
+            status_db.execute("UPDATE crm_channels SET connection_status='Conectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
+        instance_path = quote(str(row["instance_name"]), safe="")
+        if message_type == "audio":
+            evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
+            # A Evolution 2.3.7 só executa a preparação final da nota de
+            # voz quando `encoding` está ativo. Mesmo com OGG/Opus válido,
+            # pular essa etapa pode gerar uma mídia aceita pela API, mas
+            # indisponível para reprodução no aplicativo do destinatário.
+            evolution_payload = {
+                "number": f"55{row['phone']}",
+                "audio": base64.b64encode(audio_bytes).decode("ascii"),
+                "encoding": True,
+            }
+        elif message_type in {"image", "video", "document"}:
+            evolution_path = f"/message/sendMedia/{instance_path}"
+            evolution_payload = {
+                "number": f"55{row['phone']}",
+                "mediatype": message_type,
+                "mimetype": mime_type,
+                "caption": body,
+                "media": base64.b64encode(media_bytes).decode("ascii"),
+                "fileName": original_file_name,
+            }
+        else:
+            evolution_path = f"/message/sendText/{instance_path}"
+            evolution_payload = {"number": f"55{row['phone']}", "text": body}
+        request=Request(f"{base_url.rstrip('/')}{evolution_path}",data=json.dumps(evolution_payload).encode(),method="POST",headers={"Content-Type":"application/json","apikey":api_key})
+        try:
+            request_timeout = 60 if message_type != "text" else 20
+            with urlopen(request,timeout=request_timeout) as response: response_data=json.loads(response.read().decode() or "{}")
+        except HTTPError as error:
+            evolution_error = error.read().decode(errors="replace")[:500]
+            print(f"[crm-send] Evolution HTTP {error.code} na conversa {conversation_id}: {evolution_error}", flush=True)
+            if "ConnectionClosed" in evolution_error or "connection closed" in evolution_error.lower():
+                with connect() as status_db:
+                    status_db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
                 return self.send_json({
-                    "error": f"O WhatsApp do canal {row['display_name']} está desconectado. Reconecte o número por QR Code em Integrações antes de enviar.",
+                    "error": f"O WhatsApp do canal {row['display_name']} foi desconectado. Reconecte o número por QR Code em Integrações e tente novamente.",
                     "code": "WHATSAPP_DISCONNECTED",
                 }, HTTPStatus.CONFLICT)
-            db.execute("UPDATE crm_channels SET connection_status='Conectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
-            instance_path = quote(str(row["instance_name"]), safe="")
-            if message_type == "audio":
-                evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
-                # A Evolution 2.3.7 só executa a preparação final da nota de
-                # voz quando `encoding` está ativo. Mesmo com OGG/Opus válido,
-                # pular essa etapa pode gerar uma mídia aceita pela API, mas
-                # indisponível para reprodução no aplicativo do destinatário.
-                evolution_payload = {
-                    "number": f"55{row['phone']}",
-                    "audio": base64.b64encode(audio_bytes).decode("ascii"),
-                    "encoding": True,
-                }
-            elif message_type in {"image", "video", "document"}:
-                evolution_path = f"/message/sendMedia/{instance_path}"
-                evolution_payload = {
-                    "number": f"55{row['phone']}",
-                    "mediatype": message_type,
-                    "mimetype": mime_type,
-                    "caption": body,
-                    "media": base64.b64encode(media_bytes).decode("ascii"),
-                    "fileName": original_file_name,
-                }
-            else:
-                evolution_path = f"/message/sendText/{instance_path}"
-                evolution_payload = {"number": f"55{row['phone']}", "text": body}
-            request=Request(f"{base_url.rstrip('/')}{evolution_path}",data=json.dumps(evolution_payload).encode(),method="POST",headers={"Content-Type":"application/json","apikey":api_key})
-            try:
-                request_timeout = 60 if message_type != "text" else 20
-                with urlopen(request,timeout=request_timeout) as response: response_data=json.loads(response.read().decode() or "{}")
-            except HTTPError as error:
-                evolution_error = error.read().decode(errors="replace")[:500]
-                print(f"[crm-send] Evolution HTTP {error.code} na conversa {conversation_id}: {evolution_error}", flush=True)
-                if "ConnectionClosed" in evolution_error or "connection closed" in evolution_error.lower():
-                    db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
-                    return self.send_json({
-                        "error": f"O WhatsApp do canal {row['display_name']} foi desconectado. Reconecte o número por QR Code em Integrações e tente novamente.",
-                        "code": "WHATSAPP_DISCONNECTED",
-                    }, HTTPStatus.CONFLICT)
-                return self.send_json({"error":f"Evolution respondeu {error.code}: {evolution_error}"},HTTPStatus.BAD_GATEWAY)
-            except (URLError,TimeoutError) as error: return self.send_json({"error":f"Não foi possível conectar à Evolution: {error}"},HTTPStatus.BAD_GATEWAY)
-            external_id=str(((response_data.get("key") or {}).get("id")) or response_data.get("id") or secrets.token_hex(12))
-            if message_type == "audio":
-                extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "mp4", "audio/mpeg": "m4a", "audio/x-m4a": "m4a"}[mime_type]
-                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-                file_name = f"{secrets.token_hex(16)}.{extension}"
-                target = CRM_MEDIA_DIR / file_name
-                temporary = target.with_suffix(target.suffix + ".tmp")
-                temporary.write_bytes(audio_bytes)
-                temporary.replace(target)
-                media_url = f"/api/crm/media/{file_name}"
-            elif message_type in {"image", "video", "document"}:
-                extension = self.crm_media_extension(mime_type, original_file_name)
-                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-                file_name = f"{secrets.token_hex(16)}.{extension}"
-                target = CRM_MEDIA_DIR / file_name
-                temporary = target.with_suffix(target.suffix + ".tmp")
-                temporary.write_bytes(media_bytes)
-                temporary.replace(target)
-                media_url = f"/api/crm/media/{file_name}"
-            service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
-            author_label = f"{self.authenticated_user['name']} · {service_sector}"
-            message_id=db.execute("""INSERT INTO crm_messages
+            return self.send_json({"error":f"Evolution respondeu {error.code}: {evolution_error}"},HTTPStatus.BAD_GATEWAY)
+        except (URLError,TimeoutError) as error: return self.send_json({"error":f"Não foi possível conectar à Evolution: {error}"},HTTPStatus.BAD_GATEWAY)
+        external_id=str(((response_data.get("key") or {}).get("id")) or response_data.get("id") or secrets.token_hex(12))
+        if message_type == "audio":
+            extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "mp4", "audio/mpeg": "m4a", "audio/x-m4a": "m4a"}[mime_type]
+            CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            file_name = f"{secrets.token_hex(16)}.{extension}"
+            target = CRM_MEDIA_DIR / file_name
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_bytes(audio_bytes)
+            temporary.replace(target)
+            media_url = f"/api/crm/media/{file_name}"
+        elif message_type in {"image", "video", "document"}:
+            extension = self.crm_media_extension(mime_type, original_file_name)
+            CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+            file_name = f"{secrets.token_hex(16)}.{extension}"
+            target = CRM_MEDIA_DIR / file_name
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_bytes(media_bytes)
+            temporary.replace(target)
+            media_url = f"/api/crm/media/{file_name}"
+        service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
+        author_label = f"{self.authenticated_user['name']} · {service_sector}"
+        with connect() as db:
+            message_row=db.execute("""INSERT INTO crm_messages
                 (conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,sent_by_user_id,
                  author_type,author_label,source_channel,delivery_status,message_at)
-                VALUES(?,?,'outbound',?,?,?,?,?,?,?,'human',?,'crm',?,datetime('now','localtime'))""",
+                VALUES(?,?,'outbound',?,?,?,?,?,?,?,'human',?,'crm',?,datetime('now','localtime'))
+                ON CONFLICT(external_message_id) DO UPDATE SET
+                  conversation_id=excluded.conversation_id,direction='outbound',message_type=excluded.message_type,
+                  body=excluded.body,media_url=COALESCE(excluded.media_url,crm_messages.media_url),
+                  mime_type=COALESCE(excluded.mime_type,crm_messages.mime_type),
+                  duration_seconds=COALESCE(excluded.duration_seconds,crm_messages.duration_seconds),
+                  sender_name=excluded.sender_name,sent_by_user_id=excluded.sent_by_user_id,
+                  author_type='human',author_label=excluded.author_label,source_channel='crm',delivery_status='Enviada'
+                RETURNING id""",
                 (conversation_id,external_id,message_type,body,media_url,mime_type,duration_seconds,self.authenticated_user["name"],self.authenticated_user["id"],
-                 author_label,"Enviada")).lastrowid
+                 author_label,"Enviada")).fetchone()
+            message_id = int(message_row["id"] if hasattr(message_row, "keys") else message_row[0])
             if row["is_internal"]:
                 db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Novo',
                               assigned_user_id=NULL,assigned_at=NULL,queue_entered_at=NULL,first_response_at=NULL,
@@ -7480,11 +7546,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               WHERE id=?""", (conversation_id,))
             else:
                 db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
-                              assigned_user_id=?,assigned_at=COALESCE(assigned_at,datetime('now','localtime')),
                               first_response_at=COALESCE(first_response_at,datetime('now','localtime')),
                               automation_state='paused',
                               unread_count=0,last_direction='outbound',last_message_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
-                              WHERE id=?""",(self.authenticated_user["id"],conversation_id))
+                              WHERE id=? AND status<>'Resolvida'""",(conversation_id,))
                 self.crm_record_event(db, conversation_id, "message.sent", {"message_type": message_type})
             result=db.execute("SELECT id,conversation_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,author_type,author_label,source_channel,delivery_status,message_at FROM crm_messages WHERE id=?",(message_id,)).fetchone()
         self.send_json(dict(result),HTTPStatus.CREATED)
@@ -7664,6 +7729,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if outcome in {"Mudou de cidade", "Em tratamento externo", "Desqualificado", "Outros"} and not (loss_reason or notes):
             return self.send_json({"error": "Informe o motivo ou uma observação."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
+            conversation_ref = db.execute(
+                "SELECT contact_id FROM crm_conversations WHERE id=?",
+                (conversation_id,),
+            ).fetchone()
+            if not conversation_ref:
+                return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
+            # Serializa todas as resoluções do mesmo paciente antes da leitura
+            # definitiva do estado. Sem a releitura após o lock, duas requisições
+            # simultâneas podiam registrar duas finalizações para a mesma etapa.
+            db.execute(
+                "SELECT id FROM crm_contacts WHERE id=? FOR UPDATE",
+                (conversation_ref["contact_id"],),
+            ).fetchone()
             current=db.execute("""SELECT cv.*,ct.id AS contact_id,ct.name AS contact_name,
                                   ch.display_name AS channel_name,u.name AS assigned_to
                                   FROM crm_conversations cv
@@ -7672,9 +7750,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   LEFT JOIN users u ON u.id=cv.assigned_user_id WHERE cv.id=?""",
                                (conversation_id,)).fetchone()
             if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
+            if current["status"] == "Resolvida":
+                return self.send_json({"error":"Este atendimento já foi resolvido."},HTTPStatus.CONFLICT)
             if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
                 return self.send_json({"error":"Você não possui permissão para resolver atendimentos deste número."},HTTPStatus.FORBIDDEN)
-            db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
             active_owner = self.crm_contact_active_owner(db, current["contact_id"])
             if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.reject_crm_contact_owner_conflict(active_owner)
@@ -7702,9 +7781,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                             conversation_id,contact_id,channel_id,attendance_number,patient_type,is_recovery,category,outcome,
                             interest,origin,responsible_professional,notes,scheduled_date,scheduled_time,
                             schedule_type,next_contact_at,attempts,loss_reason,resolved_by_user_id,
-                            resolved_by_name,ai_involved,final_actor,campaign_name,workflow_name,
+                            resolved_by_name,resolved_at,ai_involved,final_actor,campaign_name,workflow_name,
                             wait_seconds,service_seconds,metadata_json)
-                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),?,?,?,?,?,?,?)""",
                        (conversation_id,current["contact_id"],current["channel_id"],attendance_number,
                         patient_type,is_recovery,category,outcome,interest or None,origin or None,professional or None,notes or None,
                         scheduled_date or None,scheduled_time or None,schedule_type or None,next_contact_at or None,
@@ -7766,11 +7845,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         scope_sql, scope_params = self.crm_channel_id_scope_clause("r.channel_id")
         where, params = [scope_sql], list(scope_params)
         if period == "today":
-            where.append("date(r.resolved_at)=CURRENT_DATE")
+            where.append("date(r.resolved_at)=date('now','localtime')")
         elif period == "7d":
-            where.append("date(r.resolved_at)>=CURRENT_DATE - INTERVAL '6 days'")
+            where.append("date(r.resolved_at)>=date('now','localtime','-6 days')")
         elif period == "30d":
-            where.append("date(r.resolved_at)>=CURRENT_DATE - INTERVAL '29 days'")
+            where.append("date(r.resolved_at)>=date('now','localtime','-29 days')")
         elif period == "custom":
             if start:
                 where.append("date(r.resolved_at)>=date(?)")
@@ -7812,32 +7891,64 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     COUNT(*) FILTER (WHERE {report_patient_type_sql}='Retorno s/ Tratamento') AS recurring_total,
                     COUNT(*) FILTER (WHERE {report_patient_type_sql}='Retorno s/ Tratamento' AND r.outcome='Agendou') AS recurring_converted
                   FROM crm_service_resolutions r {clause}""", params).fetchone()
+            aggregate = db.execute(f"""SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE r.category='Primeira consulta') AS first_consultations,
+                    COUNT(*) FILTER (WHERE r.category='Controle') AS controls,
+                    COUNT(*) FILTER (WHERE r.category='Tratamento') AS treatments,
+                    COUNT(*) FILTER (WHERE r.category='Orçamento') AS budgets,
+                    COUNT(*) FILTER (WHERE r.outcome='Agendou') AS scheduled,
+                    COUNT(*) FILTER (WHERE COALESCE(r.ai_involved,0)<>0) AS ai_involved,
+                    COUNT(*) FILTER (WHERE r.final_actor='Humano') AS human_finalized
+                  FROM crm_service_resolutions r {clause}""", params).fetchone()
+
+            def grouped_query(expression: str) -> list[dict]:
+                grouped_rows = db.execute(f"""SELECT
+                        COALESCE(NULLIF(TRIM(COALESCE({expression},'')),''),'Não informado') AS label,
+                        COUNT(*) AS total
+                      FROM crm_service_resolutions r
+                      LEFT JOIN crm_contacts ct ON ct.id=r.contact_id
+                      LEFT JOIN crm_channels ch ON ch.id=r.channel_id
+                      {clause}
+                     GROUP BY 1 ORDER BY total DESC,label""", params).fetchall()
+                return [dict(group_row) for group_row in grouped_rows]
+
+            groups = {
+                "category": grouped_query("r.category"),
+                "outcome": grouped_query("r.outcome"),
+                "agent": grouped_query("r.resolved_by_name"),
+                "channel": grouped_query("ch.display_name"),
+                "professional": grouped_query("r.responsible_professional"),
+                "interest": grouped_query("r.interest"),
+                "origin": grouped_query("r.origin"),
+            }
             data = [dict(row) for row in rows]
             for row in data:
                 row["outcome"] = legacy_outcome_aliases.get(row.get("outcome"), row.get("outcome"))
-            total = len(data)
-            count = lambda field, value: sum(1 for row in data if row.get(field) == value)
-            scheduled = count("outcome", "Agendou")
+            normalized_outcomes: dict[str, int] = {}
+            for item in groups["outcome"]:
+                label = legacy_outcome_aliases.get(item["label"], item["label"])
+                normalized_outcomes[label] = normalized_outcomes.get(label, 0) + int(item["total"] or 0)
+            groups["outcome"] = [
+                {"label": label, "total": value}
+                for label, value in sorted(normalized_outcomes.items(), key=lambda item: (-item[1], item[0]))
+            ]
+            total = int(aggregate["total"] or 0)
+            scheduled = int(aggregate["scheduled"] or 0)
             first_total = int(conversion_totals["first_total"] or 0)
             first_converted = int(conversion_totals["first_converted"] or 0)
             recurring_total = int(conversion_totals["recurring_total"] or 0)
             recurring_converted = int(conversion_totals["recurring_converted"] or 0)
             summary = {
                 "total": total,
-                "first_consultations": count("category", "Primeira consulta"),
-                "controls": count("category", "Controle"),
-                "treatments": count("category", "Tratamento"),
-                "budgets": count("category", "Orçamento"),
+                "first_consultations": int(aggregate["first_consultations"] or 0),
+                "controls": int(aggregate["controls"] or 0),
+                "treatments": int(aggregate["treatments"] or 0),
+                "budgets": int(aggregate["budgets"] or 0),
                 "scheduled": scheduled,
-                "wants_schedule": sum(1 for row in data if row.get("outcome") in {
-                    "Quer agendar", "Retorno"
-                }),
-                "no_response": sum(1 for row in data if row.get("outcome") in {
-                    "Novo Contato IA"
-                }),
-                "losses": sum(1 for row in data if row.get("outcome") in {
-                    "Mudou de cidade", "Em tratamento externo", "Desqualificado"
-                }),
+                "wants_schedule": sum(normalized_outcomes.get(value, 0) for value in {"Quer agendar", "Retorno"}),
+                "no_response": normalized_outcomes.get("Novo Contato IA", 0),
+                "losses": sum(normalized_outcomes.get(value, 0) for value in {"Mudou de cidade", "Em tratamento externo", "Desqualificado"}),
                 "conversion_rate": round((scheduled / total * 100), 1) if total else 0,
                 "first_consultation_conversion_rate": round(first_converted / first_total * 100, 1) if first_total else 0,
                 "first_consultation_converted": first_converted,
@@ -7845,16 +7956,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "recurring_conversion_rate": round(recurring_converted / recurring_total * 100, 1) if recurring_total else 0,
                 "recurring_converted": recurring_converted,
                 "recurring_opportunities": recurring_total,
-                "ai_involved": sum(1 for row in data if row.get("ai_involved")),
-                "human_finalized": sum(1 for row in data if row.get("final_actor") == "Humano"),
+                "ai_involved": int(aggregate["ai_involved"] or 0),
+                "human_finalized": int(aggregate["human_finalized"] or 0),
             }
-            def grouped(field):
-                values = {}
-                for row in data:
-                    key = str(row.get(field) or "Não informado")
-                    values[key] = values.get(key, 0) + 1
-                return [{"label": key, "total": value} for key, value in
-                        sorted(values.items(), key=lambda item: (-item[1], item[0]))]
             agents = db.execute("""SELECT id,name FROM users
                                    WHERE access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1 ORDER BY name""").fetchall()
             channel_scope_sql, channel_scope_params = self.crm_channel_scope_clause("ch")
@@ -7862,13 +7966,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                      WHERE {channel_scope_sql} ORDER BY ch.display_name""", channel_scope_params).fetchall()
         self.send_json({
             "summary": summary,
-            "by_category": grouped("category"),
-            "by_outcome": grouped("outcome"),
-            "by_agent": grouped("resolved_by_name"),
-            "by_channel": grouped("channel_name"),
-            "by_professional": grouped("responsible_professional"),
-            "by_interest": grouped("interest"),
-            "by_origin": grouped("origin"),
+            "by_category": groups["category"],
+            "by_outcome": groups["outcome"],
+            "by_agent": groups["agent"],
+            "by_channel": groups["channel"],
+            "by_professional": groups["professional"],
+            "by_interest": groups["interest"],
+            "by_origin": groups["origin"],
             "rows": data,
             "filters": {
                 "agents": [dict(row) for row in agents],
@@ -7919,11 +8023,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         scope_sql, scope_params = self.crm_channel_id_scope_clause("r.channel_id")
         where, params = [scope_sql], list(scope_params)
         if period == "today":
-            where.append("date(r.resolved_at)=CURRENT_DATE")
+            where.append("date(r.resolved_at)=date('now','localtime')")
         elif period == "7d":
-            where.append("date(r.resolved_at)>=CURRENT_DATE - INTERVAL '6 days'")
+            where.append("date(r.resolved_at)>=date('now','localtime','-6 days')")
         elif period == "30d":
-            where.append("date(r.resolved_at)>=CURRENT_DATE - INTERVAL '29 days'")
+            where.append("date(r.resolved_at)>=date('now','localtime','-29 days')")
         elif period == "custom":
             if start:
                 where.append("date(r.resolved_at)>=date(?)")

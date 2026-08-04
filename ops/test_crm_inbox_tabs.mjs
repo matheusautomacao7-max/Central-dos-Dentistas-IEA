@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import http from "node:http";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { chromium } from "playwright";
@@ -10,34 +9,24 @@ assert.match(script, /data-iea-inbox-tabs/);
 assert.match(script, /data-iea-inbox-tab/);
 assert.match(html, /crm-team-channel-bridge\.js\?v=20260803-inbox-tabs-v5/);
 
-const server = http.createServer((request, response) => {
-  if (request.url.startsWith("/crm-team-channel-bridge.js")) {
-    response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
-    return response.end(script);
-  }
-  response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><html><body>
+const fixture = `<!doctype html><html><body>
     <div id="tabs" style="display:flex;width:360px;overflow:hidden">
       <div role="tab" style="border:1px solid #e9edef">Recentes</div>
       <div role="tab" style="border:1px solid #25d366;color:#15a34a">Fila (10)</div>
       <div role="tab" style="border:1px solid #e9edef">Meus atendimentos</div>
     </div>
-    <script src="/crm-team-channel-bridge.js"></script>
-  </body></html>`);
-});
-
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const { port } = server.address();
+  </body></html>`;
 const executablePath = [
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-].find(Boolean);
+].find((candidate) => candidate && existsSync(candidate));
 const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
 
 try {
   const page = await browser.newPage({ viewport: { width: 420, height: 200 } });
-  await page.goto(`http://127.0.0.1:${port}/`);
+  await page.setContent(fixture);
+  await page.addScriptTag({ content: script });
   await page.locator("#tabs[data-iea-inbox-tabs]").waitFor();
   await page.waitForFunction(() => document.querySelectorAll("[data-iea-inbox-tab]").length === 4);
   const tabs = await page.locator("#tabs [data-iea-inbox-tab]").evaluateAll((nodes) => nodes.map((node) => {
@@ -52,5 +41,4 @@ try {
   console.log("crm-inbox-tabs-e2e-ok");
 } finally {
   await browser.close();
-  await new Promise((resolve) => server.close(resolve));
 }

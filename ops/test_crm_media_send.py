@@ -57,11 +57,14 @@ class FakeCursor:
 class FakeDatabase:
     def __init__(self):
         self.message_id = 0
+        self.active_contexts = 0
 
     def __enter__(self):
+        self.active_contexts += 1
         return self
 
     def __exit__(self, *args):
+        self.active_contexts -= 1
         return False
 
     def execute(self, query, parameters=()):
@@ -79,8 +82,10 @@ class FakeDatabase:
                 "assigned_to": None,
             })
         if compact.startswith("INSERT INTO crm_messages"):
+            assert "ON CONFLICT(external_message_id) DO UPDATE SET" in compact
+            assert "RETURNING id" in compact
             self.message_id += 1
-            return FakeCursor(lastrowid=self.message_id)
+            return FakeCursor(row={"id": self.message_id}, lastrowid=self.message_id)
         if compact.startswith("SELECT id,conversation_id,direction,message_type"):
             return FakeCursor({
                 "id": self.message_id,
@@ -125,6 +130,7 @@ with tempfile.TemporaryDirectory() as directory:
     server.CRM_MEDIA_DIR = Path(directory)
 
     def fake_urlopen(request, **kwargs):
+        assert database.active_contexts == 0, "rede externa não pode segurar conexão/transação do banco"
         payload = json.loads(request.data.decode())
         requests.append((request.full_url, payload))
         return FakeEvolutionResponse(f"media-{len(requests)}")

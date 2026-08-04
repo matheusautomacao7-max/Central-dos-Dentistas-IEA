@@ -6,7 +6,7 @@ const open = '<script type="__bundler/template">';
 const start = source.indexOf(open) + open.length;
 const template = JSON.parse(source.slice(start, source.indexOf("</script>", start)).trim());
 
-for (const marker of ["CRM_REFRESH_RACE_FIXED_V9", "CRM_NATIVE_AUDIO_STABLE_V10", "CRM_PERSISTENT_CONVERSATION_CACHE_V11"]) {
+for (const marker of ["CRM_REFRESH_RACE_FIXED_V9", "CRM_NATIVE_AUDIO_STABLE_V10", "CRM_PERSISTENT_CONVERSATION_CACHE_V11", "CRM_MESSAGE_SELECTION_GUARD_V1"]) {
   assert.ok(template.includes(marker), `marcador ausente: ${marker}`);
 }
 assert.ok(template.includes("this.crmMessageCache.get(Number(item.id))||old?.msgs||[]"));

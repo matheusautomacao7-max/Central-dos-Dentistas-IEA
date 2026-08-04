@@ -266,8 +266,10 @@
       openPatientControl();
     });
     const integrations = Array.from(aside.querySelectorAll("div")).find(el => /^Integra$/i.test((el.textContent || "").trim()));
-    const anchor = integrations && integrations.parentElement;
-    aside.insertBefore(item, anchor || aside.lastElementChild);
+    let anchor = integrations;
+    while (anchor && anchor.parentElement !== aside) anchor = anchor.parentElement;
+    if (anchor && anchor.parentElement === aside) aside.insertBefore(item, anchor);
+    else aside.appendChild(item);
   }
   function normalizeCrmNavigation() {
     // A lista nativa passa a representar os pacientes; o controle operacional

@@ -13,6 +13,7 @@
   let n8nOperationsRequest = null;
   let n8nOperationsState = "idle";
   let conversationOriginTimer = null;
+  let conversationOriginRequest = null;
   let conversationOriginItems = [];
   let conversationOriginLoadedAt = 0;
   let canManageAutomation = null;
@@ -54,13 +55,17 @@
     if (sharedItems.length && now - sharedAt < 90000) {
       conversationOriginItems = sharedItems.filter(item => item.campaign_name || item.automation_flow || /(^|\|\|)Campanha:/i.test(String(item.tag_names || "")));
       conversationOriginLoadedAt = sharedAt;
-    } else if (!conversationOriginItems.length || now - conversationOriginLoadedAt > 60000) {
+    } else if (!conversationOriginLoadedAt || now - conversationOriginLoadedAt > 60000) {
       try {
-        const payload = await api("/api/crm/conversations?view=active");
+        if (!conversationOriginRequest) {
+          conversationOriginRequest = api("/api/crm/conversations?view=active&compact=campaign")
+            .finally(() => { conversationOriginRequest = null; });
+        }
+        const payload = await conversationOriginRequest;
         conversationOriginItems = (payload.items || []).filter(item =>
           (item.campaign_name || item.automation_flow || /(^|\|\|)Campanha:/i.test(String(item.tag_names || ""))) && item.phone
         );
-        conversationOriginLoadedAt = now;
+        conversationOriginLoadedAt = Date.now();
       } catch (_) {
         return;
       }
