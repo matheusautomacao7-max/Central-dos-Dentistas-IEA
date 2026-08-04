@@ -11,6 +11,7 @@
   let permissionState = null;
   let permissionRequest = null;
   let permissionTimer = null;
+  const originalNavDisplays = new WeakMap();
 
   const esc = value => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -248,6 +249,13 @@
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   }
 
+  function setNavFeatureVisible(nav, visible) {
+    // Os itens nativos usam display:flex para manter o ícone acima do rótulo.
+    // Ao liberar uma tela, restaure o layout original em vez de apagá-lo.
+    if (!originalNavDisplays.has(nav)) originalNavDisplays.set(nav, nav.style.display);
+    nav.style.display = visible ? originalNavDisplays.get(nav) : "none";
+  }
+
   function renderPermissions() {
     if (!permissionState) return;
     const restricted = Boolean(permissionState.feature_scope_enabled);
@@ -264,7 +272,7 @@
       // o display deles ocultaria também telas autorizadas; só trate o nó que
       // representa uma única funcionalidade.
       if (featureMatches.length === 1) {
-        nav.style.display = !restricted || allowed.has(featureMatches[0]) ? "" : "none";
+        setNavFeatureVisible(nav, !restricted || allowed.has(featureMatches[0]));
       }
     });
   }

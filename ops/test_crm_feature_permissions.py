@@ -166,5 +166,8 @@ assert 'feature_scope_enabled: card.querySelector("[data-feature-scope]").checke
 assert "feature_scope_enabled: true" not in bridge
 assert "permissionState={feature_scope_enabled:true,allowed_features:[]}" in bridge
 assert "featureMatches.length === 1" in bridge
+assert "originalNavDisplays = new WeakMap()" in bridge
+assert 'nav.style.display = visible ? originalNavDisplays.get(nav) : "none"' in bridge
+assert "crm-operations-bridge.js?v=20260803-sidebar-center-v4" in crm_html
 
 print("crm-feature-permission-tests-ok")
