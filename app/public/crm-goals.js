@@ -36,6 +36,15 @@
     const amount = Number(normalized);
     return Number.isFinite(amount) ? Math.round(amount * 100) : NaN;
   };
+  const countValue = value => {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return 0;
+    const integerPart = raw.includes(",") ? raw.split(",")[0] : raw;
+    const normalized = /^\d{1,3}(\.\d{3})+$/.test(integerPart)
+      ? integerPart.replace(/\./g, "") : integerPart;
+    const amount = Number(normalized);
+    return Number.isFinite(amount) && amount >= 0 ? Math.trunc(amount) : NaN;
+  };
   const initials = value => String(value || "")
     .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "CRC";
 
@@ -257,10 +266,10 @@
       const message = draft ? draft.celebration_message : (item.celebration_message || "");
       const celebration = draft ? draft.celebration_enabled : item.celebration_enabled;
       return `<article class="iea-config-card" data-metric="${esc(item.metric_key)}" style="--metric:${visual.color};--metric-soft:${visual.soft}"><h3>${metricIcon(item.metric_key)}${esc(item.label)}</h3><div class="iea-config-grid">
-        <label>Meta mensal<input class="iea-goals-field" data-monthly type="number" min="0" max="100000" step="1" value="${monthly}"></label>
-        <label>Mínimo mensal<input class="iea-goals-field" data-monthly-minimum type="number" min="0" max="100000" step="1" value="${monthlyMinimum}"></label>
-        <label>Meta diária<input class="iea-goals-field" data-daily type="number" min="0" max="10000" step="1" value="${daily}"></label>
-        <label>Mínimo diário<input class="iea-goals-field" data-daily-minimum type="number" min="0" max="10000" step="1" value="${dailyMinimum}"></label>
+        <label>Meta mensal<input class="iea-goals-field" data-monthly type="text" inputmode="numeric" autocomplete="off" value="${monthly}"></label>
+        <label>Mínimo mensal<input class="iea-goals-field" data-monthly-minimum type="text" inputmode="numeric" autocomplete="off" value="${monthlyMinimum}"></label>
+        <label>Meta diária<input class="iea-goals-field" data-daily type="text" inputmode="numeric" autocomplete="off" value="${daily}"></label>
+        <label>Mínimo diário<input class="iea-goals-field" data-daily-minimum type="text" inputmode="numeric" autocomplete="off" value="${dailyMinimum}"></label>
         <label>Recompensa a 100% (R$)<input class="iea-goals-field" data-reward type="text" inputmode="decimal" autocomplete="off" value="${moneyInput(reward)}" aria-describedby="reward-help-${esc(item.metric_key)}"><span id="reward-help-${esc(item.metric_key)}" style="display:block;margin-top:4px;font-weight:600;color:#7B8C9A">Ex.: 250,00</span></label>
         <label>Começa a pagar em %<input class="iea-goals-field" data-payout-threshold type="number" min="0" max="100" step="1" value="${payoutThreshold}"></label>
         <label>Bônus a partir de 100%<input class="iea-goals-field" data-achievement-bonus type="number" min="100" max="200" step="1" value="${achievementBonus}"></label>
@@ -293,10 +302,10 @@
     if (!root) return values;
     root.querySelectorAll("[data-metric]").forEach(card => {
       values[card.dataset.metric] = {
-        monthly_target: Number(card.querySelector("[data-monthly]").value || 0),
-        monthly_minimum: Number(card.querySelector("[data-monthly-minimum]").value || 0),
-        daily_target: Number(card.querySelector("[data-daily]").value || 0),
-        daily_minimum: Number(card.querySelector("[data-daily-minimum]").value || 0),
+        monthly_target: countValue(card.querySelector("[data-monthly]").value),
+        monthly_minimum: countValue(card.querySelector("[data-monthly-minimum]").value),
+        daily_target: countValue(card.querySelector("[data-daily]").value),
+        daily_minimum: countValue(card.querySelector("[data-daily-minimum]").value),
         reward_cents: moneyToCents(card.querySelector("[data-reward]").value),
         payout_threshold_percent: Number(card.querySelector("[data-payout-threshold]").value || 0),
         achievement_bonus_percent: Number(card.querySelector("[data-achievement-bonus]").value || 0),
@@ -318,7 +327,9 @@
       const goals = readConfigValues();
       let validationError = "";
       Object.values(goals).forEach(values => {
-        if (values.monthly_minimum > values.monthly_target || values.daily_minimum > values.daily_target) {
+        if (!Number.isInteger(values.monthly_target) || !Number.isInteger(values.monthly_minimum) || !Number.isInteger(values.daily_target) || !Number.isInteger(values.daily_minimum)) {
+          validationError = "Informe metas e mínimos usando números válidos.";
+        } else if (values.monthly_minimum > values.monthly_target || values.daily_minimum > values.daily_target) {
           validationError = "O mínimo não pode ser maior que a meta.";
         }
         if (!Number.isInteger(values.reward_cents) || values.reward_cents < 0 || values.payout_threshold_percent < 0 || values.payout_threshold_percent > 100 || values.achievement_bonus_percent < 100 || values.achievement_bonus_percent > 200) {
