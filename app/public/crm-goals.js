@@ -27,7 +27,7 @@
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   const number = value => Number(value || 0).toLocaleString("pt-BR");
   const percent = value => `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-  const money = cents => Number(cents || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const money = cents => (Number(cents || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const moneyInput = cents => (Number(cents || 0) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const moneyToCents = value => {
     const raw = String(value == null ? "" : value).trim();

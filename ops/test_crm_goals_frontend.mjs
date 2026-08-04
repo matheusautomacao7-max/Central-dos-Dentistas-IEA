@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-count-input-v1/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-money-display-v1/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
 assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
@@ -19,6 +19,7 @@ assert.match(goalScript, /label: "Em andamento", color: "#2563EB", text: "#1D4ED
 assert.match(goalScript, /label: "Meta alcançada", color: "#16A34A", text: "#15803D"/);
 const goal = (metric_key, label, monthlyTarget, monthlyRealized, dailyTarget, dailyRealized) => ({
   metric_key, label, celebration_enabled: true, celebration_message: "",
+  reward_cents: 25000, payout_threshold_percent: 75, achievement_bonus_percent: 110,
   monthly: {
     target: monthlyTarget, realized: monthlyRealized,
     percentage: monthlyTarget ? monthlyRealized / monthlyTarget * 100 : 0,
@@ -84,6 +85,7 @@ const server = http.createServer(async (request, response) => {
         achievements: [{
           metric_key: "first_consultations", achievement_type: "monthly",
           target: 40, realized: 40,
+          reward_cents: 25000,
           message: "Parabéns, Matheus Henrique! Meta mensal de Primeiras consultas alcançada: 40 de 40."
         }]
       }));
@@ -173,6 +175,7 @@ try {
   assert.equal(lastGoalPost.goals.attendances.daily_minimum, 40);
   assert.equal(lastGoalPost.goals.attendances.reward_cents, 25000);
   await page.getByRole("heading", { name: "🎉 Meta alcançada!" }).waitFor();
+  assert.equal(await page.getByText("Recompensa: R$ 250,00.", { exact: true }).count(), 1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => window.IEACrmGoals.celebrate([{ message: "Meta acessível." }]));
