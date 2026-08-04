@@ -120,12 +120,13 @@
       .iea-history-title{margin-bottom:14px}.iea-history{display:grid;gap:10px}.iea-history-row{display:grid;grid-template-columns:1fr auto;gap:12px;padding:13px 2px;border-bottom:1px solid #EDF1F3}.iea-history-row:last-child{border:0}.iea-history-row p{margin:0;font-weight:750;font-size:13px}.iea-history-row small{color:#788A98}.iea-goals-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:190px;padding:30px;text-align:center;border:1px solid rgba(99,102,241,.14);border-radius:15px;background:linear-gradient(135deg,#EFF6FF 0%,#F5F3FF 100%);color:#64748B}.iea-empty-trophy{width:58px;height:58px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;border-radius:18px;background:rgba(255,255,255,.8);color:#7C3AED;box-shadow:0 7px 20px rgba(76,29,149,.1)}.iea-empty-trophy svg{width:30px;height:30px}.iea-goals-empty strong{color:#334155;font-size:15px}.iea-goals-empty p{max-width:420px;margin:6px 0 0;font-size:12px;line-height:1.5}
       .iea-goals-error{padding:32px;text-align:center;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;border-radius:13px}.iea-goals-loading{display:flex;align-items:center;gap:11px;color:#64748B}.iea-goals-loading:before{content:"";width:18px;height:18px;border:2px solid #CBD5E1;border-top-color:#2563EB;border-radius:50%;animation:iea-spin .7s linear infinite}
       .iea-celebration{position:fixed;left:50%;bottom:28px;z-index:260;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));border:1px solid #86EFAC;border-radius:18px;background:#fff;padding:19px 54px 19px 20px;box-shadow:0 20px 60px rgba(7,45,30,.25);color:#123B2A}.iea-celebration h2{margin:0 0 6px;font-size:20px}.iea-celebration p{margin:4px 0;font-size:13px;line-height:1.45}.iea-celebration button{position:absolute;right:14px;top:14px;border:0;border-radius:50%;width:30px;height:30px;background:#EDF7F1;color:#175C39;cursor:pointer;font-size:18px}
+      .iea-attendance-complete{position:fixed;inset:0;z-index:265;display:grid;place-items:center;padding:22px;pointer-events:none;background:rgba(15,41,66,.08);opacity:0;transition:opacity .2s ease}.iea-attendance-complete.is-visible{opacity:1}.iea-attendance-complete-card{display:flex;flex-direction:column;align-items:center;width:min(330px,calc(100vw - 44px));padding:28px 26px 25px;border:1px solid rgba(187,247,208,.92);border-radius:26px;background:linear-gradient(145deg,#FFFFFF,#F0FDF4);box-shadow:0 22px 60px rgba(15,91,48,.23);color:#14532D;text-align:center;transform:translate3d(0,18px,0) scale(.88);transition:transform .38s cubic-bezier(.22,1,.36,1)}.iea-attendance-complete.is-visible .iea-attendance-complete-card{transform:translate3d(0,0,0) scale(1)}.iea-attendance-complete-icon{position:relative;display:grid;place-items:center;width:86px;height:86px;margin-bottom:15px;border-radius:50%;background:linear-gradient(145deg,#22C55E,#16A34A);color:#fff;box-shadow:0 12px 24px rgba(22,163,74,.3)}.iea-attendance-complete-icon:before{content:"";position:absolute;inset:-10px;border-radius:50%;background:rgba(34,197,94,.13);animation:iea-attendance-halo 1.25s ease-out both}.iea-attendance-complete-icon:after{content:"";position:absolute;inset:-6px;border:2px solid rgba(22,163,74,.38);border-radius:50%;animation:iea-attendance-ring 1.25s ease-out both}.iea-attendance-complete-icon svg{position:relative;z-index:1;width:45px;height:45px;stroke-width:2.5;animation:iea-attendance-check .44s cubic-bezier(.22,1,.36,1) both}.iea-attendance-complete strong{display:block;font-size:20px;line-height:1.2;letter-spacing:-.02em}.iea-attendance-complete p{margin:7px 0 0;color:#4B6B59;font-size:12px;line-height:1.4}
       .iea-confetti{position:fixed;inset:0;z-index:255;pointer-events:none;overflow:hidden}.iea-confetti i{position:absolute;top:-20px;width:9px;height:15px;background:var(--color);left:var(--left);animation:iea-confetti-fall var(--duration) cubic-bezier(.15,.65,.35,1) forwards;animation-delay:var(--delay);transform:rotate(var(--rotate))}
       body[data-omtheme='dark'] .iea-goals-screen{background:#0B141A;color:#E9EDEF}body[data-omtheme='dark'] .iea-goals-panel,body[data-omtheme='dark'] .iea-goal-card,body[data-omtheme='dark'] .iea-config-card{border-color:#2A3942;background:#111B21;color:#E9EDEF}body[data-omtheme='dark'] .iea-goals-field,body[data-omtheme='dark'] .iea-goals-btn,body[data-omtheme='dark'] .iea-goals-tab,body[data-omtheme='dark'] .iea-radial:before{border-color:#2A3942;background:#182229;color:#E9EDEF}body[data-omtheme='dark'] .iea-goals-tab.on,body[data-omtheme='dark'] .iea-goals-btn.primary{border-color:#2563EB;background:#2563EB;color:#fff}body[data-omtheme='dark'] .iea-goals-scope{border-color:#2A3942;background:#182229}body[data-omtheme='dark'] .iea-goals-segment{background:#0B141A}body[data-omtheme='dark'] .iea-goals-segment button.on{background:#24333C;color:#BFDBFE}body[data-omtheme='dark'] .iea-goals-head p,body[data-omtheme='dark'] .iea-daily-head p,body[data-omtheme='dark'] .iea-goals-help,body[data-omtheme='dark'] .iea-goals-scope-copy span,body[data-omtheme='dark'] .iea-goal-pace{color:#9AA9B2}body[data-omtheme='dark'] .iea-goal-pace b,body[data-omtheme='dark'] .iea-goals-help b{color:#E9EDEF}body[data-omtheme='dark'] .iea-daily-table th,body[data-omtheme='dark'] .iea-daily-table tbody tr:nth-child(even){background:#182229}body[data-omtheme='dark'] .iea-daily-table tbody tr:hover{background:#202C33}body[data-omtheme='dark'] .iea-daily-table td{border-color:#2A3942}body[data-omtheme='dark'] .iea-goals-empty{background:linear-gradient(135deg,#14253A,#211D38);color:#9AA9B2}body[data-omtheme='dark'] .iea-goals-empty strong{color:#E9EDEF}
-      @keyframes iea-spin{to{transform:rotate(360deg)}}@keyframes iea-confetti-fall{to{transform:translate3d(var(--drift),105vh,0) rotate(760deg);opacity:.9}}
-      @media(prefers-reduced-motion:reduce){.iea-goal-bar>i,.iea-goals-btn,.iea-goals-tab{transition:none}.iea-goals-loading:before{animation:none}.iea-confetti{display:none}}
+      @keyframes iea-spin{to{transform:rotate(360deg)}}@keyframes iea-confetti-fall{to{transform:translate3d(var(--drift),105vh,0) rotate(760deg);opacity:.9}}@keyframes iea-attendance-ring{0%{transform:scale(.65);opacity:.8}100%{transform:scale(1.35);opacity:0}}@keyframes iea-attendance-halo{0%{transform:scale(.68);opacity:.95}100%{transform:scale(1.55);opacity:0}}@keyframes iea-attendance-check{from{transform:scale(.45);opacity:.15}to{transform:scale(1);opacity:1}}
+      @media(prefers-reduced-motion:reduce){.iea-goal-bar>i,.iea-goals-btn,.iea-goals-tab,.iea-attendance-complete,.iea-attendance-complete-card{transition:none}.iea-goals-loading:before,.iea-attendance-complete-icon:before,.iea-attendance-complete-icon:after,.iea-attendance-complete-icon svg{animation:none}.iea-confetti{display:none}}
       @media(max-width:1100px){.iea-goals-summary,.iea-remuneration{grid-template-columns:1fr}.iea-config-grid{grid-template-columns:repeat(3,1fr)}.iea-config-grid .iea-config-message{grid-column:span 2}}
-      @media(max-width:720px){.iea-goals-screen{left:0}.iea-goals-wrap{padding:20px 14px 36px}.iea-goals-head{align-items:flex-start;flex-direction:column}.iea-goals-actions{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);justify-content:stretch}.iea-goals-control,.iea-goals-actions>[data-agent]{width:100%;min-width:0}.iea-goals-control .iea-goals-field{width:100%;min-width:0}.iea-goals-actions .iea-goals-btn{justify-self:start}.iea-goals-tabs{overflow:auto;padding-bottom:2px}.iea-goals-two{grid-template-columns:1fr}.iea-conversion{align-items:flex-start}.iea-radial{width:72px;height:72px;flex-basis:72px}.iea-goal-values{grid-template-columns:1fr 1fr}.iea-config-grid{grid-template-columns:1fr}.iea-config-grid .iea-config-message{grid-column:auto}.iea-goals-scope{align-items:stretch;flex-direction:column}.iea-goals-segment{display:grid;grid-template-columns:1fr 1fr}.iea-daily-head{flex-direction:column}.iea-daily-table{min-width:820px}.iea-goals-panel.table-scroll{overflow:auto}.iea-goals-avatar{width:44px;height:44px}.iea-goals-head h1{font-size:24px}.iea-money-table{min-width:650px}.iea-remuneration>.iea-goals-panel:first-child{overflow:auto}}
+      @media(max-width:720px){.iea-goals-screen{left:0}.iea-goals-wrap{padding:20px 14px 36px}.iea-goals-head{align-items:flex-start;flex-direction:column}.iea-goals-actions{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);justify-content:stretch}.iea-goals-control,.iea-goals-actions>[data-agent]{width:100%;min-width:0}.iea-goals-control .iea-goals-field{width:100%;min-width:0}.iea-goals-actions .iea-goals-btn{justify-self:start}.iea-goals-tabs{overflow:auto;padding-bottom:2px}.iea-goals-two{grid-template-columns:1fr}.iea-conversion{align-items:flex-start}.iea-radial{width:72px;height:72px;flex-basis:72px}.iea-goal-values{grid-template-columns:1fr 1fr}.iea-config-grid{grid-template-columns:1fr}.iea-config-grid .iea-config-message{grid-column:auto}.iea-goals-scope{align-items:stretch;flex-direction:column}.iea-goals-segment{display:grid;grid-template-columns:1fr 1fr}.iea-daily-head{flex-direction:column}.iea-daily-table{min-width:820px}.iea-goals-panel.table-scroll{overflow:auto}.iea-goals-avatar{width:44px;height:44px}.iea-goals-head h1{font-size:24px}.iea-money-table{min-width:650px}.iea-remuneration>.iea-goals-panel:first-child{overflow:auto}.iea-attendance-complete-card{padding:25px 22px 22px}.iea-attendance-complete-icon{width:78px;height:78px}}
     `;
     document.head.appendChild(style);
   }
@@ -390,11 +391,55 @@
     window.setTimeout(() => notice.remove(), 9000);
   }
 
+  function celebrateAttendanceCompletion() {
+    document.querySelectorAll(".iea-attendance-complete").forEach(item => item.remove());
+    const notice = document.createElement("section");
+    notice.className = "iea-attendance-complete";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    notice.innerHTML = `<div class="iea-attendance-complete-card"><span class="iea-attendance-complete-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6.8 12.3 3.3 3.3 7.2-7.5"></path></svg></span><strong>Atendimento finalizado</strong><p>Registro concluído com sucesso.</p></div>`;
+    document.body.appendChild(notice);
+    window.requestAnimationFrame(() => notice.classList.add("is-visible"));
+    playAttendanceCompletionSound();
+    window.setTimeout(() => {
+      notice.classList.remove("is-visible");
+      window.setTimeout(() => notice.remove(), 300);
+    }, 2800);
+  }
+
+  function playAttendanceCompletionSound() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      const audio = new AudioContextClass();
+      const now = audio.currentTime;
+      const notes = [[659.25, 0], [783.99, .09], [1046.5, .19]];
+      notes.forEach(([frequency, delay]) => {
+        const oscillator = audio.createOscillator();
+        const gain = audio.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, now + delay);
+        gain.gain.setValueAtTime(.0001, now + delay);
+        gain.gain.exponentialRampToValueAtTime(.075, now + delay + .018);
+        gain.gain.exponentialRampToValueAtTime(.0001, now + delay + .18);
+        oscillator.connect(gain).connect(audio.destination);
+        oscillator.start(now + delay);
+        oscillator.stop(now + delay + .2);
+      });
+      window.setTimeout(() => audio.close().catch(() => {}), 700);
+    } catch (_) {
+      // O navegador pode bloquear áudio fora de uma interação direta; a confirmação visual continua disponível.
+    }
+  }
+
   window.fetch = async function (input, init) {
     const response = await baseFetch(input, init);
     const url = typeof input === "string" ? input : (input && input.url) || "";
     const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
-    if ((/\/api\/crm\/conversations\/\d+\/resolve(?:\?|$)/.test(url) || (url.includes("/api/crm/goals") && method === "POST")) && response.ok) {
+    const conversationResolved = /\/api\/crm\/conversations\/\d+\/resolve(?:\?|$)/.test(url) && response.ok;
+    const goalsSaved = url.includes("/api/crm/goals") && method === "POST" && response.ok;
+    if (conversationResolved) celebrateAttendanceCompletion();
+    if (conversationResolved || goalsSaved) {
       response.clone().json().then(data => {
         celebrate(data.achievements || []);
         if (root && activeTab === "progress") loadGoals(true);
@@ -461,5 +506,5 @@
     }, 120);
     window.setTimeout(() => clearInterval(timer), 10000);
   }
-  window.IEACrmGoals = { open: openGoals, close: closeGoals, celebrate };
+  window.IEACrmGoals = { open: openGoals, close: closeGoals, celebrate, celebrateAttendanceCompletion };
 })();
