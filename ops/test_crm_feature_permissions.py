@@ -107,6 +107,7 @@ assert "before_json" in permission_save and "after_json" in permission_save
 assert permission_save.count(" is True") >= 3, "permission writes must use strict booleans"
 assert "crm_manage_automation" in permission_save
 assert "crm_operational_agent" in permission_save
+assert "set(feature_keys) != set(CRM_FEATURE_KEYS)" in permission_save, "unselected screens must enforce the feature scope"
 assert "permission.can_manage_automation=1" in server_source
 
 n8n_manager = methods["require_crm_n8n_manager"]
@@ -168,6 +169,11 @@ assert "permissionState={feature_scope_enabled:true,allowed_features:[]}" in bri
 assert "featureMatches.length === 1" in bridge
 assert "originalNavDisplays = new WeakMap()" in bridge
 assert 'nav.style.display = visible ? originalNavDisplays.get(nav) : "none"' in bridge
-assert "crm-operations-bridge.js?v=20260804-sidebar-observers-v1" in crm_html
+assert 'card.querySelectorAll("[data-feature]:checked").length !== FEATURES.length' in bridge
+assert 'if (features.some(item => !item.checked)) scope.checked = true;' in bridge
+assert "crm-operations-bridge.js?v=20260804-contacts-new-search-perf-v2" in crm_html
+
+assert "featureKeys.length !== featureInputs.length" in admin_js
+assert "Ao desmarcar uma tela, a restrição é ativada automaticamente ao salvar." in admin_js
 
 print("crm-feature-permission-tests-ok")

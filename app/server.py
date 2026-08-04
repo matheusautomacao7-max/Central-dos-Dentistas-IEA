@@ -2480,7 +2480,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Uma das telas informadas não existe."}, HTTPStatus.BAD_REQUEST)
 
         scope_enabled = 1 if payload.get("scope_enabled") is True else 0
-        feature_scope_enabled = 1 if payload.get("feature_scope_enabled") is True else 0
+        # A seleção de telas é a fonte de verdade. Assim não existe o estado
+        # confuso em que o administrador desmarca uma tela, salva, mas ela
+        # continua liberada porque esqueceu de ligar uma segunda checkbox.
+        # Se a lista não contém todas as telas, a restrição é obrigatória.
+        feature_scope_enabled = 1 if (
+            payload.get("feature_scope_enabled") is True
+            or set(feature_keys) != set(CRM_FEATURE_KEYS)
+        ) else 0
         can_manage_automation = 1 if payload.get("can_manage_automation") is True else 0
         operational_agent = 1 if payload.get("operational_agent") is True else 0
         with connect() as db:

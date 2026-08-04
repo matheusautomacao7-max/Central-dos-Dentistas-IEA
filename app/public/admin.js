@@ -54,10 +54,21 @@ function renderCrmAccess() {
       <label class="crm-scope-toggle"><input type="checkbox" data-crm-scope ${restricted ? "checked" : ""}><span><strong>Restringir aos números marcados</strong><small>Desmarcado: visualiza todos os canais.</small></span></label>
       <div class="crm-channel-checks">${channels.map(channel => `<label><input type="checkbox" data-crm-channel value="${channel.id}" ${selected.has(String(channel.id)) ? "checked" : ""}><span><strong>${escapeHtml(crmChannelLabel(channel))}</strong><small>${escapeHtml(channel.phone || channel.instance_name || "Sem telefone")} · ${channel.sync_enabled ? "Sincronizando" : "Pausado"}</small></span></label>`).join("") || '<p class="empty-state">Nenhum canal conectado.</p>'}</div>
       <label class="crm-manager-toggle"><input type="checkbox" data-crm-manager ${Number(user.crm_manage_automation ?? user.can_manage_automation) ? "checked" : ""}><span><strong>Supervisão de canais e automações</strong><small>Pode pausar sincronização, configurar o n8n e executar importações.</small></span></label>
-      <div class="crm-feature-permissions"><div class="crm-feature-title"><strong>Telas disponíveis</strong><label><input type="checkbox" data-crm-feature-scope ${featuresRestricted ? "checked" : ""}> Personalizar</label></div><div class="crm-feature-checks">${Object.entries(crmFeatureLabels).map(([key,label]) => `<label><input type="checkbox" data-crm-feature value="${key}" ${selectedFeatures.has(key) || !featuresRestricted ? "checked" : ""}><span>${label}</span></label>`).join("")}</div><small>Com “Personalizar” desmarcado, todas as telas permanecem liberadas.</small></div>
+      <div class="crm-feature-permissions"><div class="crm-feature-title"><strong>Telas disponíveis</strong><label><input type="checkbox" data-crm-feature-scope ${featuresRestricted ? "checked" : ""}> Restringir telas</label></div><div class="crm-feature-checks">${Object.entries(crmFeatureLabels).map(([key,label]) => `<label><input type="checkbox" data-crm-feature value="${key}" ${selectedFeatures.has(key) || !featuresRestricted ? "checked" : ""}><span>${label}</span></label>`).join("")}</div><small>Ao desmarcar uma tela, a restrição é ativada automaticamente ao salvar.</small></div>
       <button class="primary-button" type="button" data-save-crm-access="${user.id}">Salvar permissões</button>
     </article>`;
   }).join("") : '<p class="empty-state">Nenhum acesso CRC cadastrado.</p>';
+  $$('[data-crm-access-user]').forEach(card => {
+    const scope = card.querySelector('[data-crm-feature-scope]');
+    const features = [...card.querySelectorAll('[data-crm-feature]')];
+    if (!scope || !features.length) return;
+    features.forEach(input => input.addEventListener('change', () => {
+      if (features.some(item => !item.checked)) scope.checked = true;
+    }));
+    scope.addEventListener('change', () => {
+      if (!scope.checked) features.forEach(input => { input.checked = true; });
+    });
+  });
   $("#crmTestUser").innerHTML = `<option value="">Selecione</option>${users.filter(user => user.active).map(user => `<option value="${user.id}">${escapeHtml(user.name)}</option>`).join("")}`;
   $("#crmTestChannel").innerHTML = `<option value="">Selecione</option>${channels.map(channel => `<option value="${channel.id}">${escapeHtml(crmChannelLabel(channel))}</option>`).join("")}`;
   $$('[data-save-crm-access]').forEach(button => button.addEventListener("click", () => saveCrmAccess(button.dataset.saveCrmAccess)));
@@ -65,7 +76,9 @@ function renderCrmAccess() {
 
 async function saveCrmAccess(userId) {
   const card = $(`[data-crm-access-user="${userId}"]`);
-  const payload = {user_id: Number(userId), operational_agent: card.querySelector('[data-crm-operational-agent]').checked, scope_enabled: card.querySelector('[data-crm-scope]').checked, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: [...card.querySelectorAll('[data-crm-channel]:checked')].map(input => Number(input.value)), feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked, feature_keys: [...card.querySelectorAll('[data-crm-feature]:checked')].map(input => input.value)};
+  const featureInputs = [...card.querySelectorAll('[data-crm-feature]')];
+  const featureKeys = featureInputs.filter(input => input.checked).map(input => input.value);
+  const payload = {user_id: Number(userId), operational_agent: card.querySelector('[data-crm-operational-agent]').checked, scope_enabled: card.querySelector('[data-crm-scope]').checked, can_manage_automation: card.querySelector('[data-crm-manager]').checked, channel_ids: [...card.querySelectorAll('[data-crm-channel]:checked')].map(input => Number(input.value)), feature_scope_enabled: card.querySelector('[data-crm-feature-scope]').checked || featureKeys.length !== featureInputs.length, feature_keys: featureKeys};
   if (payload.scope_enabled && !payload.channel_ids.length && !confirm("Esta atendente ficará sem acesso a nenhum número. Continuar?")) return;
   if (payload.feature_scope_enabled && !payload.feature_keys.length && !confirm("Esta atendente ficará sem nenhuma tela do CRM. Continuar?")) return;
   try { await api("/api/admin/crm-channel-access", {method:"POST", body:JSON.stringify(payload)}); await loadCrmAccess(); showToast("Permissões do CRM salvas."); } catch (error) { showToast(error.message, true); }

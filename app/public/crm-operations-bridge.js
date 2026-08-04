@@ -273,6 +273,21 @@
     try {
       const data = await request("/api/admin/crm-channel-access");
       body.innerHTML = `<div class="iea-grid">${(data.users || []).map(user => userCard(user, data.channels || [])).join("")}</div>`;
+      body.querySelectorAll("[data-user]").forEach(card => {
+        const scope = card.querySelector("[data-feature-scope]");
+        const features = [...card.querySelectorAll("[data-feature]")];
+        if (!scope || !features.length) return;
+        features.forEach(input => {
+          input.onchange = () => {
+            // Desmarcar qualquer tela ativa a restrição automaticamente.
+            if (features.some(item => !item.checked)) scope.checked = true;
+          };
+        });
+        scope.onchange = () => {
+          // "Todas as telas" deve ser uma ação explícita e previsível.
+          if (!scope.checked) features.forEach(input => { input.checked = true; });
+        };
+      });
       body.querySelectorAll("[data-save-user]").forEach(button => {
         button.onclick = () => saveUser(button.closest("[data-user]"));
       });
@@ -297,7 +312,7 @@
     return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} · ${esc(level)}</small>
       <label style="display:flex;gap:8px;margin:14px 0 8px;font-size:13px"><input type="checkbox" data-channel-scope ${user.crm_channel_scope_enabled ? "checked" : ""}> Restringir aos canais selecionados</label>
       <div class="iea-checks">${channels.map(channel => `<label><input type="checkbox" data-channel="${Number(channel.id)}" ${selectedChannels.has(String(channel.id)) ? "checked" : ""}> ${esc(channel.name || channel.instance_name || `Canal ${channel.id}`)}</label>`).join("")}</div>
-      <label style="display:flex;gap:8px;margin:16px 0 8px;font-size:13px"><input type="checkbox" data-feature-scope ${featureScopeEnabled ? "checked" : ""}> Personalizar telas disponíveis</label>
+      <label style="display:flex;gap:8px;margin:16px 0 8px;font-size:13px"><input type="checkbox" data-feature-scope ${featureScopeEnabled ? "checked" : ""}> Restringir telas do CRM</label>
       <div class="iea-checks">${FEATURES.map(([key, label]) => `<label><input type="checkbox" data-feature="${key}" ${features.includes(key) || !featureScopeEnabled ? "checked" : ""}> ${label}</label>`).join("")}</div>
       <label style="display:flex;gap:8px;margin:14px 0;font-size:13px"><input type="checkbox" data-automation ${user.can_manage_automation ? "checked" : ""}> Gerenciar automações</label>
       <button class="iea-btn iea-btn-dark" data-save-user>Salvar permissões</button><span data-status style="margin-left:8px;font-size:12px"></span></article>`;
@@ -316,7 +331,7 @@
           feature_keys: [...card.querySelectorAll("[data-feature]:checked")].map(input => input.dataset.feature),
           can_manage_automation: card.querySelector("[data-automation]").checked,
           scope_enabled: card.querySelector("[data-channel-scope]").checked,
-          feature_scope_enabled: card.querySelector("[data-feature-scope]").checked
+          feature_scope_enabled: card.querySelector("[data-feature-scope]").checked || card.querySelectorAll("[data-feature]:checked").length !== FEATURES.length
         })
       });
       status.textContent = "Salvo";
