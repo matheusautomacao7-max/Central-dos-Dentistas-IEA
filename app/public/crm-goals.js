@@ -28,7 +28,14 @@
   const number = value => Number(value || 0).toLocaleString("pt-BR");
   const percent = value => `${Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
   const money = cents => Number(cents || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const moneyInput = cents => (Number(cents || 0) / 100).toFixed(2);
+  const moneyInput = cents => (Number(cents || 0) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const moneyToCents = value => {
+    const raw = String(value == null ? "" : value).trim();
+    if (!raw) return 0;
+    const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+    const amount = Number(normalized);
+    return Number.isFinite(amount) ? Math.round(amount * 100) : NaN;
+  };
   const initials = value => String(value || "")
     .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0)).join("").toUpperCase() || "CRC";
 
@@ -254,7 +261,7 @@
         <label>Mínimo mensal<input class="iea-goals-field" data-monthly-minimum type="number" min="0" max="100000" step="1" value="${monthlyMinimum}"></label>
         <label>Meta diária<input class="iea-goals-field" data-daily type="number" min="0" max="10000" step="1" value="${daily}"></label>
         <label>Mínimo diário<input class="iea-goals-field" data-daily-minimum type="number" min="0" max="10000" step="1" value="${dailyMinimum}"></label>
-        <label>Recompensa a 100% (R$)<input class="iea-goals-field" data-reward type="number" min="0" max="1000000" step="0.01" value="${moneyInput(reward)}"></label>
+        <label>Recompensa a 100% (R$)<input class="iea-goals-field" data-reward type="text" inputmode="decimal" autocomplete="off" value="${moneyInput(reward)}" aria-describedby="reward-help-${esc(item.metric_key)}"><span id="reward-help-${esc(item.metric_key)}" style="display:block;margin-top:4px;font-weight:600;color:#7B8C9A">Ex.: 250,00</span></label>
         <label>Começa a pagar em %<input class="iea-goals-field" data-payout-threshold type="number" min="0" max="100" step="1" value="${payoutThreshold}"></label>
         <label>Bônus a partir de 100%<input class="iea-goals-field" data-achievement-bonus type="number" min="100" max="200" step="1" value="${achievementBonus}"></label>
         <label class="iea-config-message">Mensagem personalizada<input class="iea-goals-field" data-message maxlength="180" value="${esc(message)}" placeholder="Opcional; o CRM inclui o resultado alcançado"></label>
@@ -290,7 +297,7 @@
         monthly_minimum: Number(card.querySelector("[data-monthly-minimum]").value || 0),
         daily_target: Number(card.querySelector("[data-daily]").value || 0),
         daily_minimum: Number(card.querySelector("[data-daily-minimum]").value || 0),
-        reward_cents: Math.round(Number(card.querySelector("[data-reward]").value || 0) * 100),
+        reward_cents: moneyToCents(card.querySelector("[data-reward]").value),
         payout_threshold_percent: Number(card.querySelector("[data-payout-threshold]").value || 0),
         achievement_bonus_percent: Number(card.querySelector("[data-achievement-bonus]").value || 0),
         celebration_enabled: card.querySelector("[data-celebration]").checked,
@@ -314,7 +321,7 @@
         if (values.monthly_minimum > values.monthly_target || values.daily_minimum > values.daily_target) {
           validationError = "O mínimo não pode ser maior que a meta.";
         }
-        if (values.reward_cents < 0 || values.payout_threshold_percent < 0 || values.payout_threshold_percent > 100 || values.achievement_bonus_percent < 100 || values.achievement_bonus_percent > 200) {
+        if (!Number.isInteger(values.reward_cents) || values.reward_cents < 0 || values.payout_threshold_percent < 0 || values.payout_threshold_percent > 100 || values.achievement_bonus_percent < 100 || values.achievement_bonus_percent > 200) {
           validationError = "Confira os valores de recompensa e os percentuais de pagamento.";
         }
       });

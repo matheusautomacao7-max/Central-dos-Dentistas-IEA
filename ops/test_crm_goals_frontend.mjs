@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-remuneration-v2/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-money-input-v1/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
 assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
@@ -157,7 +157,7 @@ try {
   const attendanceCard = page.locator('[data-metric="attendances"]');
   await attendanceCard.locator("[data-daily]").fill("50");
   await attendanceCard.locator("[data-daily-minimum]").fill("40");
-  await attendanceCard.locator("[data-reward]").fill("250");
+  await attendanceCard.locator("[data-reward]").fill("250,00");
   await page.getByRole("button", { name: "Toda a equipe (2)" }).click();
   assert.equal(await attendanceCard.locator("[data-daily]").inputValue(), "50", "trocar o escopo não pode apagar o formulário");
   if (process.env.CRM_GOALS_SCREENSHOT) {
