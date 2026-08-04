@@ -179,6 +179,7 @@ def test_achievements_are_emitted_once_per_target() -> None:
         CREATE TABLE crm_goals(
           id INTEGER PRIMARY KEY,user_id INTEGER,month_start TEXT,metric_key TEXT,
           monthly_target INTEGER,monthly_minimum INTEGER,daily_target INTEGER,daily_minimum INTEGER,
+          reward_cents INTEGER,payout_threshold_percent INTEGER,achievement_bonus_percent INTEGER,
           celebration_enabled INTEGER,celebration_message TEXT
         );
         CREATE TABLE crm_goal_achievements(
@@ -199,11 +200,11 @@ def test_achievements_are_emitted_once_per_target() -> None:
         ],
     )
     db.executemany(
-        "INSERT INTO crm_goals VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO crm_goals VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
-            (1, 7, month_start, "first_consultations", 1, 0, 1, 0, 1, None),
-            (2, 7, month_start, "recoveries", 1, 0, 1, 0, 1, None),
-            (3, 7, month_start, "attendances", 2, 0, 2, 0, 1, None),
+            (1, 7, month_start, "first_consultations", 1, 0, 1, 0, 25000, 75, 110, 1, None),
+            (2, 7, month_start, "recoveries", 1, 0, 1, 0, 50000, 75, 110, 1, None),
+            (3, 7, month_start, "attendances", 2, 0, 2, 0, 25000, 75, 110, 1, None),
         ],
     )
     handler = server.ClinicHandler.__new__(server.ClinicHandler)

@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260803-team-goals-minimum-v1/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-remuneration-v1/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);
 assert.match(goalScript, /attendances: \{ color: "#F59E0B", soft: "#FFF9F0" \}/);
@@ -111,7 +111,7 @@ try {
   assert.equal(new URL(page.url()).searchParams.get("screen"), "goals");
   assert.equal(await page.evaluate(() => performance.getEntriesByType("navigation").length), 1);
   await page.getByRole("heading", { name: "Metas individuais" }).waitFor();
-  assert.equal(await page.getByText("Primeiras consultas", { exact: true }).count(), 2);
+  assert.equal(await page.getByText("Primeiras consultas", { exact: true }).count(), 3);
   assert.equal(await page.getByText("Conversão · Cliente recorrente", { exact: true }).count(), 1);
   assert.equal(await page.getByText("26 dias de expediente restantes", { exact: true }).count(), 1);
   assert.equal(await page.locator(".iea-goals-avatar").textContent(), "MH");
@@ -153,9 +153,11 @@ try {
   assert.equal(await page.locator(".iea-config-card").count(), 3);
   assert.equal(await page.getByRole("heading", { name: "Configuração e permissões" }).count(), 0);
   assert.equal(await page.getByLabel("Mínimo diário").count(), 3);
+  assert.equal(await page.getByLabel("Recompensa a 100% (R$)").count(), 3);
   const attendanceCard = page.locator('[data-metric="attendances"]');
   await attendanceCard.locator("[data-daily]").fill("50");
   await attendanceCard.locator("[data-daily-minimum]").fill("40");
+  await attendanceCard.locator("[data-reward]").fill("250");
   await page.getByRole("button", { name: "Toda a equipe (2)" }).click();
   assert.equal(await attendanceCard.locator("[data-daily]").inputValue(), "50", "trocar o escopo não pode apagar o formulário");
   if (process.env.CRM_GOALS_SCREENSHOT) {
@@ -167,6 +169,7 @@ try {
   assert.equal(lastGoalPost.apply_to_all, true);
   assert.equal(lastGoalPost.goals.attendances.daily_target, 50);
   assert.equal(lastGoalPost.goals.attendances.daily_minimum, 40);
+  assert.equal(lastGoalPost.goals.attendances.reward_cents, 25000);
   await page.getByRole("heading", { name: "🎉 Meta alcançada!" }).waitFor();
 
   await page.emulateMedia({ reducedMotion: "reduce" });

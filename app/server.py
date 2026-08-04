@@ -471,9 +471,15 @@ def initialize_database() -> None:
         db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_service_resolutions_goals
                       ON crm_service_resolutions(resolved_by_user_id,patient_type,is_recovery,outcome,resolved_at DESC)""")
         crm_goal_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_goals)").fetchall()}
-        for column in ("monthly_minimum", "daily_minimum"):
+        for column, definition in {
+            "monthly_minimum": "INTEGER NOT NULL DEFAULT 0",
+            "daily_minimum": "INTEGER NOT NULL DEFAULT 0",
+            "reward_cents": "INTEGER NOT NULL DEFAULT 0",
+            "payout_threshold_percent": "INTEGER NOT NULL DEFAULT 75",
+            "achievement_bonus_percent": "INTEGER NOT NULL DEFAULT 110",
+        }.items():
             if column not in crm_goal_columns:
-                db.execute(f"ALTER TABLE crm_goals ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
+                db.execute(f"ALTER TABLE crm_goals ADD COLUMN {column} {definition}")
         crm_message_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_messages)").fetchall()}
         for column, definition in {
             "author_type": "TEXT NOT NULL DEFAULT 'unknown'",
@@ -6257,12 +6263,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         remaining_days = crm_open_days_remaining(today, month_start)
         goal_rows = db.execute(
             """SELECT id,metric_key,monthly_target,monthly_minimum,daily_target,daily_minimum,
+                      reward_cents,payout_threshold_percent,achievement_bonus_percent,
                       celebration_enabled,celebration_message
                  FROM crm_goals WHERE user_id=? AND month_start=?""",
             (user_id, month_start.isoformat()),
         ).fetchall()
         configured = {row["metric_key"]: dict(row) for row in goal_rows}
         items = []
+        remuneration = {"earned_cents": 0, "possible_cents": 0, "remaining_cents": 0}
         for metric_key, label in CRM_GOAL_METRICS.items():
             goal = configured.get(metric_key, {})
             month_progress = crm_goal_progress(
@@ -6273,12 +6281,34 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 goal.get("daily_target", 0), day_actuals.get(metric_key, 0), 1,
                 goal.get("daily_minimum", 0),
             )
+            reward_cents = max(0, int(goal.get("reward_cents", 0) or 0))
+            payout_threshold = min(100, max(0, int(goal.get("payout_threshold_percent", 75) or 75)))
+            achievement_bonus = min(200, max(100, int(goal.get("achievement_bonus_percent", 110) or 110)))
+            monthly_percentage = float(month_progress.get("percentage", 0) or 0)
+            if not reward_cents or not month_progress.get("target") or monthly_percentage < payout_threshold:
+                earned_cents = 0
+            elif monthly_percentage >= 100:
+                earned_cents = round(reward_cents * achievement_bonus / 100)
+            else:
+                earned_cents = round(reward_cents * monthly_percentage / 100)
+            remuneration["earned_cents"] += earned_cents
+            remuneration["possible_cents"] += reward_cents
+            remuneration["remaining_cents"] += max(0, reward_cents - min(reward_cents, earned_cents))
             items.append({
                 "metric_key": metric_key,
                 "label": label,
                 "goal_id": goal.get("id"),
                 "monthly": month_progress,
                 "daily": day_progress,
+                "reward_cents": reward_cents,
+                "payout_threshold_percent": payout_threshold,
+                "achievement_bonus_percent": achievement_bonus,
+                "remuneration": {
+                    "earned_cents": earned_cents,
+                    "possible_cents": reward_cents,
+                    "remaining_cents": max(0, reward_cents - min(reward_cents, earned_cents)),
+                    "eligible": bool(earned_cents),
+                },
                 "celebration_enabled": bool(goal.get("celebration_enabled", 1)),
                 "celebration_message": goal.get("celebration_message") or "",
             })
@@ -6315,6 +6345,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 },
             },
             "history": [dict(row) for row in history],
+            "remuneration": remuneration,
         }
 
     def get_crm_goals(self, query: dict | None = None) -> None:
@@ -6357,6 +6388,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         month_start, month_end = crm_goal_month_bounds(month_value)
         goals = db.execute(
             """SELECT id,metric_key,monthly_target,monthly_minimum,daily_target,daily_minimum,
+                      reward_cents,payout_threshold_percent,achievement_bonus_percent,
                       celebration_enabled,celebration_message
                  FROM crm_goals WHERE user_id=? AND month_start=?""",
             (user_id, month_start.isoformat()),
@@ -6369,7 +6401,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         day_actuals = self.crm_goal_actuals(db, user_id, today, today)
         created = []
 
-        def record(goal_id, metric_key, achievement_type, period_key, target, realized, custom_message=""):
+        def record(goal_id, metric_key, achievement_type, period_key, target, realized, custom_message="", reward_cents=0):
             if not target or realized < target:
                 return
             label = CRM_GOAL_METRICS.get(metric_key, "Todas as metas")
@@ -6390,6 +6422,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 created.append({
                     "metric_key": metric_key, "achievement_type": achievement_type,
                     "target": target, "realized": realized, "message": message,
+                    "reward_cents": reward_cents,
                 })
 
         enabled_goals = []
@@ -6400,7 +6433,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             enabled_goals.append(goal)
             record(goal["id"], metric_key, "monthly", month_value,
                    int(goal["monthly_target"] or 0), month_actuals.get(metric_key, 0),
-                   goal["celebration_message"] or "")
+                   goal["celebration_message"] or "",
+                   round(int(goal["reward_cents"] or 0) * max(100, int(goal["achievement_bonus_percent"] or 110)) / 100))
             record(goal["id"], metric_key, "daily", today.isoformat(),
                    int(goal["daily_target"] or 0), day_actuals.get(metric_key, 0),
                    goal["celebration_message"] or "")
@@ -6447,15 +6481,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 monthly_minimum = int(item.get("monthly_minimum") or 0)
                 daily_target = int(item.get("daily_target") or 0)
                 daily_minimum = int(item.get("daily_minimum") or 0)
+                reward_cents = int(item.get("reward_cents") or 0)
+                payout_threshold_percent = int(item.get("payout_threshold_percent") or 75)
+                achievement_bonus_percent = int(item.get("achievement_bonus_percent") or 110)
                 if (not 0 <= monthly_target <= 100000 or not 0 <= monthly_minimum <= 100000 or
                         not 0 <= daily_target <= 10000 or not 0 <= daily_minimum <= 10000 or
-                        monthly_minimum > monthly_target or daily_minimum > daily_target):
+                        not 0 <= reward_cents <= 100000000 or not 0 <= payout_threshold_percent <= 100 or
+                        not 100 <= achievement_bonus_percent <= 200 or monthly_minimum > monthly_target or
+                        daily_minimum > daily_target):
                     raise ValueError
                 normalized[metric_key] = {
                     "monthly_target": monthly_target,
                     "monthly_minimum": monthly_minimum,
                     "daily_target": daily_target,
                     "daily_minimum": daily_minimum,
+                    "reward_cents": reward_cents,
+                    "payout_threshold_percent": payout_threshold_percent,
+                    "achievement_bonus_percent": achievement_bonus_percent,
                     "celebration_enabled": 1 if item.get("celebration_enabled", True) else 0,
                     "celebration_message": str(item.get("celebration_message") or "").strip()[:180] or None,
                 }
@@ -6480,13 +6522,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     db.execute(
                         """INSERT INTO crm_goals(
                                user_id,month_start,metric_key,monthly_target,monthly_minimum,
-                               daily_target,daily_minimum,celebration_enabled,celebration_message,created_by_user_id
-                           ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                               daily_target,daily_minimum,reward_cents,payout_threshold_percent,
+                               achievement_bonus_percent,celebration_enabled,celebration_message,created_by_user_id
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                            ON CONFLICT(user_id,month_start,metric_key) DO UPDATE SET
                              monthly_target=excluded.monthly_target,
                              monthly_minimum=excluded.monthly_minimum,
                              daily_target=excluded.daily_target,
                              daily_minimum=excluded.daily_minimum,
+                             reward_cents=excluded.reward_cents,
+                             payout_threshold_percent=excluded.payout_threshold_percent,
+                             achievement_bonus_percent=excluded.achievement_bonus_percent,
                              celebration_enabled=excluded.celebration_enabled,
                              celebration_message=excluded.celebration_message,
                              updated_at=datetime('now','localtime')""",
@@ -6494,6 +6540,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                             target_user_id, month_start.isoformat(), metric_key,
                             item["monthly_target"], item["monthly_minimum"],
                             item["daily_target"], item["daily_minimum"],
+                            item["reward_cents"], item["payout_threshold_percent"],
+                            item["achievement_bonus_percent"],
                             item["celebration_enabled"], item["celebration_message"],
                             self.authenticated_user["id"],
                         ),
