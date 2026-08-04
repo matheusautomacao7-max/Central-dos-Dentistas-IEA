@@ -224,6 +224,8 @@ assert "Exportar informaÃ§Ãµes" in operations
 assert "Detalhar" in operations
 assert "openResolutionDetails" in operations
 assert "openFunnel" in operations
+assert "Gerenciar permissões do CRM" in operations
+assert "injectSettingsPermissionsButton" in operations
 assert "resolution_reason" in server.ClinicHandler.get_crm_conversations.__code__.co_consts.__repr__()
 
 print("crm-resolution-pipeline-control-regression-ok")

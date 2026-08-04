@@ -33,7 +33,7 @@
       .iea-ops-screen{position:fixed;inset:0 0 0 80px;z-index:45;background:#f3f6f8;overflow:auto;padding:28px 32px;color:#0b2945}
       .iea-ops-head{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
       .iea-ops-head h1{font-size:28px;margin:0}.iea-ops-head p{margin:5px 0 0;color:#66788a}
-      .iea-btn{border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:11px 16px;font-weight:800;color:#102f4d;cursor:pointer}.iea-btn:hover{border-color:#7fa8d4;background:#f8fbff}
+      .iea-btn{border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:11px 16px;font-weight:800;color:#102f4d;cursor:pointer}.iea-btn:hover{border-color:#7fa8d4;background:#f8fbff}.iea-native-settings-permissions{margin-top:16px}
       .iea-btn-primary{background:#17c964;color:#fff;border-color:#17c964}.iea-btn-dark{background:#102f4d;color:#fff}
       .iea-panel{background:#fff;border:1px solid #dde5eb;border-radius:16px;padding:20px;margin-bottom:18px}
       .iea-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
@@ -409,6 +409,31 @@
       .replace(/\s+/g, " ").trim().toLowerCase();
   }
 
+  function injectSettingsPermissionsButton() {
+    if (activeScreen) return;
+    const heading = Array.from(document.querySelectorAll("h1,h2")).find(element =>
+      normalizedLabel(element.textContent) === "configuracoes" && !element.closest(".iea-ops-screen")
+    );
+    if (!heading || document.querySelector("[data-iea-open-permissions]")) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "iea-btn iea-btn-dark iea-native-settings-permissions";
+    button.dataset.ieaOpenPermissions = "true";
+    button.textContent = "Gerenciar permissões do CRM";
+    button.onclick = event => { event.preventDefault(); openSettings(); };
+    const subtitle = heading.parentElement && heading.parentElement.querySelector("p");
+    (subtitle || heading).insertAdjacentElement("afterend", button);
+  }
+
+  let settingsEntryTimer = null;
+  function scheduleSettingsPermissionsButton() {
+    if (settingsEntryTimer) return;
+    settingsEntryTimer = setTimeout(() => {
+      settingsEntryTimer = null;
+      injectSettingsPermissionsButton();
+    }, 120);
+  }
+
   function isSidebarTarget(target) {
     const sidebar = target.closest("aside,[class*='sidebar'],[class*='side-bar']");
     if (!sidebar) return false;
@@ -419,6 +444,9 @@
   document.addEventListener("click", event => {
     const target = event.target.closest("button,a,[role=button]");
     if (!target) return;
+    if (target.closest("[data-iea-open-permissions]")) {
+      event.preventDefault(); event.stopImmediatePropagation(); openSettings(); return;
+    }
     // Buttons inside our own modal must keep their native form behaviour.
     // Without this guard, the submit button "Iniciar conversa" is intercepted
     // below and opens a second modal instead of sending the form.
@@ -439,6 +467,7 @@
   window.IEACrmOperations = { openControl, openFunnel, closeScreen, openSettings, openConversationModal };
   css();
   applyPermissions();
-  new MutationObserver(observePermissionSidebar).observe(document.body, { childList: true });
+  new MutationObserver(() => { observePermissionSidebar(); scheduleSettingsPermissionsButton(); }).observe(document.body, { childList: true, subtree: true });
   observePermissionSidebar();
+  injectSettingsPermissionsButton();
 })();
