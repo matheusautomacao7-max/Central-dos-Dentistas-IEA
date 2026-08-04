@@ -469,7 +469,7 @@ CREATE TABLE IF NOT EXISTS crm_user_channels (
 
 CREATE TABLE IF NOT EXISTS crm_user_features (
     user_id INTEGER NOT NULL,
-    feature_key TEXT NOT NULL CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')),
+    feature_key TEXT NOT NULL CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings','control')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, feature_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -716,6 +716,53 @@ CREATE TABLE IF NOT EXISTS crm_quick_replies (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Base oficial consultada pela Lia, a assistente interna da recepção.
+-- A primeira fase usa somente conteúdos aprovados do CRM; nenhuma mensagem é
+-- enviada ao paciente por esta tabela ou por suas rotas.
+CREATE TABLE IF NOT EXISTS crm_lia_knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'Geral',
+    content TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','archived')),
+    created_by_user_id INTEGER,
+    updated_by_user_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_lia_knowledge_status
+ON crm_lia_knowledge(status, category, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_lia_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+    model TEXT NOT NULL DEFAULT 'gpt-5.6-luna',
+    daily_limit_per_user INTEGER NOT NULL DEFAULT 30 CHECK (daily_limit_per_user BETWEEN 1 AND 500),
+    monthly_limit_total INTEGER NOT NULL DEFAULT 1000 CHECK (monthly_limit_total BETWEEN 1 AND 100000),
+    monthly_budget_cents INTEGER NOT NULL DEFAULT 3000 CHECK (monthly_budget_cents BETWEEN 100 AND 1000000),
+    max_output_tokens INTEGER NOT NULL DEFAULT 450 CHECK (max_output_tokens BETWEEN 80 AND 1200),
+    updated_by_user_id INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS crm_lia_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    question_preview TEXT NOT NULL,
+    source_ids_json TEXT NOT NULL DEFAULT '[]',
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_crm_lia_usage_month ON crm_lia_usage(created_at, user_id);
 
 CREATE TABLE IF NOT EXISTS crm_integration_alerts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

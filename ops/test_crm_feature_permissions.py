@@ -45,7 +45,7 @@ exact_feature_guards = {
     "resolve_crm_conversation": "inbox",
     "claim_crm_conversation": "inbox",
     "get_crm_resolution_reports": "management",
-    "get_crm_patient_control": "management",
+    "get_crm_patient_control": "control",
     "update_crm_channel": "integrations",
     "save_crm_channel": "integrations",
     "get_crm_integration_health": "integrations",
@@ -131,7 +131,7 @@ for constraint in (
     "CHECK (crm_access_level IN ('attendant', 'admin'))",
     "CHECK (can_reply IN (0, 1))",
     "CHECK (can_manage_automation IN (0, 1))",
-    "CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings'))",
+    "CHECK (feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings','control'))",
 ):
     assert constraint in schema
 for migration_constraint in (
@@ -177,7 +177,9 @@ assert 'nav.style.display = visible ? originalNavDisplays.get(nav) : "none"' in 
 assert 'card.querySelectorAll("[data-feature]:checked").length !== FEATURES.length' in bridge
 assert 'card.querySelectorAll("[data-channel]:checked").length !== card.querySelectorAll("[data-channel]").length' in bridge
 assert 'if (features.some(item => !item.checked)) scope.checked = true;' in bridge
-assert "crm-operations-bridge.js?v=20260804-channel-scope-routing-v3" in crm_html
+assert "crm-operations-bridge.js?v=20260804-control-feature-permission-v2" in crm_html
+assert '["control", "Controle"]' in bridge
+assert '["controle", "control"]' in bridge
 
 assert "featureKeys.length !== featureInputs.length" in admin_js
 assert "channelIds.length !== channelInputs.length" in admin_js

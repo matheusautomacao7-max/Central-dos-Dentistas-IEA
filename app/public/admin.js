@@ -34,7 +34,7 @@ async function loadCrmAccess() {
 }
 
 function crmChannelLabel(channel) { return channel.display_name || channel.instance_name || `Canal ${channel.id}`; }
-const crmFeatureLabels = {inbox:"Inbox",queue:"Filas",funnel:"Funil",management:"Gestão",contacts:"Contatos",campaigns:"Campanhas",integrations:"Integrações",settings:"Configurações"};
+const crmFeatureLabels = {inbox:"Inbox",queue:"Filas",funnel:"Funil",management:"Gestão",contacts:"Contatos",control:"Controle",campaigns:"Campanhas",integrations:"Integrações",settings:"Configurações"};
 
 function renderCrmAccess() {
   const data = state.crmAccess;

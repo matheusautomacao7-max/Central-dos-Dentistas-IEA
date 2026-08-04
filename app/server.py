@@ -63,6 +63,8 @@ INTEGRATION_TOKEN = os.environ.get("INTEGRATION_TOKEN", "")
 EVOLUTION_WEBHOOK_TOKEN = os.environ.get("EVOLUTION_WEBHOOK_TOKEN", "")
 EVOLUTION_API_URL = os.environ.get("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.environ.get("EVOLUTION_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
 CLINIC_UTC_OFFSET_HOURS = int(os.environ.get("CLINIC_UTC_OFFSET_HOURS", "-4"))
@@ -207,7 +209,7 @@ CRM_PROFILE_PHOTO_MISS: dict[int, float] = {}
 
 CRM_FEATURE_KEYS = (
     "inbox", "queue", "funnel", "management", "contacts", "campaigns",
-    "integrations", "settings",
+    "integrations", "settings", "control",
 )
 CRM_WORKSPACE_FEATURES = ("inbox", "queue", "funnel")
 
@@ -215,6 +217,15 @@ CRM_GOAL_METRICS = {
     "first_consultations": "Primeiras consultas",
     "recoveries": "Recuperação de pacientes",
     "attendances": "Atendimentos",
+}
+CRM_LIA_KNOWLEDGE_CATEGORIES = (
+    "Scripts aprovados", "Perguntas frequentes", "Metas e finalização",
+    "Atendimento e tom de voz", "Campanhas", "Serviços e agendas",
+    "Políticas comerciais", "Escalonamento", "Geral",
+)
+CRM_LIA_MODELS = {
+    "gpt-5.6-luna": {"label": "GPT-5.6 Luna — econômico", "input_per_million": 0.20, "output_per_million": 1.20},
+    "gpt-5.6-terra": {"label": "GPT-5.6 Terra — qualidade superior", "input_per_million": 2.00, "output_per_million": 12.00},
 }
 CRM_PROFILE_ACHIEVEMENT_ICONS = {"trophy", "medal", "star", "heart", "target", "sparkles"}
 CRM_PROFILE_ACHIEVEMENT_COLORS = {"#2563EB", "#7C3AED", "#F59E0B", "#16A34A", "#EF4444", "#0891B2"}
@@ -346,7 +357,13 @@ def ensure_crm_permission_constraints(db) -> None:
         can_reply=CASE WHEN can_reply IN (0,1) THEN can_reply ELSE 0 END,
         can_manage_automation=CASE WHEN can_manage_automation IN (0,1) THEN can_manage_automation ELSE 0 END""")
     db.execute("""DELETE FROM crm_user_features WHERE feature_key NOT IN
-        ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')""")
+        ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings','control')""")
+    feature_constraint = db.execute(
+        "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname=?",
+        ("crm_user_features_key_valid",),
+    ).fetchone()
+    if feature_constraint and "control" not in str(feature_constraint["definition"] or ""):
+        db.execute("ALTER TABLE crm_user_features DROP CONSTRAINT crm_user_features_key_valid")
     constraints = (
         ("users", "users_crm_channel_scope_bool", "crm_channel_scope_enabled IN (0,1)"),
         ("users", "users_crm_feature_scope_bool", "crm_feature_scope_enabled IN (0,1)"),
@@ -356,7 +373,7 @@ def ensure_crm_permission_constraints(db) -> None:
         ("crm_user_channels", "crm_user_channels_reply_bool", "can_reply IN (0,1)"),
         ("crm_user_channels", "crm_user_channels_automation_bool", "can_manage_automation IN (0,1)"),
         ("crm_user_features", "crm_user_features_key_valid",
-         "feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings')"),
+         "feature_key IN ('inbox','queue','funnel','management','contacts','campaigns','integrations','settings','control')"),
     )
     for table, constraint_name, expression in constraints:
         exists = db.execute("SELECT 1 FROM pg_constraint WHERE conname=?", (constraint_name,)).fetchone()
@@ -1388,6 +1405,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_patient_control(parse_qs(parsed.query))
         if parsed.path == "/api/crm/quick-replies":
             return self.get_crm_quick_replies()
+        if parsed.path == "/api/crm/lia/knowledge":
+            return self.get_crm_lia_knowledge()
+        if parsed.path == "/api/crm/lia/settings":
+            return self.get_crm_lia_settings()
+        if parsed.path == "/api/crm/lia/usage":
+            return self.get_crm_lia_usage()
         if parsed.path == "/api/crm/integrations/health":
             return self.get_crm_integration_health()
         if parsed.path == "/api/crm/n8n/config":
@@ -1535,6 +1558,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.create_crm_tag(self.read_json())
         if parsed.path == "/api/crm/quick-replies":
             return self.create_crm_quick_reply(self.read_json())
+        if parsed.path == "/api/crm/lia/knowledge":
+            return self.save_crm_lia_knowledge(self.read_json())
+        if parsed.path == "/api/crm/lia/settings":
+            return self.save_crm_lia_settings(self.read_json())
+        if parsed.path == "/api/crm/lia/ask":
+            return self.ask_crm_lia(self.read_json())
         if parsed.path == "/api/crm/goals":
             return self.save_crm_goals(self.read_json())
         if parsed.path == "/api/crm/profile/achievements":
@@ -4672,6 +4701,229 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             changed = db.execute("DELETE FROM crm_quick_replies WHERE id=?", (reply_id,)).rowcount
         if not changed: return self.send_json({"error": "Resposta rápida não encontrada."}, HTTPStatus.NOT_FOUND)
         self.send_json({"deleted": True, "id": reply_id})
+
+    def get_crm_lia_knowledge(self) -> None:
+        """Entrega a base oficial da Lia sem expor dados de pacientes ou conversas."""
+        if not self.require_crc_access():
+            return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
+        can_manage = self.can_manage_crm(self.authenticated_user)
+        where = "" if can_manage else "WHERE status='active'"
+        with connect() as db:
+            rows = db.execute(
+                """SELECT id,title,category,content,status,created_at,updated_at
+                   FROM crm_lia_knowledge {where}
+                   ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
+                            category COLLATE NOCASE,title COLLATE NOCASE""".format(where=where)
+            ).fetchall()
+        self.send_json({
+            "assistant": {"name": "Lia", "mode": "knowledge_only", "message": "A Lia consulta somente conteúdos oficiais aprovados no CRM."},
+            "can_manage": can_manage,
+            "categories": list(CRM_LIA_KNOWLEDGE_CATEGORIES),
+            "items": [dict(row) for row in rows],
+        })
+
+    @staticmethod
+    def crm_lia_default_settings() -> dict:
+        return {"id": 1, "enabled": 0, "model": "gpt-5.6-luna", "daily_limit_per_user": 30,
+                "monthly_limit_total": 1000, "monthly_budget_cents": 3000, "max_output_tokens": 450}
+
+    def crm_lia_settings(self, db) -> dict:
+        row = db.execute("SELECT * FROM crm_lia_settings WHERE id=1").fetchone()
+        if not row:
+            defaults = self.crm_lia_default_settings()
+            db.execute("""INSERT INTO crm_lia_settings(id,enabled,model,daily_limit_per_user,monthly_limit_total,
+                          monthly_budget_cents,max_output_tokens) VALUES(?,?,?,?,?,?,?)""",
+                       (1, defaults["enabled"], defaults["model"], defaults["daily_limit_per_user"],
+                        defaults["monthly_limit_total"], defaults["monthly_budget_cents"], defaults["max_output_tokens"]))
+            return defaults
+        return dict(row)
+
+    def get_crm_lia_settings(self) -> None:
+        if not self.require_crc_access() or not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem consultar a configuração da Lia."}, HTTPStatus.FORBIDDEN)
+        with connect() as db:
+            settings = self.crm_lia_settings(db)
+            month = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")
+            totals = db.execute("""SELECT COUNT(*) AS requests,COALESCE(SUM(estimated_cost_usd),0) AS cost
+                                 FROM crm_lia_usage WHERE substr(created_at,1,7)=?""", (month,)).fetchone()
+        settings["api_configured"] = bool(OPENAI_API_KEY)
+        settings["models"] = [{"id": key, **value} for key, value in CRM_LIA_MODELS.items()]
+        settings["usage_month"] = {"requests": int(totals["requests"] or 0), "estimated_cost_usd": float(totals["cost"] or 0)}
+        self.send_json(settings)
+
+    def save_crm_lia_settings(self, payload: dict) -> None:
+        if not self.require_crc_access() or not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem ajustar a Lia."}, HTTPStatus.FORBIDDEN)
+        try:
+            enabled = 1 if payload.get("enabled") is True else 0
+            daily = int(payload.get("daily_limit_per_user", 30))
+            monthly = int(payload.get("monthly_limit_total", 1000))
+            budget = int(payload.get("monthly_budget_cents", 3000))
+            output = int(payload.get("max_output_tokens", 450))
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Os limites da Lia devem ser números válidos."}, HTTPStatus.BAD_REQUEST)
+        if not (1 <= daily <= 500 and 1 <= monthly <= 100000 and 100 <= budget <= 1000000 and 80 <= output <= 1200):
+            return self.send_json({"error": "Revise os limites configurados para a Lia."}, HTTPStatus.BAD_REQUEST)
+        model = str(payload.get("model") or "gpt-5.6-luna").strip()
+        if model not in CRM_LIA_MODELS:
+            return self.send_json({"error": "Modelo da Lia não permitido."}, HTTPStatus.BAD_REQUEST)
+        if enabled and not OPENAI_API_KEY:
+            return self.send_json({"error": "A chave da OpenAI ainda não está disponível no servidor."}, HTTPStatus.CONFLICT)
+        with connect() as db:
+            db.execute("""INSERT INTO crm_lia_settings(id,enabled,model,daily_limit_per_user,monthly_limit_total,
+                          monthly_budget_cents,max_output_tokens,updated_by_user_id,updated_at)
+                          VALUES(1,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                          ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,model=excluded.model,
+                          daily_limit_per_user=excluded.daily_limit_per_user,monthly_limit_total=excluded.monthly_limit_total,
+                          monthly_budget_cents=excluded.monthly_budget_cents,max_output_tokens=excluded.max_output_tokens,
+                          updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP""",
+                       (enabled, model, daily, monthly, budget, output, self.authenticated_user["id"]))
+            settings = self.crm_lia_settings(db)
+        settings["api_configured"] = bool(OPENAI_API_KEY)
+        settings["models"] = [{"id": key, **value} for key, value in CRM_LIA_MODELS.items()]
+        self.send_json(settings)
+
+    def get_crm_lia_usage(self) -> None:
+        if not self.require_crc_access() or not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem consultar o uso da Lia."}, HTTPStatus.FORBIDDEN)
+        month = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")
+        with connect() as db:
+            rows = db.execute("""SELECT usage.id,usage.question_preview,usage.model,usage.input_tokens,usage.output_tokens,
+                               usage.estimated_cost_usd,usage.created_at,users.name AS user_name
+                               FROM crm_lia_usage usage JOIN users ON users.id=usage.user_id
+                               WHERE substr(usage.created_at,1,7)=? ORDER BY usage.id DESC LIMIT 100""", (month,)).fetchall()
+        self.send_json({"items": [dict(row) for row in rows], "month": month})
+
+    def save_crm_lia_knowledge(self, payload: dict) -> None:
+        """Cria ou atualiza conteúdos que poderão ser usados pela assistente interna."""
+        if not self.require_crc_access():
+            return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores do CRM podem editar a base da Lia."}, HTTPStatus.FORBIDDEN)
+        raw_id = payload.get("id")
+        try:
+            item_id = int(raw_id) if raw_id not in (None, "") else None
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Identificador de conteúdo inválido."}, HTTPStatus.BAD_REQUEST)
+        title = str(payload.get("title") or "").strip()[:140]
+        category = str(payload.get("category") or "Geral").strip()
+        content = str(payload.get("content") or "").strip()[:12000]
+        status = str(payload.get("status") or "draft").strip().lower()
+        if not title or not content:
+            return self.send_json({"error": "Informe o título e o conteúdo oficial."}, HTTPStatus.BAD_REQUEST)
+        if category not in CRM_LIA_KNOWLEDGE_CATEGORIES:
+            return self.send_json({"error": "Categoria de conteúdo inválida."}, HTTPStatus.BAD_REQUEST)
+        if status not in {"draft", "active", "archived"}:
+            return self.send_json({"error": "Status de conteúdo inválido."}, HTTPStatus.BAD_REQUEST)
+        user_id = self.authenticated_user["id"]
+        with connect() as db:
+            if item_id:
+                current = db.execute("SELECT id FROM crm_lia_knowledge WHERE id=?", (item_id,)).fetchone()
+                if not current:
+                    return self.send_json({"error": "Conteúdo da Lia não encontrado."}, HTTPStatus.NOT_FOUND)
+                db.execute("""UPDATE crm_lia_knowledge SET title=?,category=?,content=?,status=?,
+                              updated_by_user_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                           (title, category, content, status, user_id, item_id))
+                code = HTTPStatus.OK
+            else:
+                cur = db.execute("""INSERT INTO crm_lia_knowledge
+                                  (title,category,content,status,created_by_user_id,updated_by_user_id)
+                                  VALUES(?,?,?,?,?,?)""", (title, category, content, status, user_id, user_id))
+                item_id = cur.lastrowid
+                code = HTTPStatus.CREATED
+            row = db.execute("SELECT id,title,category,content,status,created_at,updated_at FROM crm_lia_knowledge WHERE id=?", (item_id,)).fetchone()
+        self.send_json({"item": dict(row)}, code)
+
+    @staticmethod
+    def crm_lia_terms(value: str) -> set[str]:
+        normalized = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().lower()
+        stopwords = {"para", "com", "uma", "que", "como", "sobre", "mais", "essa", "este", "isso", "dos", "das", "por", "sem", "nos", "nas", "the"}
+        return {word for word in re.findall(r"[a-z0-9]{3,}", normalized) if word not in stopwords}
+
+    def ask_crm_lia(self, payload: dict) -> None:
+        """Usa Luna somente como redatora da base oficial, com limites e auditoria."""
+        if not self.require_crc_access():
+            return
+        if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
+            return
+        question = str(payload.get("question") or "").strip()[:2000]
+        if len(question) < 3:
+            return self.send_json({"error": "Escreva uma pergunta um pouco mais detalhada para a Lia."}, HTTPStatus.BAD_REQUEST)
+        question_terms = self.crm_lia_terms(question)
+        with connect() as db:
+            rows = db.execute("""SELECT id,title,category,content,updated_at
+                               FROM crm_lia_knowledge WHERE status='active'
+                               ORDER BY updated_at DESC,id DESC""").fetchall()
+        ranked = []
+        for row in rows:
+            score = len(question_terms & self.crm_lia_terms(row["title"])) * 4
+            score += len(question_terms & self.crm_lia_terms(row["category"])) * 2
+            score += len(question_terms & self.crm_lia_terms(row["content"]))
+            if question.lower() in str(row["title"]).lower():
+                score += 5
+            if score:
+                ranked.append((score, row))
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        sources = [row for _, row in ranked[:3]]
+        if not sources:
+            return self.send_json({
+                "answer": "Ainda não encontrei uma orientação oficial para esse tema. Consulte a supervisão ou peça que um administrador cadastre essa resposta na base da Lia.",
+                "sources": [], "mode": "knowledge_only", "found": False,
+            })
+        source_payload = [{"id": row["id"], "title": row["title"], "category": row["category"]} for row in sources]
+        with connect() as db:
+            settings = self.crm_lia_settings(db)
+            month = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")
+            today = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m-%d")
+            per_user = db.execute("SELECT COUNT(*) AS total FROM crm_lia_usage WHERE user_id=? AND substr(created_at,1,10)=?", (self.authenticated_user["id"], today)).fetchone()
+            monthly = db.execute("SELECT COUNT(*) AS total,COALESCE(SUM(estimated_cost_usd),0) AS cost FROM crm_lia_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
+        if not settings.get("enabled") or not OPENAI_API_KEY:
+            return self.send_json({"answer": sources[0]["content"], "sources": source_payload, "mode": "knowledge_only", "found": True, "ai_enabled": False})
+        if int(per_user["total"] or 0) >= int(settings["daily_limit_per_user"]):
+            return self.send_json({"error": "Você atingiu o limite diário de perguntas para a Lia."}, HTTPStatus.TOO_MANY_REQUESTS)
+        if int(monthly["total"] or 0) >= int(settings["monthly_limit_total"]):
+            return self.send_json({"error": "O limite mensal de perguntas da Lia foi atingido."}, HTTPStatus.TOO_MANY_REQUESTS)
+        if float(monthly["cost"] or 0) >= float(settings["monthly_budget_cents"]) / 100:
+            return self.send_json({"error": "O orçamento mensal da Lia foi atingido e ela foi pausada."}, HTTPStatus.TOO_MANY_REQUESTS)
+        context = "\n\n".join("[Fonte %s | %s]\n%s" % (row["title"], row["category"], str(row["content"])[:4000]) for row in sources)
+        instructions = ("Você é Lia, assistente interna da recepção do Instituto Eduardo Ayub. "
+                        "Responda em português do Brasil, de forma objetiva, acolhedora e profissional. "
+                        "Use exclusivamente as fontes oficiais fornecidas. Não invente regras, valores, agendas ou políticas. "
+                        "Não responda pacientes, não realize ações no CRM e não solicite dados sensíveis. "
+                        "Se as fontes não bastarem, diga que a supervisão deve orientar.\n\nFONTES OFICIAIS:\n" + context)
+        body = json.dumps({"model": settings["model"], "instructions": instructions, "input": question,
+                           "max_output_tokens": int(settings["max_output_tokens"])}, ensure_ascii=False).encode("utf-8")
+        request = Request(OPENAI_RESPONSES_URL, data=body, method="POST", headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"})
+        try:
+            with urlopen(request, timeout=25) as response:
+                result = json.loads(response.read().decode("utf-8") or "{}")
+        except (HTTPError, URLError, TimeoutError, ValueError):
+            return self.send_json({"error": "A Lia está temporariamente indisponível. Tente novamente em instantes."}, HTTPStatus.BAD_GATEWAY)
+        answer = str(result.get("output_text") or "").strip()
+        if not answer:
+            for output in result.get("output", []):
+                for content in output.get("content", []):
+                    if content.get("type") in {"output_text", "text"}:
+                        answer += str(content.get("text") or "")
+        answer = answer.strip()[:6000]
+        if not answer:
+            return self.send_json({"error": "A Lia não conseguiu concluir uma resposta agora."}, HTTPStatus.BAD_GATEWAY)
+        usage = result.get("usage") or {}
+        input_tokens, output_tokens = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
+        pricing = CRM_LIA_MODELS[settings["model"]]
+        cost = (input_tokens * pricing["input_per_million"] + output_tokens * pricing["output_per_million"]) / 1_000_000
+        with connect() as db:
+            db.execute("""INSERT INTO crm_lia_usage(user_id,model,question_preview,source_ids_json,input_tokens,output_tokens,estimated_cost_usd)
+                          VALUES(?,?,?,?,?,?,?)""", (self.authenticated_user["id"], settings["model"], question[:280],
+                                                        json.dumps([row["id"] for row in sources]), input_tokens, output_tokens, cost))
+        self.send_json({"answer": answer, "sources": source_payload, "mode": "openai", "found": True, "ai_enabled": True})
 
     def get_crm_conversation_timeline(self, conversation_id: int) -> None:
         if not self.require_crc_access(): return
@@ -8105,7 +8357,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         """Read-only, filterable ledger of CRM attendances already finalized."""
         if not self.require_crc_access():
             return
-        if not self.require_crm_feature("management"):
+        if not self.require_crm_feature("control"):
             return
         aliases = {
             "Pediu para reagendar": "Retorno",

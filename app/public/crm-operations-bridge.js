@@ -3,7 +3,7 @@
 
   const FEATURES = [
     ["inbox", "Inbox"], ["queue", "Filas"], ["funnel", "Funil"],
-    ["management", "Gestão"], ["contacts", "Pacientes"],
+    ["management", "Gestão"], ["contacts", "Pacientes"], ["control", "Controle"],
     ["campaigns", "Campanhas"], ["integrations", "Integrações"],
     ["settings", "Configuração"]
   ];
@@ -157,12 +157,12 @@
     overlay.innerHTML = `<article class="iea-modal"><div style="display:flex;justify-content:space-between;gap:18px;align-items:start"><div><h2>Detalhes do atendimento</h2><p style="margin:5px 0 0;color:#718295">${esc(row.contact_name || row.patient_name || row.name)}${row.attendance_number ? ` Â· #${esc(row.attendance_number)}` : ""}</p></div><button class="iea-btn iea-btn-sm" data-close>Fechar</button></div><div class="iea-detail-grid">
       ${detail("Finalizado em", row.resolved_at)}${detail("Atendente", row.resolved_by_name)}
       ${detail("Categoria", row.category)}${detail("Resultado", row.outcome || row.result)}
-      ${detail("Tipo de paciente", row.patient_type)}${detail("Recupera\\u00e7\\u00e3o", row.is_recovery ? "Sim" : "N\\u00e3o")}
+      ${detail("Tipo de paciente", row.patient_type)}${detail("Recuperação", row.is_recovery ? "Sim" : "Não")}
       ${detail("Interesse", row.interest)}${detail("Origem", row.origin)}
-      ${detail("Profissional respons\\u00e1vel", row.responsible_professional)}${detail("Canal", row.channel_name || row.channel)}
+      ${detail("Profissional responsável", row.responsible_professional)}${detail("Canal", row.channel_name || row.channel)}
       ${detail("Agendamento", scheduled)}${detail("Tipo de agendamento", row.schedule_type)}
-      ${detail("Pr\\u00f3ximo contato", row.next_contact_at)}${detail("Tentativas", row.attempts)}
-      ${detail("Finalizado por", row.final_actor)}${detail("Participa\\u00e7\\u00e3o da IA", row.ai_involved ? "Sim" : "N\\u00e3o")}
+      ${detail("Próximo contato", row.next_contact_at)}${detail("Tentativas", row.attempts)}
+      ${detail("Finalizado por", row.final_actor)}${detail("Participação da IA", row.ai_involved ? "Sim" : "Não")}
       ${detail("Motivo de perda", row.loss_reason, true)}${detail("Observa\\u00e7\\u00f5es registradas", row.notes, true)}
       ${extra.map(([key, value]) => detail(key, typeof value === "object" ? JSON.stringify(value) : value, true)).join("")}
     </div></article>`;
@@ -422,7 +422,7 @@
     const allowed = new Set(permissionState.allowed_features || []);
     const aliases = [
       ["inbox", "inbox"], ["fila", "queue"], ["funil", "funnel"],
-      ["gestao", "management"], ["paciente", "contacts"], ["controle", "contacts"],
+      ["gestao", "management"], ["paciente", "contacts"], ["controle", "control"],
       ["campanha", "campaigns"], ["integra", "integrations"], ["config", "settings"]
     ];
     document.querySelectorAll("aside a,aside button,aside [role=button],aside div").forEach(nav => {
