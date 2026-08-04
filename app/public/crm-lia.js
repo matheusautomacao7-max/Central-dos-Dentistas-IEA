@@ -80,6 +80,8 @@
     state.manager = false;
     var canManage = state.data && state.data.can_manage;
     state.panel.querySelector('[data-lia-manage]').style.display = canManage ? '' : 'none';
+    var previousForm = state.panel.querySelector('.iea-lia-form');
+    if (previousForm) previousForm.remove();
     state.body.innerHTML = introMarkup() + '<section class="iea-lia-section"><h3>Sugestões</h3><div class="iea-lia-suggestions">' + SUGGESTIONS.map(function (suggestion) { return '<button class="iea-lia-suggestion" data-lia-suggestion="' + esc(suggestion) + '">' + esc(suggestion) + '</button>'; }).join('') + '</div></section><section class="iea-lia-section"><div class="iea-lia-messages" data-lia-messages></div></section>';
     var form = document.createElement('form');
     form.className = 'iea-lia-form';

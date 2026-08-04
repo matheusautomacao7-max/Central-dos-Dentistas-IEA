@@ -39,7 +39,7 @@ assert "general_assistance" in source_methods["ask_crm_lia"]
 assert "general_assistance" in source_methods["save_crm_lia_settings"]
 assert "CREATE TABLE IF NOT EXISTS crm_lia_usage" in SCHEMA
 assert '"/api/crm/lia/knowledge"' in SERVER and '"/api/crm/lia/ask"' in SERVER
-assert "crm-lia.js?v=20260804-lia-ayub-v1" in HTML
+assert "crm-lia.js?v=20260804-lia-single-chat-v1" in HTML
 assert "Base oficial da Lia" in BRIDGE
 assert "openKnowledgeManager" not in BRIDGE  # avoid an orphan manager implementation
 assert "function showManager" in BRIDGE and "function showEditor" in BRIDGE
@@ -50,5 +50,6 @@ assert "--lia-navy" in BRIDGE and "--lia-gold" in BRIDGE
 assert "Lia Ayub" in BRIDGE
 assert "Assistente de IA" in BRIDGE
 assert "style.display = canManage ? '' : 'none'" in BRIDGE
+assert "var previousForm = state.panel.querySelector('.iea-lia-form')" in BRIDGE
 
 print("crm-lia-tests-ok")
