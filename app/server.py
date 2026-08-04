@@ -902,6 +902,24 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_csv(self, rows: list[dict], file_name: str) -> None:
+        """Send a UTF-8 spreadsheet-friendly CSV without exposing raw database data."""
+        output = io.StringIO()
+        fieldnames = list(rows[0].keys()) if rows else []
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+        if fieldnames:
+            writer.writeheader()
+            writer.writerows(rows)
+        body = ("\ufeff" + output.getvalue()).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{file_name}"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_json_with_cookie(self, payload, cookie: str, status=HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
@@ -6043,7 +6061,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             },
             "pipeline": {
                 "id", "contact_id", "name", "channel_name", "instance_name", "pipeline_stage",
-                "assigned_to", "tag_names",
+                "assigned_to", "tag_names", "status", "resolution_reason", "resolved_by",
+                "resolved_at", "priority",
             },
             "campaign": {"id", "name", "phone", "campaign_name", "automation_flow", "tag_names"},
         }
@@ -8094,9 +8113,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         agent_id = str((query.get("agent_id") or [""])[0]).strip()
         start = str((query.get("start") or [""])[0]).strip()
         end = str((query.get("end") or [""])[0]).strip()
+        export_csv = str((query.get("export") or [""])[0]).strip().lower() == "csv"
         try:
             page = max(1, int((query.get("page") or ["1"])[0]))
-            per_page = min(500, max(10, int((query.get("per_page") or ["50"])[0])))
+            per_page_limit = 5000 if export_csv else 500
+            per_page = min(per_page_limit, max(10, int((query.get("per_page") or ["50"])[0])))
         except (TypeError, ValueError):
             page, per_page = 1, 50
         scope_sql, scope_params = self.crm_channel_id_scope_clause("r.channel_id")
@@ -8182,6 +8203,51 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         data = [dict(row) for row in rows]
         for row in data:
             row["outcome"] = aliases.get(row.get("outcome"), row.get("outcome"))
+        if export_csv:
+            def export_value(value):
+                if value is None:
+                    return ""
+                if isinstance(value, (dict, list)):
+                    return json.dumps(value, ensure_ascii=False)
+                return str(value)
+
+            export_rows = []
+            for row in data:
+                extra = row.get("metadata_json")
+                try:
+                    extra = json.loads(extra) if extra else {}
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    extra = {"dados_brutos": extra}
+                export_rows.append({
+                    "Atendimento": row.get("attendance_number"),
+                    "Paciente": row.get("contact_name") or row.get("patient_name"),
+                    "Telefone": row.get("phone"),
+                    "Finalizado em": row.get("resolved_at"),
+                    "Atendente": row.get("resolved_by_name"),
+                    "Categoria": row.get("category"),
+                    "Resultado": row.get("outcome"),
+                    "Tipo de paciente": row.get("patient_type"),
+                    "Recuperacao de paciente": "Sim" if row.get("is_recovery") else "NÃ£o",
+                    "Interesse": row.get("interest"),
+                    "Origem": row.get("origin"),
+                    "Profissional responsavel": row.get("responsible_professional"),
+                    "Data agendada": row.get("scheduled_date"),
+                    "Hora agendada": row.get("scheduled_time"),
+                    "Tipo de agendamento": row.get("schedule_type"),
+                    "PrÃ³ximo contato": row.get("next_contact_at"),
+                    "Tentativas": row.get("attempts"),
+                    "Motivo de perda": row.get("loss_reason"),
+                    "ObservaÃ§Ãµes": row.get("notes"),
+                    "Canal": row.get("channel_name"),
+                    "Campanha": row.get("campaign_name"),
+                    "Fluxo": row.get("workflow_name"),
+                    "Finalizado por": row.get("final_actor"),
+                    "ParticipaÃ§Ã£o da IA": "Sim" if row.get("ai_involved") else "NÃ£o",
+                    "Tempo de espera (segundos)": row.get("wait_seconds"),
+                    "Tempo de atendimento (segundos)": row.get("service_seconds"),
+                    "Dados adicionais": export_value(extra),
+                })
+            return self.send_csv(export_rows, "controle-de-pacientes.csv")
         self.send_json({
             "rows": data,
             "pagination": {

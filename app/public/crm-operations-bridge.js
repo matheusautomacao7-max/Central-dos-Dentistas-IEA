@@ -33,7 +33,7 @@
       .iea-ops-screen{position:fixed;inset:0 0 0 80px;z-index:45;background:#f3f6f8;overflow:auto;padding:28px 32px;color:#0b2945}
       .iea-ops-head{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
       .iea-ops-head h1{font-size:28px;margin:0}.iea-ops-head p{margin:5px 0 0;color:#66788a}
-      .iea-btn{border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:11px 16px;font-weight:800;color:#102f4d;cursor:pointer}
+      .iea-btn{border:1px solid #d7e0e8;border-radius:10px;background:#fff;padding:11px 16px;font-weight:800;color:#102f4d;cursor:pointer}.iea-btn:hover{border-color:#7fa8d4;background:#f8fbff}
       .iea-btn-primary{background:#17c964;color:#fff;border-color:#17c964}.iea-btn-dark{background:#102f4d;color:#fff}
       .iea-panel{background:#fff;border:1px solid #dde5eb;border-radius:16px;padding:20px;margin-bottom:18px}
       .iea-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
@@ -41,13 +41,16 @@
       .iea-filters{display:grid;grid-template-columns:2fr repeat(3,minmax(150px,1fr));gap:10px}
       .iea-field{width:100%;box-sizing:border-box;border:1px solid #d8e1e8;border-radius:10px;padding:11px 12px;background:#fff;color:#17344f;font-size:14px}
       .iea-table{width:100%;border-collapse:collapse}.iea-table th,.iea-table td{padding:13px 10px;border-bottom:1px solid #e7edf1;text-align:left;font-size:13px}.iea-table th{color:#718295;font-size:11px;text-transform:uppercase}
+      .iea-table tr:last-child td{border-bottom:0}.iea-table .iea-action-cell{text-align:right}.iea-btn-sm{padding:7px 10px;border-radius:8px;font-size:12px}
+      .iea-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:18px 0}.iea-detail{padding:11px 12px;border-radius:10px;background:#f5f8fb;border:1px solid #e1e8ef}.iea-detail small{display:block;color:#718295;font-weight:700;margin-bottom:4px}.iea-detail b{word-break:break-word}.iea-detail-wide{grid-column:1/-1}.iea-detail-note{white-space:pre-wrap;line-height:1.45}
+      .iea-funnel-columns{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:16px;align-items:start}.iea-funnel-column{min-height:390px;background:#eef3f7;border:1px solid #dfe7ed;border-radius:16px;overflow:hidden}.iea-funnel-title{display:flex;justify-content:space-between;align-items:center;padding:16px;background:#fff;border-bottom:1px solid #e1e9ef;font-weight:850}.iea-funnel-count{background:#e9f0f5;border-radius:999px;padding:3px 10px;font-size:12px}.iea-funnel-cards{display:grid;gap:10px;padding:12px}.iea-funnel-card{background:#fff;border:1px solid #dce6ed;border-radius:13px;padding:13px;box-shadow:0 2px 7px rgba(20,48,74,.04)}.iea-funnel-card h3{font-size:14px;margin:0 0 5px}.iea-funnel-card p{color:#708397;font-size:12px;margin:0 0 11px}.iea-badge{display:inline-flex;align-items:center;max-width:100%;box-sizing:border-box;border-radius:999px;padding:5px 8px;font-size:11px;font-weight:800;background:#eaf1ff;color:#2459b1}.iea-badge-success{background:#e8f8ef;color:#147a43}.iea-badge-danger{background:#fff0f0;color:#ba2638}.iea-badge-warning{background:#fff6de;color:#9a6500}
       .iea-user{border:1px solid #dce5eb;border-radius:14px;padding:16px;background:#fff}.iea-user h3{margin:0 0 4px}.iea-user small{color:#718295}
       .iea-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.iea-checks label{display:flex;gap:8px;align-items:center;font-size:13px}
       .iea-modal-bg{position:fixed;inset:0;z-index:100;background:rgba(8,26,42,.54);display:grid;place-items:center;padding:20px}
       .iea-modal{width:min(560px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.25)}
       .iea-modal h2{margin:0 0 5px}.iea-form{display:grid;gap:13px;margin-top:20px}.iea-form label{font-size:12px;font-weight:800;color:#607488}.iea-form label .iea-field{margin-top:6px}
-      body[data-omtheme='dark'] .iea-ops-screen{background:#0b141a;color:#e9edef}body[data-omtheme='dark'] .iea-panel,body[data-omtheme='dark'] .iea-stat,body[data-omtheme='dark'] .iea-user,body[data-omtheme='dark'] .iea-modal{border-color:#2a3942;background:#111b21;color:#e9edef}body[data-omtheme='dark'] .iea-field,body[data-omtheme='dark'] .iea-btn{border-color:#2a3942;background:#182229;color:#e9edef}body[data-omtheme='dark'] .iea-btn-primary{border-color:#17c964;background:#17c964;color:#fff}body[data-omtheme='dark'] .iea-btn-dark{border-color:#31516b;background:#183653;color:#fff}body[data-omtheme='dark'] .iea-ops-head p,body[data-omtheme='dark'] .iea-stat small,body[data-omtheme='dark'] .iea-user small,body[data-omtheme='dark'] .iea-form label,body[data-omtheme='dark'] .iea-table th{color:#9aa9b2}body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-table td{border-color:#2a3942}
-      @media(max-width:900px){.iea-ops-screen{left:74px;padding:20px 16px}.iea-filters{grid-template-columns:1fr}.iea-checks{grid-template-columns:1fr}}
+      body[data-omtheme='dark'] .iea-ops-screen{background:#0b141a;color:#e9edef}body[data-omtheme='dark'] .iea-panel,body[data-omtheme='dark'] .iea-stat,body[data-omtheme='dark'] .iea-user,body[data-omtheme='dark'] .iea-modal,body[data-omtheme='dark'] .iea-funnel-column,body[data-omtheme='dark'] .iea-funnel-card{border-color:#2a3942;background:#111b21;color:#e9edef}body[data-omtheme='dark'] .iea-field,body[data-omtheme='dark'] .iea-btn,body[data-omtheme='dark'] .iea-funnel-title{border-color:#2a3942;background:#182229;color:#e9edef}body[data-omtheme='dark'] .iea-btn-primary{border-color:#17c964;background:#17c964;color:#fff}body[data-omtheme='dark'] .iea-btn-dark{border-color:#31516b;background:#183653;color:#fff}body[data-omtheme='dark'] .iea-ops-head p,body[data-omtheme='dark'] .iea-stat small,body[data-omtheme='dark'] .iea-user small,body[data-omtheme='dark'] .iea-form label,body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-funnel-card p,body[data-omtheme='dark'] .iea-detail small{color:#9aa9b2}body[data-omtheme='dark'] .iea-table th,body[data-omtheme='dark'] .iea-table td{border-color:#2a3942}body[data-omtheme='dark'] .iea-funnel-column{background:#0d171d}body[data-omtheme='dark'] .iea-detail{background:#182229;border-color:#2a3942}
+      @media(max-width:1100px){.iea-funnel-columns{grid-template-columns:repeat(2,minmax(240px,1fr))}}@media(max-width:900px){.iea-ops-screen{left:74px;padding:20px 16px}.iea-filters{grid-template-columns:1fr}.iea-checks{grid-template-columns:1fr}.iea-detail-grid,.iea-funnel-columns{grid-template-columns:1fr}}
     `;
     document.head.appendChild(style);
   }
@@ -86,7 +89,7 @@
       <select class="iea-field" data-period><option value="30d">Últimos 30 dias</option><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option></select>
       <select class="iea-field" data-category><option value="">Todas as categorias</option></select>
       <select class="iea-field" data-outcome><option value="">Todos os resultados</option></select>
-    </div></div><div data-results><div class="iea-panel">Carregando atendimentos...</div></div>`;
+    </div><div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="iea-btn iea-btn-dark" data-export>Exportar informaÃ§Ãµes</button></div></div><div data-results><div class="iea-panel">Carregando atendimentos...</div></div>`;
     const load = async () => {
       const params = new URLSearchParams({ per_page: "50", period: body.querySelector("[data-period]").value });
       const search = body.querySelector("[data-search]").value.trim();
@@ -105,15 +108,19 @@
         const filterData = data.filters || {};
         fillOptions(body.querySelector("[data-category]"), filterData.categories || [], category);
         fillOptions(body.querySelector("[data-outcome]"), filterData.outcomes || [], outcome);
+        const rowById = new Map(items.map(row => [String(row.id), row]));
         body.querySelector("[data-results]").innerHTML = `<div class="iea-grid" style="margin-bottom:18px">
           ${stat("Atendimentos", summary.total)}${stat("Agendamentos", summary.scheduled)}
           ${stat("Com participação da IA", summary.ai_involved)}${stat("Finalizados por humano", summary.human_finalized)}
-        </div><div class="iea-panel" style="overflow:auto"><table class="iea-table"><thead><tr><th>Paciente</th><th>Finalizado em</th><th>Atendente</th><th>Categoria</th><th>Resultado</th><th>Agendamento</th><th>Canal</th><th>Profissional</th></tr></thead><tbody>
+        </div><div class="iea-panel" style="overflow:auto"><table class="iea-table"><thead><tr><th>Paciente</th><th>Finalizado em</th><th>Atendente</th><th>Categoria</th><th>Resultado</th><th>Agendamento</th><th>Canal</th><th>Profissional</th><th></th></tr></thead><tbody>
           ${items.length ? items.map(row => {
             const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" · ") || row.scheduled_at || "-";
-            return `<tr><td><b>${esc(row.contact_name || row.patient_name || row.name)}</b><br><small>${esc(row.phone)}</small></td><td>${esc(row.resolved_at || row.finished_at)}</td><td>${esc(row.resolved_by_name || row.agent_name || row.attendant_name)}</td><td>${esc(row.category)}</td><td>${esc(row.outcome || row.result)}</td><td>${esc(scheduled)}</td><td>${esc(row.channel_name || row.channel)}</td><td>${esc(row.responsible_professional || row.professional_name || "-")}</td></tr>`;
-          }).join("") : `<tr><td colspan="8" style="text-align:center;padding:35px;color:#718295">Nenhum atendimento corresponde aos filtros.</td></tr>`}
+            return `<tr><td><b>${esc(row.contact_name || row.patient_name || row.name)}</b><br><small>${esc(row.phone)}</small></td><td>${esc(row.resolved_at || row.finished_at)}</td><td>${esc(row.resolved_by_name || row.agent_name || row.attendant_name)}</td><td>${esc(row.category)}</td><td>${esc(row.outcome || row.result)}</td><td>${esc(scheduled)}</td><td>${esc(row.channel_name || row.channel)}</td><td>${esc(row.responsible_professional || row.professional_name || "-")}</td><td class="iea-action-cell"><button class="iea-btn iea-btn-sm" data-detail="${Number(row.id)}">Detalhar</button></td></tr>`;
+          }).join("") : `<tr><td colspan="9" style="text-align:center;padding:35px;color:#718295">Nenhum atendimento corresponde aos filtros.</td></tr>`}
         </tbody></table></div>`;
+        body.querySelectorAll("[data-detail]").forEach(button => {
+          button.onclick = () => openResolutionDetails(rowById.get(button.dataset.detail));
+        });
       } catch (error) {
         body.querySelector("[data-results]").innerHTML = `<div class="iea-panel" style="color:#bd2436">${esc(error.message)}</div>`;
       }
@@ -121,7 +128,46 @@
     let timer;
     body.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(load, 250); });
     body.addEventListener("change", load);
+    body.querySelector("[data-export]").onclick = () => {
+      const params = new URLSearchParams({ export: "csv", per_page: "5000", period: body.querySelector("[data-period]").value });
+      [["search", "[data-search]"], ["category", "[data-category]"], ["outcome", "[data-outcome]"]].forEach(([key, selector]) => {
+        const value = body.querySelector(selector).value.trim();
+        if (value) params.set(key, value);
+      });
+      window.location.assign(`/api/crm/patient-control?${params}`);
+    };
     load();
+  }
+
+  function detail(label, value, wide) {
+    const safe = value === null || value === undefined || value === "" ? "-" : value;
+    return `<div class="iea-detail${wide ? " iea-detail-wide" : ""}"><small>${esc(label)}</small><b class="${wide ? "iea-detail-note" : ""}">${esc(safe)}</b></div>`;
+  }
+
+  function openResolutionDetails(row) {
+    if (!row) return;
+    css();
+    let metadata = row.metadata_json;
+    try { metadata = typeof metadata === "string" ? JSON.parse(metadata) : (metadata || {}); } catch (_) { metadata = { "Dados adicionais": metadata }; }
+    const extra = Object.entries(metadata || {}).filter(([key]) => !["contact_name", "channel_name"].includes(key));
+    const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" Â· ") || "-";
+    const overlay = document.createElement("div");
+    overlay.className = "iea-modal-bg";
+    overlay.innerHTML = `<article class="iea-modal"><div style="display:flex;justify-content:space-between;gap:18px;align-items:start"><div><h2>Detalhes do atendimento</h2><p style="margin:5px 0 0;color:#718295">${esc(row.contact_name || row.patient_name || row.name)}${row.attendance_number ? ` Â· #${esc(row.attendance_number)}` : ""}</p></div><button class="iea-btn iea-btn-sm" data-close>Fechar</button></div><div class="iea-detail-grid">
+      ${detail("Finalizado em", row.resolved_at)}${detail("Atendente", row.resolved_by_name)}
+      ${detail("Categoria", row.category)}${detail("Resultado", row.outcome || row.result)}
+      ${detail("Tipo de paciente", row.patient_type)}${detail("RecuperaÃ§Ã£o", row.is_recovery ? "Sim" : "NÃ£o")}
+      ${detail("Interesse", row.interest)}${detail("Origem", row.origin)}
+      ${detail("Profissional responsÃ¡vel", row.responsible_professional)}${detail("Canal", row.channel_name || row.channel)}
+      ${detail("Agendamento", scheduled)}${detail("Tipo de agendamento", row.schedule_type)}
+      ${detail("PrÃ³ximo contato", row.next_contact_at)}${detail("Tentativas", row.attempts)}
+      ${detail("Finalizado por", row.final_actor)}${detail("ParticipaÃ§Ã£o da IA", row.ai_involved ? "Sim" : "NÃ£o")}
+      ${detail("Motivo de perda", row.loss_reason, true)}${detail("ObservaÃ§Ãµes registradas", row.notes, true)}
+      ${extra.map(([key, value]) => detail(key, typeof value === "object" ? JSON.stringify(value) : value, true)).join("")}
+    </div></article>`;
+    overlay.querySelector("[data-close]").onclick = () => overlay.remove();
+    overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+    document.body.appendChild(overlay);
   }
 
   function stat(label, value) {
@@ -136,6 +182,51 @@
       option.selected = option.value === selected;
       select.add(option);
     });
+  }
+
+  function funnelStage(item) {
+    if (String(item.status || "").toLowerCase() === "resolvida" || String(item.pipeline_stage || "").toLowerCase() === "resolvido") return "Resolvido";
+    const stage = String(item.pipeline_stage || "Novo");
+    return ["Novo", "Em atendimento", "Aguardando cliente"].includes(stage) ? stage : "Novo";
+  }
+
+  function funnelBadge(outcome) {
+    const value = String(outcome || "").trim();
+    const normalized = normalize(value);
+    const tone = normalized.includes("desqual") || normalized.includes("perd") ? " iea-badge-danger"
+      : normalized.includes("agend") ? " iea-badge-success" : " iea-badge-warning";
+    return `<span class="iea-badge${tone}">${esc(value || "Finalizado")}</span>`;
+  }
+
+  async function openFunnel() {
+    const body = screen("Funil operacional", "Acompanhe os atendimentos por etapa e filtre os resultados finalizados.");
+    body.innerHTML = `<div class="iea-panel"><div class="iea-filters"><input class="iea-field" data-funnel-search placeholder="Buscar paciente ou canal"><select class="iea-field" data-funnel-stage><option value="">Todas as etapas</option><option value="Novo">Novos</option><option value="Em atendimento">Em atendimento</option><option value="Aguardando cliente">Aguardando cliente</option><option value="Resolvido">Resolvidos</option></select><select class="iea-field" data-funnel-outcome><option value="">Todos os resultados</option></select><select class="iea-field" data-funnel-channel><option value="">Todos os canais</option></select></div></div><div data-funnel-results><div class="iea-panel">Carregando funil...</div></div>`;
+    let dataset = [];
+    const render = () => {
+      const search = normalize(body.querySelector("[data-funnel-search]").value);
+      const wantedStage = body.querySelector("[data-funnel-stage]").value;
+      const wantedOutcome = body.querySelector("[data-funnel-outcome]").value;
+      const wantedChannel = body.querySelector("[data-funnel-channel]").value;
+      const items = dataset.filter(item => (!wantedStage || item.stage === wantedStage) && (!wantedOutcome || item.outcome === wantedOutcome) && (!wantedChannel || item.channel === wantedChannel) && (!search || normalize(`${item.name} ${item.channel} ${item.owner} ${item.outcome}`).includes(search)));
+      const columns = [["Novo", "Novos"], ["Em atendimento", "Em atendimento"], ["Aguardando cliente", "Aguardando cliente"], ["Resolvido", "Resolvidos"]];
+      body.querySelector("[data-funnel-results]").innerHTML = `<div class="iea-funnel-columns">${columns.map(([stage, title]) => {
+        const list = items.filter(item => item.stage === stage);
+        return `<section class="iea-funnel-column"><header class="iea-funnel-title"><span>${esc(title)}</span><span class="iea-funnel-count">${list.length}</span></header><div class="iea-funnel-cards">${list.length ? list.map(item => `<article class="iea-funnel-card"><h3>${esc(item.name)}</h3><p>${esc(item.channel || "Canal nÃ£o identificado")}</p>${stage === "Resolvido" ? funnelBadge(item.outcome) : `<span class="iea-badge">${esc(item.owner || "Aguardando atendimento")}</span>`}</article>`).join("") : `<p style="margin:17px;text-align:center;color:#718295;font-size:13px">Nenhum atendimento</p>`}</div></section>`;
+      }).join("")}</div>`;
+    };
+    try {
+      const data = await request("/api/crm/conversations?view=operational&compact=pipeline");
+      dataset = (data.items || []).map(item => ({ id: item.id, name: item.name || "Sem nome", channel: item.channel_name || item.instance_name || "", owner: item.assigned_to || item.resolved_by || "", stage: funnelStage(item), outcome: item.resolution_reason || "" }));
+      const outcomes = [...new Set(dataset.filter(item => item.stage === "Resolvido" && item.outcome).map(item => item.outcome))].sort();
+      const channels = [...new Set(dataset.map(item => item.channel).filter(Boolean))].sort();
+      fillOptions(body.querySelector("[data-funnel-outcome]"), outcomes, "");
+      fillOptions(body.querySelector("[data-funnel-channel]"), channels, "");
+      render();
+    } catch (error) {
+      body.querySelector("[data-funnel-results]").innerHTML = `<div class="iea-panel" style="color:#bd2436">${esc(error.message)}</div>`;
+    }
+    body.addEventListener("input", render);
+    body.addEventListener("change", render);
   }
 
   async function openSettings() {
@@ -337,12 +428,15 @@
         (isSidebarTarget(target) && (label === "controle" || label.includes("controle de pacientes")))) {
       event.preventDefault(); event.stopImmediatePropagation(); openControl(); return;
     }
+    if (isSidebarTarget(target) && (label === "funil" || label.includes("funil operacional"))) {
+      event.preventDefault(); event.stopImmediatePropagation(); openFunnel(); return;
+    }
     if (isSidebarTarget(target) && (label === "config" || label.startsWith("configur"))) {
       event.preventDefault(); event.stopImmediatePropagation(); openSettings();
     }
   }, true);
 
-  window.IEACrmOperations = { openControl, closeScreen, openSettings, openConversationModal };
+  window.IEACrmOperations = { openControl, openFunnel, closeScreen, openSettings, openConversationModal };
   css();
   applyPermissions();
   new MutationObserver(observePermissionSidebar).observe(document.body, { childList: true });

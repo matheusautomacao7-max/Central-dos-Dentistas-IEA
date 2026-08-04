@@ -106,6 +106,7 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         }
         handler.responses = []
         handler.send_json = lambda payload, status=HTTPStatus.OK: handler.responses.append((int(status), payload))
+        handler.send_csv = lambda rows, file_name: handler.responses.append((200, {"csv": rows, "file_name": file_name}))
         handler.require_crc_access = lambda: True
         handler.require_crm_feature = lambda _feature: True
         handler.require_crm_any_feature = lambda _features: True
@@ -142,6 +143,13 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         assert funnel_item["status"] == "Resolvida"
         assert funnel_item["pipeline_stage"] == "Resolvido"
 
+        handler.get_crm_conversations({"view": ["operational"], "compact": ["pipeline"]})
+        status, compact_funnel = handler.responses[-1]
+        assert status == 200, compact_funnel
+        compact_item = next(item for item in compact_funnel["items"] if item["id"] == conversation_id)
+        assert compact_item["resolution_reason"] == "Outros"
+        assert compact_item["status"] == "Resolvida"
+
         handler.get_crm_patient_control({"period": ["today"], "per_page": ["50"]})
         status, control = handler.responses[-1]
         assert status == 200, control
@@ -151,6 +159,13 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         assert row["contact_name"] == "Paciente Resolvido"
         assert row["resolved_by_name"] == "Atendente Teste"
         assert row["outcome"] == "Outros"
+
+        handler.get_crm_patient_control({"period": ["today"], "export": ["csv"], "per_page": ["5000"]})
+        csv_status, csv_payload = handler.responses[-1]
+        assert csv_status == 200, csv_payload
+        assert csv_payload["file_name"] == "controle-de-pacientes.csv"
+        assert csv_payload["csv"][0]["Paciente"] == "Paciente Resolvido"
+        assert csv_payload["csv"][0]["Resultado"] == "Outros"
 
         # O relatório pode limitar as linhas visíveis, mas totais e grupos
         # precisam considerar todo o filtro, inclusive acima de 500 itens.
@@ -205,5 +220,10 @@ operations = (ROOT / "app" / "public" / "crm-operations-bridge.js").read_text(en
 assert "data.rows || data.items || []" in operations
 assert "row.contact_name || row.patient_name || row.name" in operations
 assert "row.resolved_by_name || row.agent_name || row.attendant_name" in operations
+assert "Exportar informaÃ§Ãµes" in operations
+assert "Detalhar" in operations
+assert "openResolutionDetails" in operations
+assert "openFunnel" in operations
+assert "resolution_reason" in server.ClinicHandler.get_crm_conversations.__code__.co_consts.__repr__()
 
 print("crm-resolution-pipeline-control-regression-ok")
