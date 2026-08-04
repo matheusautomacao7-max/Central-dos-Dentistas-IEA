@@ -65,8 +65,11 @@ with tempfile.TemporaryDirectory(prefix="crm-ops-") as directory:
     original_connect = server.connect
     original_data = server.DATA
     original_media_dir = server.CRM_MEDIA_DIR
+    original_seed = server.SEED_PATH
     server.DATA = data
     server.CRM_MEDIA_DIR = data / "media"
+    server.SEED_PATH = data / "patients.seed.json"
+    server.SEED_PATH.write_text("[]", encoding="utf-8")
     server.connect = lambda: SQLiteTestConnection(database)
     try:
         server.initialize_database()
@@ -81,6 +84,7 @@ with tempfile.TemporaryDirectory(prefix="crm-ops-") as directory:
         server.connect = original_connect
         server.DATA = original_data
         server.CRM_MEDIA_DIR = original_media_dir
+        server.SEED_PATH = original_seed
 
 assert {"resolution_reason", "scheduled_return_at", "reopened_at"} <= conversation_columns
 assert "sla_minutes" in channel_columns

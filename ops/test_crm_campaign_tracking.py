@@ -82,8 +82,11 @@ with tempfile.TemporaryDirectory(prefix="crm-campaign-", ignore_cleanup_errors=T
     original_connect = server.connect
     original_data = server.DATA
     original_media = server.CRM_MEDIA_DIR
+    original_seed = server.SEED_PATH
     server.DATA = Path(directory)
     server.CRM_MEDIA_DIR = Path(directory) / "media"
+    server.SEED_PATH = Path(directory) / "patients.seed.json"
+    server.SEED_PATH.write_text("[]", encoding="utf-8")
     server.connect = lambda: SQLiteTestConnection(database)
     try:
         server.initialize_database()
@@ -174,6 +177,7 @@ with tempfile.TemporaryDirectory(prefix="crm-campaign-", ignore_cleanup_errors=T
         server.connect = original_connect
         server.DATA = original_data
         server.CRM_MEDIA_DIR = original_media
+        server.SEED_PATH = original_seed
 
 bridge = (ROOT / "app" / "public" / "crm-evolution-bridge.js").read_text(encoding="utf-8")
 html = (ROOT / "app" / "public" / "crm-whatsapp.html").read_text(encoding="utf-8")

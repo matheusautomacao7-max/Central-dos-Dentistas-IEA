@@ -67,8 +67,11 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
     original_connect = server.connect
     original_data = server.DATA
     original_media = server.CRM_MEDIA_DIR
+    original_seed = server.SEED_PATH
     server.DATA = data
     server.CRM_MEDIA_DIR = data / "media"
+    server.SEED_PATH = data / "patients.seed.json"
+    server.SEED_PATH.write_text("[]", encoding="utf-8")
     server.connect = lambda: SQLiteTestConnection(database)
     try:
         server.initialize_database()
@@ -196,6 +199,7 @@ with tempfile.TemporaryDirectory(prefix="crm-resolution-flow-", ignore_cleanup_e
         server.connect = original_connect
         server.DATA = original_data
         server.CRM_MEDIA_DIR = original_media
+        server.SEED_PATH = original_seed
 
 operations = (ROOT / "app" / "public" / "crm-operations-bridge.js").read_text(encoding="utf-8")
 assert "data.rows || data.items || []" in operations
