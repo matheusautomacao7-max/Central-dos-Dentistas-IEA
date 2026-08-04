@@ -436,12 +436,24 @@
     window.requestAnimationFrame(() => { mountScheduled = false; ensureStyles(); mountNavigation(); });
   }
 
+  let observedNavigationAside = null;
+  const navigationObserver = new MutationObserver(scheduleMount);
+  function observeNavigationAside() {
+    const aside = Array.from(document.querySelectorAll("aside")).find(item => item.getBoundingClientRect().width > 0 && item.getBoundingClientRect().width <= 140);
+    if (!aside || aside === observedNavigationAside) return;
+    navigationObserver.disconnect();
+    observedNavigationAside = aside;
+    navigationObserver.observe(aside, { childList: true, subtree: true });
+    scheduleMount();
+  }
+
   ensureStyles();
   mountNavigation();
   document.addEventListener("click", event => {
     if (root && event.target.closest("aside") && !event.target.closest("[data-iea-goals-nav]")) closeGoals();
   }, true);
-  new MutationObserver(scheduleMount).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(observeNavigationAside).observe(document.body, { childList: true });
+  observeNavigationAside();
   if (new URLSearchParams(location.search).get("screen") === "goals") {
     const timer = window.setInterval(() => {
       mountNavigation();

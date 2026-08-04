@@ -299,6 +299,20 @@
     permissionTimer = setTimeout(renderPermissions, 80);
   }
 
+  let observedPermissionsAside = null;
+  const permissionObserver = new MutationObserver(schedulePermissionRender);
+  function observePermissionSidebar() {
+    const aside = Array.from(document.querySelectorAll("aside")).find(item => {
+      const width = item.getBoundingClientRect().width;
+      return width > 0 && width <= 140;
+    });
+    if (!aside || aside === observedPermissionsAside) return;
+    permissionObserver.disconnect();
+    observedPermissionsAside = aside;
+    permissionObserver.observe(aside, { childList: true, subtree: true });
+    schedulePermissionRender();
+  }
+
   function normalizedLabel(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/\s+/g, " ").trim().toLowerCase();
@@ -331,5 +345,6 @@
   window.IEACrmOperations = { openControl, closeScreen, openSettings, openConversationModal };
   css();
   applyPermissions();
-  new MutationObserver(schedulePermissionRender).observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver(observePermissionSidebar).observe(document.body, { childList: true });
+  observePermissionSidebar();
 })();

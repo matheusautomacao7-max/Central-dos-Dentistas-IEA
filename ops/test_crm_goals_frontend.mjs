@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const goalScript = await readFile(new URL("../app/public/crm-goals.js", import.meta.url), "utf8");
 const operationsScript = await readFile(new URL("../app/public/crm-operations-bridge.js", import.meta.url), "utf8");
 const crmHtml = await readFile(new URL("../app/public/crm-whatsapp.html", import.meta.url), "utf8");
-assert.match(crmHtml, /crm-goals\.js\?v=20260803-goals-finance-copy-v1/);
+assert.match(crmHtml, /crm-goals\.js\?v=20260804-goals-sidebar-observer-v1/);
 assert.doesNotMatch(goalScript, /O pagamento é estimado: abaixo do mínimo de pagamento/);
 assert.match(goalScript, /first_consultations: \{ color: "#2563EB", soft: "#F5F9FF" \}/);
 assert.match(goalScript, /recoveries: \{ color: "#7C3AED", soft: "#FAF7FF" \}/);

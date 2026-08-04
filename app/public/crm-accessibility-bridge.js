@@ -105,6 +105,14 @@
     window.requestAnimationFrame(enhance);
   }
 
+  function hasRelevantNode(nodes) {
+    return Array.from(nodes || []).some(function (node) {
+      if (!(node instanceof Element)) return false;
+      return node.matches("dialog,[role='dialog'],label,input,select,textarea,button") ||
+        Boolean(node.querySelector("dialog,[role='dialog'],label,input,select,textarea,button"));
+    });
+  }
+
   document.addEventListener("keydown", function (event) {
     if (!currentDialog || !currentDialog.isConnected) return;
     if (event.key === "Escape") {
@@ -131,7 +139,9 @@
     }
   });
 
-  new MutationObserver(scheduleEnhance).observe(document.documentElement, {
+  new MutationObserver(function (mutations) {
+    if (mutations.some(function (mutation) { return hasRelevantNode(mutation.addedNodes); })) scheduleEnhance();
+  }).observe(document.documentElement, {
     childList: true,
     subtree: true
   });

@@ -35,7 +35,13 @@ assert "!conversationOriginLoadedAt || now - conversationOriginLoadedAt > 60000"
 assert "conversationOriginRequest" in evolution
 
 accessibility = (ROOT / "app" / "public" / "crm-accessibility-bridge.js").read_text(encoding="utf-8")
-observer = accessibility.split("new MutationObserver(scheduleEnhance).observe", 1)[1]
-assert "attributes: true" not in observer
+assert "function hasRelevantNode(nodes)" in accessibility
+assert "new MutationObserver(scheduleEnhance).observe" not in accessibility
+assert "if (mutations.some(function (mutation) { return hasRelevantNode(mutation.addedNodes); })) scheduleEnhance();" in accessibility
+
+goals = (ROOT / "app" / "public" / "crm-goals.js").read_text(encoding="utf-8")
+operations = (ROOT / "app" / "public" / "crm-operations-bridge.js").read_text(encoding="utf-8")
+assert "observeNavigationAside" in goals and "navigationObserver.observe(aside" in goals
+assert "observePermissionSidebar" in operations and "permissionObserver.observe(aside" in operations
 
 print("crm-runtime-fluency-ok")
