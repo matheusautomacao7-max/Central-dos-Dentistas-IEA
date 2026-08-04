@@ -168,6 +168,6 @@ assert "permissionState={feature_scope_enabled:true,allowed_features:[]}" in bri
 assert "featureMatches.length === 1" in bridge
 assert "originalNavDisplays = new WeakMap()" in bridge
 assert 'nav.style.display = visible ? originalNavDisplays.get(nav) : "none"' in bridge
-assert "crm-operations-bridge.js?v=20260803-sidebar-center-v4" in crm_html
+assert "crm-operations-bridge.js?v=20260804-sidebar-observers-v1" in crm_html
 
 print("crm-feature-permission-tests-ok")

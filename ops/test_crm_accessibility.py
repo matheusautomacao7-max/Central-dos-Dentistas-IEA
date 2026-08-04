@@ -12,6 +12,6 @@ assert 'setAttribute("aria-modal", "true")' in source
 assert 'event.key === "Escape"' in source
 assert 'event.key !== "Tab"' in source
 assert "restoreFocus" in source
-assert "crm-accessibility-bridge.js?v=20260803-a11y-v2" in html
+assert "crm-accessibility-bridge.js?v=20260804-a11y-relevant-dom-v1" in html
 
 print("crm-accessibility-tests-ok")
