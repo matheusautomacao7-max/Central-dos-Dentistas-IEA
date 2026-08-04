@@ -6,10 +6,11 @@ import { chromium } from "playwright";
 
 const bridge = await readFile(new URL("../app/public/crm-collaborator-profile.js", import.meta.url), "utf8");
 let achievements = [];
+let uploadedPhoto = null;
 const profilePayload = () => ({
   profile: {
     id: 7, name: "Matheus Henrique", email: "matheuscrc@instituto.local",
-    crm_access_level: "admin", service_sector: "CRC", photo_url: null,
+    professional_id: 17, crm_access_level: "admin", service_sector: "CRC", photo_url: uploadedPhoto,
     stats: {active_count:0,resolved_month:14,attendances_month:22,first_consultations:8,recoveries:5}
   },
   achievements,
@@ -46,6 +47,15 @@ const server = http.createServer(async (request, response) => {
     achievements = [{id:1,source:"manual",title:item.title,description:item.description,icon_key:item.icon_key,accent_color:item.accent_color,awarded_at:"2026-08-02 15:00:00",awarded_by:"Matheus Henrique"}];
     response.writeHead(201, {"Content-Type":"application/json"});
     return response.end(JSON.stringify({created:true,achievement:achievements[0]}));
+  }
+  if (request.url === "/api/crm/profile/photo" && request.method === "POST") {
+    let raw = ""; for await (const chunk of request) raw += chunk;
+    const item = JSON.parse(raw);
+    assert.equal(item.user_id, 7);
+    assert.match(item.image, /^data:image\/png;base64,/);
+    uploadedPhoto = "/api/professionals/17/photo?v=test-photo";
+    response.writeHead(200, {"Content-Type":"application/json"});
+    return response.end(JSON.stringify({updated:true,photo_url:uploadedPhoto}));
   }
   if (request.url.startsWith("/api/crm/profile")) {
     response.writeHead(200, {"Content-Type":"application/json"});
@@ -103,6 +113,15 @@ try {
   const portrait = await page.locator(".iea-cp-avatar").boundingBox();
   assert.ok(portrait.height > portrait.width, "a foto do perfil deve usar formato retrato");
   assert.equal(await page.getByRole("heading", {name:"Mensagens de reconhecimento"}).count(), 1);
+
+  await page.locator("#iea-cp-photo-input").setInputFiles({
+    name: "perfil.png", mimeType: "image/png", buffer: Buffer.from("imagem de teste")
+  });
+  await page.waitForFunction(() => {
+    const image = document.querySelector(".iea-cp-avatar img");
+    return image && image.getAttribute("src") === "/api/professionals/17/photo?v=test-photo";
+  });
+  assert.equal(uploadedPhoto, "/api/professionals/17/photo?v=test-photo");
 
   await page.getByRole("button", {name:"+ Criar conquista"}).click();
   await page.getByLabel("Título da conquista").fill("Excelência no atendimento");

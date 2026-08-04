@@ -58,6 +58,7 @@
       ".iea-cp-loading,.iea-cp-error{min-height:360px;display:grid;place-items:center;padding:40px;text-align:center;color:var(--cp-muted)}",
       ".iea-cp-body{padding:22px;display:grid;gap:18px}.iea-cp-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:132px minmax(0,1fr) 220px;align-items:start;gap:24px;padding:26px;border:1px solid var(--cp-line);border-radius:18px;background:var(--cp-panel)}",
       ".iea-cp-hero:before{content:'';position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(#2563eb,#7c3aed)}.iea-cp-avatar{width:132px;height:164px;display:grid;place-items:center;overflow:hidden;border:1px solid color-mix(in srgb,#2563eb 24%,var(--cp-line));border-radius:18px;color:#fff;background:linear-gradient(145deg,#2563eb,#7c3aed);box-shadow:0 14px 30px rgba(37,99,235,.2);font-size:32px;font-weight:900}.iea-cp-avatar img{width:100%;height:100%;object-fit:cover;object-position:center top}",
+      ".iea-cp-photo-slot{display:grid;gap:9px;justify-items:stretch}.iea-cp-photo-tools{display:grid;gap:5px}.iea-cp-photo-button{min-height:34px;border:1px solid #bfdbfe;border-radius:9px;background:#eff6ff;color:#1d4ed8;font:800 11px Manrope,system-ui;cursor:pointer}.iea-cp-photo-button:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}.iea-cp-photo-tools small,.iea-cp-photo-status{color:var(--cp-muted);font-size:10px;line-height:1.35}.iea-cp-photo-status{min-height:14px;font-weight:700}.iea-cp-photo-status.error{color:#dc2626}",
       ".iea-cp-profile-main{min-width:0}.iea-cp-identity h1{margin:0 0 5px;font-size:25px}.iea-cp-identity p{margin:0;color:var(--cp-muted);font-size:13px}.iea-cp-role{display:inline-flex;margin-top:11px;padding:6px 10px;border-radius:999px;color:#1d4ed8;background:#dbeafe;font-size:11px;font-weight:800}body[data-omtheme='dark'] .iea-cp-role{color:#bfdbfe;background:#1e3a5f}",
       ".iea-cp-trophy-zone{margin-top:20px;padding-top:16px;border-top:1px solid var(--cp-line)}.iea-cp-trophy-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}.iea-cp-trophy-head strong{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--cp-muted)}.iea-cp-trophy-count{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:22px;padding:0 7px;border-radius:999px;background:#eef2ff;color:#4f46e5;font-size:10px;font-weight:900}body[data-omtheme='dark'] .iea-cp-trophy-count{background:#28234a;color:#c4b5fd}.iea-cp-trophy-shelf{display:flex;align-items:flex-start;gap:10px;overflow:auto;padding:2px 2px 7px}.iea-cp-trophy{width:76px;flex:0 0 76px;display:grid;justify-items:center;gap:7px;text-align:center;color:var(--cp-text)}.iea-cp-trophy-icon{width:48px;height:48px;display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:15px;color:var(--accent);background:color-mix(in srgb,var(--accent) 11%,var(--cp-panel));box-shadow:0 6px 15px color-mix(in srgb,var(--accent) 13%,transparent)}.iea-cp-trophy-icon svg{width:25px;height:25px}.iea-cp-trophy b{width:100%;font-size:9.5px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.iea-cp-trophy-empty{display:flex;align-items:center;gap:9px;color:var(--cp-muted);font-size:11px}.iea-cp-trophy-empty svg{width:25px;height:25px;color:#7c3aed}",
       ".iea-cp-picker{display:grid;gap:6px;min-width:210px}.iea-cp-picker label,.iea-cp-field label{color:var(--cp-muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}.iea-cp-picker select,.iea-cp-field input,.iea-cp-field textarea,.iea-cp-field select{width:100%;min-height:42px;padding:10px 12px;border:1px solid var(--cp-line);border-radius:10px;color:var(--cp-text);background:var(--cp-soft);font:600 13px Manrope,system-ui}.iea-cp-field textarea{min-height:82px;resize:vertical}",
@@ -66,7 +67,7 @@
       ".iea-cp-form{display:grid;grid-template-columns:1fr 180px;gap:12px;margin:0 0 18px;padding:16px;border-radius:14px;background:var(--cp-soft)}.iea-cp-field.full{grid-column:1/-1}.iea-cp-form-actions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:9px}.iea-cp-status{grid-column:1/-1;min-height:18px;color:#16a34a;font-size:12px;font-weight:700}.iea-cp-status.error{color:#ef4444}",
       ".iea-cp-recognitions{display:grid;gap:11px}.iea-cp-recognition{display:grid;grid-template-columns:42px minmax(0,1fr);gap:13px;padding:15px;border:1px solid var(--cp-line);border-left:4px solid var(--accent);border-radius:14px;background:var(--cp-soft)}.iea-cp-recognition-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)}.iea-cp-recognition-icon svg{width:21px;height:21px}.iea-cp-recognition h3{margin:0 0 4px;font-size:14px}.iea-cp-recognition p{margin:0;color:var(--cp-muted);font-size:12px;line-height:1.5}.iea-cp-recognition small{display:block;margin-top:8px;color:var(--cp-muted);font-size:10px}.iea-cp-empty{display:grid;justify-items:center;gap:9px;padding:34px;border:1px dashed var(--cp-line);border-radius:14px;color:var(--cp-muted);text-align:center}.iea-cp-empty svg{width:34px;height:34px;color:#7c3aed}",
       "@media(max-width:820px){.iea-cp-hero{grid-template-columns:118px minmax(0,1fr);gap:18px}.iea-cp-avatar{width:118px;height:148px}.iea-cp-picker{grid-column:1/-1}}",
-      "@media(max-width:760px){.iea-cp-overlay{padding:0}.iea-cp-dialog{width:100%;height:100%;max-height:none;border:0;border-radius:0}.iea-cp-body{padding:14px}.iea-cp-hero{grid-template-columns:92px minmax(0,1fr);padding:18px;gap:14px}.iea-cp-avatar{width:92px;height:116px;font-size:23px}.iea-cp-identity h1{font-size:21px}.iea-cp-trophy-zone{grid-column:1/-1;margin-top:16px}.iea-cp-picker{grid-column:1/-1}.iea-cp-stats{grid-template-columns:repeat(2,1fr)}.iea-cp-form{grid-template-columns:1fr}.iea-cp-field.full,.iea-cp-form-actions,.iea-cp-status{grid-column:1}}",
+      "@media(max-width:760px){.iea-cp-overlay{padding:0}.iea-cp-dialog{width:100%;height:100%;max-height:none;border:0;border-radius:0}.iea-cp-body{padding:14px}.iea-cp-hero{grid-template-columns:92px minmax(0,1fr);padding:18px;gap:14px}.iea-cp-avatar{width:92px;height:116px;font-size:23px}.iea-cp-photo-button{font-size:10px}.iea-cp-identity h1{font-size:21px}.iea-cp-trophy-zone{grid-column:1/-1;margin-top:16px}.iea-cp-picker{grid-column:1/-1}.iea-cp-stats{grid-template-columns:repeat(2,1fr)}.iea-cp-form{grid-template-columns:1fr}.iea-cp-field.full,.iea-cp-form-actions,.iea-cp-status{grid-column:1}}",
       "@media(prefers-reduced-motion:reduce){.iea-cp-overlay *{scroll-behavior:auto!important;transition:none!important}}"
     ].join("");
     document.head.appendChild(style);
@@ -83,6 +84,7 @@
     var stats = profile.stats || {};
     var role = profile.crm_access_level === "admin" ? "Administrador do CRM" : "Atendente do CRM";
     var photo = profile.photo_url ? '<img src="' + esc(profile.photo_url) + '" alt="Foto de ' + esc(profile.name) + '">' : esc(initials(profile.name));
+    var photoTools = data.can_manage && profile.professional_id ? '<div class="iea-cp-photo-tools"><button class="iea-cp-photo-button" id="iea-cp-photo-select" type="button">Alterar foto</button><input id="iea-cp-photo-input" type="file" accept="image/jpeg,image/png,image/webp" hidden><small>JPG, PNG ou WEBP · até 2 MB</small><span class="iea-cp-photo-status" id="iea-cp-photo-status" role="status" aria-live="polite"></span></div>' : "";
     var picker = data.can_manage ? '<div class="iea-cp-picker"><label for="iea-cp-collaborator">Visualizar colaborador</label><select id="iea-cp-collaborator">' + (data.collaborators || []).map(function (item) {
       return '<option value="' + Number(item.id) + '"' + (Number(item.id) === Number(profile.id) ? ' selected' : '') + '>' + esc(item.name) + ' · ' + (item.crm_access_level === "admin" ? "Admin" : "Atendente") + '</option>';
     }).join("") + '</select></div>' : "";
@@ -99,12 +101,66 @@
       return '<article class="iea-cp-recognition" style="--accent:' + esc(item.accent_color || "#2563EB") + '"><span class="iea-cp-recognition-icon">' + icon(item.icon_key) + '</span><div><h3>' + esc(item.title) + '</h3><p>' + esc(item.description || "Conquista reconhecida pelo Instituto Eduardo Ayub.") + '</p><small>' + esc(meta) + ' · ' + esc(formatDate(item.awarded_at)) + '</small></div></article>';
     }).join("");
     var form = data.can_manage ? '<form class="iea-cp-form" id="iea-cp-form" hidden><div class="iea-cp-field full"><label for="iea-cp-title">Título da conquista</label><input id="iea-cp-title" maxlength="80" required placeholder="Ex.: Excelência no atendimento"></div><div class="iea-cp-field full"><label for="iea-cp-description">Mensagem de reconhecimento</label><textarea id="iea-cp-description" maxlength="240" placeholder="Descreva por que esse colaborador merece o destaque."></textarea></div><div class="iea-cp-field"><label for="iea-cp-icon">Símbolo</label><select id="iea-cp-icon"><option value="trophy">Troféu</option><option value="medal">Medalha</option><option value="star">Estrela</option><option value="heart">Cuidado</option><option value="target">Meta</option><option value="sparkles">Destaque</option></select></div><div class="iea-cp-field"><label for="iea-cp-color">Cor</label><select id="iea-cp-color"><option value="#2563EB">Azul</option><option value="#7C3AED">Roxo</option><option value="#F59E0B">Laranja</option><option value="#16A34A">Verde</option><option value="#EF4444">Vermelho</option><option value="#0891B2">Turquesa</option></select></div><div class="iea-cp-status" id="iea-cp-status" role="status" aria-live="polite"></div><div class="iea-cp-form-actions"><button class="iea-cp-secondary" type="button" id="iea-cp-cancel">Cancelar</button><button class="iea-cp-primary" type="submit">Publicar conquista</button></div></form>' : "";
-    return '<div class="iea-cp-body"><section class="iea-cp-hero"><div class="iea-cp-avatar">' + photo + '</div><div class="iea-cp-profile-main"><div class="iea-cp-identity"><h1>' + esc(profile.name) + '</h1><p>' + esc(profile.email) + ' · ' + esc(profile.service_sector || "CRC") + '</p><span class="iea-cp-role">' + esc(role) + '</span></div><div class="iea-cp-trophy-zone"><div class="iea-cp-trophy-head"><strong>Troféus em destaque</strong><span class="iea-cp-trophy-count">' + Number((data.achievements || []).length) + '</span></div><div class="iea-cp-trophy-shelf">' + (trophyShelf || '<div class="iea-cp-trophy-empty">' + icon("trophy") + '<span>Nenhuma conquista ainda.</span></div>') + '</div></div></div>' + picker + '</section><section class="iea-cp-stats">' + statItems.map(function (item) { return '<div class="iea-cp-stat"><small>' + esc(item[0]) + '</small><strong>' + Number(item[1] || 0) + '</strong></div>'; }).join("") + '</section><section class="iea-cp-section"><div class="iea-cp-heading"><div><h2>Mensagens de reconhecimento</h2></div>' + (data.can_manage ? '<button class="iea-cp-primary" id="iea-cp-add" type="button">+ Criar reconhecimento</button>' : '') + '</div>' + form + '<div class="iea-cp-recognitions">' + (recognitions || '<div class="iea-cp-empty">' + icon("trophy") + '<strong>Este perfil ainda não possui conquistas.</strong><span>As mensagens de reconhecimento aparecerão aqui.</span></div>') + '</div></section></div>';
+    return '<div class="iea-cp-body"><section class="iea-cp-hero"><div class="iea-cp-photo-slot"><div class="iea-cp-avatar">' + photo + '</div>' + photoTools + '</div><div class="iea-cp-profile-main"><div class="iea-cp-identity"><h1>' + esc(profile.name) + '</h1><p>' + esc(profile.email) + ' · ' + esc(profile.service_sector || "CRC") + '</p><span class="iea-cp-role">' + esc(role) + '</span></div><div class="iea-cp-trophy-zone"><div class="iea-cp-trophy-head"><strong>Troféus em destaque</strong><span class="iea-cp-trophy-count">' + Number((data.achievements || []).length) + '</span></div><div class="iea-cp-trophy-shelf">' + (trophyShelf || '<div class="iea-cp-trophy-empty">' + icon("trophy") + '<span>Nenhuma conquista ainda.</span></div>') + '</div></div></div>' + picker + '</section><section class="iea-cp-stats">' + statItems.map(function (item) { return '<div class="iea-cp-stat"><small>' + esc(item[0]) + '</small><strong>' + Number(item[1] || 0) + '</strong></div>'; }).join("") + '</section><section class="iea-cp-section"><div class="iea-cp-heading"><div><h2>Mensagens de reconhecimento</h2></div>' + (data.can_manage ? '<button class="iea-cp-primary" id="iea-cp-add" type="button">+ Criar reconhecimento</button>' : '') + '</div>' + form + '<div class="iea-cp-recognitions">' + (recognitions || '<div class="iea-cp-empty">' + icon("trophy") + '<strong>Este perfil ainda não possui conquistas.</strong><span>As mensagens de reconhecimento aparecerão aqui.</span></div>') + '</div></section></div>';
   }
 
   function bindProfileActions(data) {
     var picker = document.getElementById("iea-cp-collaborator");
     if (picker) picker.addEventListener("change", function () { loadProfile(Number(picker.value)); });
+    var photoSelect = document.getElementById("iea-cp-photo-select");
+    var photoInput = document.getElementById("iea-cp-photo-input");
+    var photoStatus = document.getElementById("iea-cp-photo-status");
+    if (photoSelect && photoInput && photoStatus) {
+      photoSelect.addEventListener("click", function () { photoInput.click(); });
+      photoInput.addEventListener("change", function () {
+        var file = photoInput.files && photoInput.files[0];
+        photoInput.value = "";
+        if (!file) return;
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+          photoStatus.className = "iea-cp-photo-status error";
+          photoStatus.textContent = "Use uma imagem JPG, PNG ou WEBP.";
+          return;
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          photoStatus.className = "iea-cp-photo-status error";
+          photoStatus.textContent = "A foto deve ter no máximo 2 MB.";
+          return;
+        }
+        var reader = new FileReader();
+        reader.onerror = function () {
+          photoStatus.className = "iea-cp-photo-status error";
+          photoStatus.textContent = "Não foi possível ler esta imagem.";
+        };
+        reader.onload = function () {
+          photoSelect.disabled = true;
+          photoStatus.className = "iea-cp-photo-status";
+          photoStatus.textContent = "Enviando foto…";
+          request("/api/crm/profile/photo", {method:"POST", headers:{Accept:"application/json","Content-Type":"application/json"}, body:JSON.stringify({
+            user_id:Number((data.profile || {}).id), image:String(reader.result || "")
+          })}).then(function (result) {
+            var profileId = Number((data.profile || {}).id);
+            photoStatus.textContent = "Foto atualizada.";
+            if (currentUser && Number(currentUser.id) === profileId && result.photo_url) {
+              currentUser.photo_url = result.photo_url;
+              var avatar = findAvatar();
+              if (avatar) {
+                avatar.style.backgroundImage = 'url("' + String(result.photo_url).replace(/"/g, "%22") + '")';
+                avatar.style.backgroundSize = "cover";
+                avatar.style.backgroundPosition = "center";
+                avatar.style.color = "transparent";
+              }
+            }
+            window.dispatchEvent(new CustomEvent("iea:crm-profile-photo-updated", {detail:{userId:profileId,photoUrl:result.photo_url}}));
+            return loadProfile(profileId);
+          }).catch(function (error) {
+            photoStatus.className = "iea-cp-photo-status error";
+            photoStatus.textContent = error.message;
+            photoSelect.disabled = false;
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
     var add = document.getElementById("iea-cp-add");
     var form = document.getElementById("iea-cp-form");
     var cancel = document.getElementById("iea-cp-cancel");

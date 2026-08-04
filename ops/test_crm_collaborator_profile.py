@@ -50,8 +50,10 @@ def test_schema_and_frontend_contract() -> None:
     assert 'iea.crm.theme' in bridge and 'data-omtheme' in bridge
     assert 'prefers-reduced-motion:reduce' in bridge
     assert '/api/crm/profile/achievements' in bridge
+    assert '/api/crm/profile/photo' in bridge
+    assert 'iea-cp-photo-select' in bridge
     assert 'role="dialog"' in bridge and 'aria-modal="true"' in bridge
-    assert 'crm-collaborator-profile.js?v=20260803-profile-trophies-v2' in html
+    assert 'crm-collaborator-profile.js?v=20260804-profile-photo-v3' in html
     assert 'bundle legado ainda desenha o rodapé com as iniciais fixas "AS"' in bridge
     assert 'document.addEventListener("click", interceptProfileTrigger, true)' in bridge
 
@@ -148,8 +150,51 @@ def test_profile_visibility_is_limited_to_self_or_crm_admin() -> None:
         server.connect = original_connect
 
 
+def test_only_crm_admin_can_update_collaborator_photo() -> None:
+    db = sqlite3.connect(":memory:")
+    db.row_factory = sqlite3.Row
+    db.executescript((ROOT / "app" / "schema.sql").read_text(encoding="utf-8"))
+    db.execute("INSERT INTO professionals(id,name,active) VALUES(10,'Atendente',1)")
+    db.executemany(
+        "INSERT INTO users(id,professional_id,name,email,access_role,crm_access_level,active) VALUES(?,?,?,?,?,?,1)",
+        (
+            (1, None, "Gestor", "gestor@example.test", "crc", "admin"),
+            (2, 10, "Atendente", "atendente@example.test", "crc", "attendant"),
+        ),
+    )
+    original_connect = server.connect
+    server.connect = lambda: db
+    try:
+        handler = server.ClinicHandler.__new__(server.ClinicHandler)
+        sent = []
+        handler.send_json = lambda payload, status=HTTPStatus.OK: sent.append((payload, status))
+        handler.request_ip = lambda: "127.0.0.1"
+        image = "data:image/png;base64,aGVsbG8="
+
+        handler.authenticated_user = {
+            "id": 2, "name": "Atendente", "access_role": "crc",
+            "crm_access_level": "attendant", "permissions_json": "{}",
+        }
+        handler.update_crm_collaborator_photo({"user_id": 2, "image": image})
+        assert sent[-1][1] == HTTPStatus.FORBIDDEN
+        assert db.execute("SELECT photo_data FROM professionals WHERE id=10").fetchone()[0] is None
+
+        handler.authenticated_user = {
+            "id": 1, "name": "Gestor", "access_role": "crc",
+            "crm_access_level": "admin", "permissions_json": "{}",
+        }
+        handler.update_crm_collaborator_photo({"user_id": 2, "image": image})
+        assert sent[-1][1] == HTTPStatus.OK
+        assert sent[-1][0]["photo_url"].startswith("/api/professionals/10/photo?v=")
+        assert db.execute("SELECT photo_data FROM professionals WHERE id=10").fetchone()[0] == "aGVsbG8="
+        assert db.execute("SELECT event_type FROM security_events ORDER BY id DESC LIMIT 1").fetchone()[0] == "crm_collaborator_profile_photo_updated"
+    finally:
+        server.connect = original_connect
+
+
 if __name__ == "__main__":
     test_schema_and_frontend_contract()
     test_only_crm_admin_can_create_manual_achievement()
     test_profile_visibility_is_limited_to_self_or_crm_admin()
+    test_only_crm_admin_can_update_collaborator_photo()
     print("crm-collaborator-profile-tests-ok")

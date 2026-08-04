@@ -89,4 +89,11 @@
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) scheduleApply();
   });
+
+  window.addEventListener('iea:crm-profile-photo-updated', function (event) {
+    var detail = event && event.detail ? event.detail : {};
+    if (!currentUser || Number(detail.userId) !== Number(currentUser.id) || !detail.photoUrl) return;
+    currentUser.photo_url = detail.photoUrl;
+    scheduleApply();
+  });
 })();

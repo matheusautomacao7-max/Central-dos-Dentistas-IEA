@@ -1017,6 +1017,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def session_cookie(token: str) -> str:
         return f"iea_session={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200" + ("; Secure" if os.environ.get("SESSION_SECURE") == "1" else "")
 
+    @staticmethod
+    def professional_photo_url(professional_id: int | None, photo_data: str | None) -> str | None:
+        if not professional_id or not photo_data:
+            return None
+        version = hashlib.sha256(str(photo_data).encode("utf-8")).hexdigest()[:12]
+        return f"/api/professionals/{int(professional_id)}/photo?v={version}"
+
     def auth_payload(self, user: dict) -> dict:
         permissions = json.loads(user["permissions_json"] or "{}")
         return {"authenticated": True, "user": {
@@ -1036,7 +1043,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ),
             "service_sector": user.get("service_sector") or ("CRC" if user["access_role"] == "crc" else ""),
             "offices": user.get("offices"), "specialties": user.get("specialties"),
-            "photo_url": f"/api/professionals/{user['professional_id']}/photo" if user.get("photo_data") else ("/assets/dra-dulce.jpeg" if user["access_role"] == "owner" else None),
+            "photo_url": self.professional_photo_url(user.get("professional_id"), user.get("photo_data")) or ("/assets/dra-dulce.jpeg" if user["access_role"] == "owner" else None),
             "must_change_password": bool(user["must_change_password"]),
             "two_factor_enabled": bool(user.get("two_factor_enabled")),
             "two_factor_exempt": bool(user.get("two_factor_exempt")),
@@ -1508,6 +1515,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.save_crm_goals(self.read_json())
         if parsed.path == "/api/crm/profile/achievements":
             return self.create_crm_profile_achievement(self.read_json())
+        if parsed.path == "/api/crm/profile/photo":
+            return self.update_crm_collaborator_photo(self.read_json())
         if parsed.path == "/api/crm/evolution/connect":
             return self.connect_evolution_instance(self.read_json())
         if parsed.path == "/api/crm/evolution/config":
@@ -3035,7 +3044,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
         self.send_json({"imported": imported, "updated": updated, "unchanged": unchanged, "total": len(items)})
 
-    def update_professional_photo(self, professional_id: int, payload: dict) -> None:
+    def update_professional_photo(self, professional_id: int, payload: dict, audit_event: str | None = None) -> None:
         image = str(payload.get("image") or "")
         match = re.fullmatch(r"data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)", image)
         if not match:
@@ -3050,7 +3059,28 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not db.execute("SELECT id FROM professionals WHERE id=?", (professional_id,)).fetchone():
                 return self.send_json({"error": "Profissional não encontrado"}, HTTPStatus.NOT_FOUND)
             db.execute("UPDATE professionals SET photo_data=?, photo_mime=? WHERE id=?", (match.group(2), match.group(1), professional_id))
-        self.send_json({"updated": True, "photo_url": f"/api/professionals/{professional_id}/photo"})
+            if audit_event:
+                self.record_security_event(db, audit_event, self.request_ip(), self.authenticated_user["id"], f"Profissional {professional_id}")
+        self.send_json({"updated": True, "photo_url": self.professional_photo_url(professional_id, match.group(2))})
+
+    def update_crm_collaborator_photo(self, payload: dict) -> None:
+        if not self.require_crc_access():
+            return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente um administrador do CRM pode alterar fotos de perfil."}, HTTPStatus.FORBIDDEN)
+        try:
+            user_id = int(payload.get("user_id"))
+        except (TypeError, ValueError):
+            return self.send_json({"error": "Selecione um colaborador válido."}, HTTPStatus.BAD_REQUEST)
+        with connect() as db:
+            collaborator = db.execute("""SELECT professional_id FROM users
+                WHERE id=? AND access_role='crc' AND active=1""", (user_id,)).fetchone()
+        if not collaborator or not collaborator["professional_id"]:
+            return self.send_json({"error": "Este colaborador não possui perfil profissional vinculado."}, HTTPStatus.CONFLICT)
+        self.update_professional_photo(
+            int(collaborator["professional_id"]), payload,
+            audit_event="crm_collaborator_profile_photo_updated",
+        )
 
     @staticmethod
     def replace_crm_user_channels(
@@ -6067,7 +6097,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             user = db.execute("""SELECT u.id,u.name,u.email,u.crm_access_level,
                        COALESCE(NULLIF(u.service_sector,''),'CRC') AS service_sector,
-                       u.professional_id,CASE WHEN pr.photo_data IS NULL THEN 0 ELSE 1 END AS has_photo
+                       u.professional_id,pr.photo_data,CASE WHEN pr.photo_data IS NULL THEN 0 ELSE 1 END AS has_photo
                   FROM users u LEFT JOIN professionals pr ON pr.id=u.professional_id
                  WHERE u.id=? AND u.access_role='crc' AND u.active=1""", (user_id,)).fetchone()
             if not user:
@@ -6110,9 +6140,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         } for row in goal_rows)
         achievements.sort(key=lambda item: (str(item.get("awarded_at") or ""), int(item["id"])), reverse=True)
         profile = dict(user)
-        profile["photo_url"] = (
-            f"/api/professionals/{user['professional_id']}/photo" if user["has_photo"] else None
-        )
+        profile["photo_url"] = self.professional_photo_url(profile.get("professional_id"), profile.pop("photo_data", None))
         profile["stats"] = {
             "active_count": int(stats["active_count"] or 0),
             "resolved_month": int(stats["resolved_month"] or 0),
