@@ -740,6 +740,7 @@ ON crm_lia_knowledge(status, category, updated_at DESC);
 CREATE TABLE IF NOT EXISTS crm_lia_settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+    general_assistance INTEGER NOT NULL DEFAULT 0 CHECK (general_assistance IN (0, 1)),
     model TEXT NOT NULL DEFAULT 'gpt-5.6-luna',
     daily_limit_per_user INTEGER NOT NULL DEFAULT 30 CHECK (daily_limit_per_user BETWEEN 1 AND 500),
     monthly_limit_total INTEGER NOT NULL DEFAULT 1000 CHECK (monthly_limit_total BETWEEN 1 AND 100000),

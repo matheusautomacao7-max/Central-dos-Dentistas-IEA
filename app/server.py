@@ -478,6 +478,9 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE users ADD COLUMN service_sector TEXT NOT NULL DEFAULT ''")
         db.execute("UPDATE users SET service_sector='CRC' WHERE access_role='crc' AND TRIM(COALESCE(service_sector,''))=''")
         ensure_crm_permission_constraints(db)
+        lia_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_lia_settings)").fetchall()}
+        if lia_settings_columns and "general_assistance" not in lia_settings_columns:
+            db.execute("ALTER TABLE crm_lia_settings ADD COLUMN general_assistance INTEGER NOT NULL DEFAULT 0")
         crm_resolution_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
         }
@@ -4726,16 +4729,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_lia_default_settings() -> dict:
-        return {"id": 1, "enabled": 0, "model": "gpt-5.6-luna", "daily_limit_per_user": 30,
+        return {"id": 1, "enabled": 0, "general_assistance": 0, "model": "gpt-5.6-luna", "daily_limit_per_user": 30,
                 "monthly_limit_total": 1000, "monthly_budget_cents": 3000, "max_output_tokens": 450}
 
     def crm_lia_settings(self, db) -> dict:
         row = db.execute("SELECT * FROM crm_lia_settings WHERE id=1").fetchone()
         if not row:
             defaults = self.crm_lia_default_settings()
-            db.execute("""INSERT INTO crm_lia_settings(id,enabled,model,daily_limit_per_user,monthly_limit_total,
-                          monthly_budget_cents,max_output_tokens) VALUES(?,?,?,?,?,?,?)""",
-                       (1, defaults["enabled"], defaults["model"], defaults["daily_limit_per_user"],
+            db.execute("""INSERT INTO crm_lia_settings(id,enabled,general_assistance,model,daily_limit_per_user,monthly_limit_total,
+                          monthly_budget_cents,max_output_tokens) VALUES(?,?,?,?,?,?,?,?)""",
+                       (1, defaults["enabled"], defaults["general_assistance"], defaults["model"], defaults["daily_limit_per_user"],
                         defaults["monthly_limit_total"], defaults["monthly_budget_cents"], defaults["max_output_tokens"]))
             return defaults
         return dict(row)
@@ -4760,6 +4763,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Somente administradores podem ajustar a Lia."}, HTTPStatus.FORBIDDEN)
         try:
             enabled = 1 if payload.get("enabled") is True else 0
+            general_assistance = 1 if payload.get("general_assistance") is True else 0
             daily = int(payload.get("daily_limit_per_user", 30))
             monthly = int(payload.get("monthly_limit_total", 1000))
             budget = int(payload.get("monthly_budget_cents", 3000))
@@ -4774,14 +4778,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if enabled and not OPENAI_API_KEY:
             return self.send_json({"error": "A chave da OpenAI ainda não está disponível no servidor."}, HTTPStatus.CONFLICT)
         with connect() as db:
-            db.execute("""INSERT INTO crm_lia_settings(id,enabled,model,daily_limit_per_user,monthly_limit_total,
+            db.execute("""INSERT INTO crm_lia_settings(id,enabled,general_assistance,model,daily_limit_per_user,monthly_limit_total,
                           monthly_budget_cents,max_output_tokens,updated_by_user_id,updated_at)
-                          VALUES(1,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-                          ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,model=excluded.model,
+                          VALUES(1,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                          ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,general_assistance=excluded.general_assistance,model=excluded.model,
                           daily_limit_per_user=excluded.daily_limit_per_user,monthly_limit_total=excluded.monthly_limit_total,
                           monthly_budget_cents=excluded.monthly_budget_cents,max_output_tokens=excluded.max_output_tokens,
                           updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP""",
-                       (enabled, model, daily, monthly, budget, output, self.authenticated_user["id"]))
+                       (enabled, general_assistance, model, daily, monthly, budget, output, self.authenticated_user["id"]))
             settings = self.crm_lia_settings(db)
         settings["api_configured"] = bool(OPENAI_API_KEY)
         settings["models"] = [{"id": key, **value} for key, value in CRM_LIA_MODELS.items()]
@@ -4872,7 +4876,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 ranked.append((score, row))
         ranked.sort(key=lambda item: item[0], reverse=True)
         sources = [row for _, row in ranked[:3]]
-        if not sources:
+        with connect() as db:
+            settings = self.crm_lia_settings(db)
+        general_assistance = bool(settings.get("general_assistance"))
+        if not sources and not general_assistance:
             return self.send_json({
                 "answer": "Ainda não encontrei uma orientação oficial para esse tema. Consulte a supervisão ou peça que um administrador cadastre essa resposta na base da Lia.",
                 "sources": [], "mode": "knowledge_only", "found": False,
@@ -4885,6 +4892,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             per_user = db.execute("SELECT COUNT(*) AS total FROM crm_lia_usage WHERE user_id=? AND substr(created_at,1,10)=?", (self.authenticated_user["id"], today)).fetchone()
             monthly = db.execute("SELECT COUNT(*) AS total,COALESCE(SUM(estimated_cost_usd),0) AS cost FROM crm_lia_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
         if not settings.get("enabled") or not OPENAI_API_KEY:
+            if not sources:
+                return self.send_json({"answer": "A Assistência geral está configurada, mas a IA está pausada no momento. Peça a um administrador para ativá-la nas configurações da Lia.", "sources": [], "mode": "general_paused", "found": False, "ai_enabled": False})
             return self.send_json({"answer": sources[0]["content"], "sources": source_payload, "mode": "knowledge_only", "found": True, "ai_enabled": False})
         if int(per_user["total"] or 0) >= int(settings["daily_limit_per_user"]):
             return self.send_json({"error": "Você atingiu o limite diário de perguntas para a Lia."}, HTTPStatus.TOO_MANY_REQUESTS)
@@ -4895,9 +4904,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         context = "\n\n".join("[Fonte %s | %s]\n%s" % (row["title"], row["category"], str(row["content"])[:4000]) for row in sources)
         instructions = ("Você é Lia, assistente interna da recepção do Instituto Eduardo Ayub. "
                         "Responda em português do Brasil, de forma objetiva, acolhedora e profissional. "
-                        "Use exclusivamente as fontes oficiais fornecidas. Não invente regras, valores, agendas ou políticas. "
                         "Não responda pacientes, não realize ações no CRM e não solicite dados sensíveis. "
-                        "Se as fontes não bastarem, diga que a supervisão deve orientar.\n\nFONTES OFICIAIS:\n" + context)
+                        "Nunca faça diagnósticos, nem prometa valores, horários, agendamentos ou políticas da clínica. ")
+        if general_assistance:
+            instructions += ("Priorize as fontes oficiais abaixo. Quando elas não forem suficientes, você pode ajudar a equipe com uma sugestão geral de escrita, script ou organização; "
+                             "deixe claro que isso é uma sugestão da Lia, e não uma regra oficial da clínica.")
+        else:
+            instructions += "Use exclusivamente as fontes oficiais. Se elas não bastarem, diga que a supervisão deve orientar."
+        instructions += "\n\nFONTES OFICIAIS:\n" + (context or "Nenhuma fonte oficial encontrada para esta pergunta.")
         body = json.dumps({"model": settings["model"], "instructions": instructions, "input": question,
                            "max_output_tokens": int(settings["max_output_tokens"])}, ensure_ascii=False).encode("utf-8")
         request = Request(OPENAI_RESPONSES_URL, data=body, method="POST", headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"})
@@ -4915,6 +4929,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         answer = answer.strip()[:6000]
         if not answer:
             return self.send_json({"error": "A Lia não conseguiu concluir uma resposta agora."}, HTTPStatus.BAD_GATEWAY)
+        if general_assistance and not sources and not answer.lower().startswith("sugestão da lia"):
+            answer = "Sugestão da Lia:\n" + answer
         usage = result.get("usage") or {}
         input_tokens, output_tokens = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
         pricing = CRM_LIA_MODELS[settings["model"]]
@@ -4923,7 +4939,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             db.execute("""INSERT INTO crm_lia_usage(user_id,model,question_preview,source_ids_json,input_tokens,output_tokens,estimated_cost_usd)
                           VALUES(?,?,?,?,?,?,?)""", (self.authenticated_user["id"], settings["model"], question[:280],
                                                         json.dumps([row["id"] for row in sources]), input_tokens, output_tokens, cost))
-        self.send_json({"answer": answer, "sources": source_payload, "mode": "openai", "found": True, "ai_enabled": True})
+        self.send_json({"answer": answer, "sources": source_payload, "mode": "openai", "found": bool(sources), "ai_enabled": True,
+                        "general_assistance": general_assistance})
 
     def get_crm_conversation_timeline(self, conversation_id: int) -> None:
         if not self.require_crc_access(): return

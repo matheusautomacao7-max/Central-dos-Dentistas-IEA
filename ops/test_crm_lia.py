@@ -34,6 +34,9 @@ assert "daily_limit_per_user" in source_methods["ask_crm_lia"]
 assert "CREATE TABLE IF NOT EXISTS crm_lia_knowledge" in SCHEMA
 assert "idx_crm_lia_knowledge_status" in SCHEMA
 assert "CREATE TABLE IF NOT EXISTS crm_lia_settings" in SCHEMA
+assert "general_assistance" in SCHEMA
+assert "general_assistance" in source_methods["ask_crm_lia"]
+assert "general_assistance" in source_methods["save_crm_lia_settings"]
 assert "CREATE TABLE IF NOT EXISTS crm_lia_usage" in SCHEMA
 assert '"/api/crm/lia/knowledge"' in SERVER and '"/api/crm/lia/ask"' in SERVER
 assert "crm-lia.js?v=20260804-lia-knowledge-v1" in HTML
@@ -43,5 +46,6 @@ assert "openKnowledgeManager" not in BRIDGE  # avoid an orphan manager implement
 assert "function showManager" in BRIDGE and "function showEditor" in BRIDGE
 assert "function showSettings" in BRIDGE
 assert "Configurar IA e limites" in BRIDGE
+assert "Permitir Assistência geral" in BRIDGE
 
 print("crm-lia-tests-ok")
