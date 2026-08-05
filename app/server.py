@@ -68,6 +68,9 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 META_TEST_MODE = os.environ.get("META_TEST_MODE") == "1"
 META_TEST_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_TEST_WEBHOOK_VERIFY_TOKEN", "").strip()
 META_TEST_APP_SECRET = os.environ.get("META_TEST_APP_SECRET", "").strip()
+META_TEST_ACCESS_TOKEN = os.environ.get("META_TEST_ACCESS_TOKEN", "").strip()
+META_GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v26.0").strip() or "v26.0"
+META_GRAPH_API_URL = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
 CLINIC_UTC_OFFSET_HOURS = int(os.environ.get("CLINIC_UTC_OFFSET_HOURS", "-4"))
@@ -7811,6 +7814,55 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 db.execute("UPDATE crm_webhook_events SET processing_status='Falhou',error_message=?,processed_at=datetime('now','localtime') WHERE event_key=?",(str(error)[:500],event_key)); return self.send_json({"error":"Falha ao processar webhook."},HTTPStatus.BAD_REQUEST)
         self.send_json({"received":True,"processed":True})
 
+    def send_crm_meta_test_audio_message(self, conversation_id: int, channel: dict, audio_bytes: bytes,
+                                         mime_type: str, duration_seconds: float | None) -> None:
+        """Send a recorded audio exclusively through the Meta test channel."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "O canal de teste da Meta nÃ£o estÃ¡ disponÃ­vel neste ambiente."}, HTTPStatus.CONFLICT)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+        phone_number_id = str(settings.get("whatsapp_test_phone_number_id") or "").strip()
+        recipient_phone = self.meta_test_recipient_phone(channel.get("phone"))
+        try:
+            external_id = self.send_meta_test_audio(phone_number_id, recipient_phone, audio_bytes)
+        except RuntimeError as error:
+            return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
+
+        CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        file_name = f"{secrets.token_hex(16)}.{self.crm_media_extension(mime_type)}"
+        target = CRM_MEDIA_DIR / file_name
+        temporary = target.with_suffix(target.suffix + ".tmp")
+        temporary.write_bytes(audio_bytes)
+        temporary.replace(target)
+        media_url = f"/api/crm/media/{file_name}"
+        service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
+        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+        with connect() as db:
+            message_row = db.execute(
+                """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,
+                                                sender_name,sent_by_user_id,author_type,author_label,source_channel,delivery_status,message_at)
+                   VALUES(?,?,'outbound','audio','Ãudio',?,?,?,?,?,'human',?,'meta-test','Enviada',datetime('now','localtime'))
+                   RETURNING id""",
+                (conversation_id, external_id, media_url, mime_type, duration_seconds, self.authenticated_user["name"],
+                 self.authenticated_user["id"], author_label),
+            ).fetchone()
+            message_id = int(message_row["id"] if hasattr(message_row, "keys") else message_row[0])
+            db.execute(
+                """UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
+                   first_response_at=COALESCE(first_response_at,datetime('now','localtime')),automation_state='paused',unread_count=0,
+                   last_direction='outbound',last_message_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
+                   WHERE id=? AND status<>'Resolvida'""",
+                (conversation_id,),
+            )
+            self.crm_record_event(db, conversation_id, "meta.test.audio.sent", {"message_type": "audio"})
+            result = db.execute(
+                """SELECT id,conversation_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,
+                          author_type,author_label,source_channel,delivery_status,message_at
+                   FROM crm_messages WHERE id=?""",
+                (message_id,),
+            ).fetchone()
+        self.send_json(dict(result), HTTPStatus.CREATED)
+
     def send_crm_message(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
         if not self.require_crm_feature("inbox"):
@@ -7913,6 +7965,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not row["assigned_user_id"] and not row["is_internal"]:
                 return self.send_json({"error":"Inicie o atendimento antes de enviar mensagens para um contato externo."},HTTPStatus.CONFLICT)
             row = dict(row)
+        if row["instance_name"] == "meta-test-whatsapp":
+            if message_type != "audio":
+                return self.send_json({"error": "No laboratÃ³rio da Meta, esta etapa libera apenas o envio de Ã¡udio."}, HTTPStatus.CONFLICT)
+            return self.send_crm_meta_test_audio_message(conversation_id, row, audio_bytes, mime_type or "audio/ogg", duration_seconds)
         configured_url, configured_key = ("", "")
         if not row["evolution_base_url"] or not row["evolution_api_key"]:
             configured_url, configured_key = self.evolution_credentials()  # CRM_OUTBOUND_SHORT_TRANSACTIONS_V1
@@ -8875,6 +8931,120 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         identifiable += 1
         return inbound, authorized, identifiable
 
+    @staticmethod
+    def meta_test_recipient_phone(value) -> str:
+        """Return the E.164 digits accepted by the test Cloud API."""
+        phone = ClinicHandler.crm_phone(value)
+        return f"55{phone}" if phone else ""
+
+    def meta_test_api_request(self, path: str, method: str = "GET", payload: dict | None = None,
+                              headers: dict | None = None, timeout: int = 25) -> dict:
+        """Call Meta only from the isolated laboratory, without exposing its token."""
+        if not META_TEST_MODE:
+            raise RuntimeError("A API da Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio de testes.")
+        if not META_TEST_ACCESS_TOKEN:
+            raise RuntimeError("O token temporÃ¡rio da Meta nÃ£o estÃ¡ configurado no laboratÃ³rio.")
+        request_headers = {"Authorization": f"Bearer {META_TEST_ACCESS_TOKEN}"}
+        if headers:
+            request_headers.update(headers)
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if payload is not None and "Content-Type" not in request_headers:
+            request_headers["Content-Type"] = "application/json"
+        request = Request(f"{META_GRAPH_API_URL}{path}", data=body, method=method, headers=request_headers)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as error:
+            # A resposta pode conter detalhes do provedor, mas nunca a mostramos
+            # ao navegador nem registramos headers que possam revelar credenciais.
+            raise RuntimeError(f"Meta respondeu {error.code} ao processar a mÃ­dia de teste.") from error
+        except (URLError, TimeoutError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel conectar Ã  Meta no laboratÃ³rio.") from error
+        if not raw:
+            return {}
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("A Meta retornou uma resposta invÃ¡lida no laboratÃ³rio.") from error
+        return result if isinstance(result, dict) else {}
+
+    def download_meta_test_audio(self, media_id: str, mime_hint: str | None = None) -> tuple[str, str, float | None]:
+        """Fetch a Cloud API audio once and retain it in the protected CRM media store."""
+        safe_media_id = str(media_id or "").strip()
+        if not safe_media_id:
+            raise RuntimeError("A Meta nÃ£o informou o identificador do Ã¡udio.")
+        metadata = self.meta_test_api_request(f"/{quote(safe_media_id, safe='')}")
+        download_url = str(metadata.get("url") or "").strip()
+        if not download_url.startswith("https://"):
+            raise RuntimeError("A Meta nÃ£o disponibilizou o arquivo de Ã¡udio.")
+        mime_type = str(metadata.get("mime_type") or mime_hint or "audio/ogg").split(";", 1)[0].strip().lower()
+        if not mime_type.startswith("audio/"):
+            raise RuntimeError("A mÃ­dia recebida nÃ£o Ã© um Ã¡udio vÃ¡lido.")
+        request = Request(download_url, headers={"Authorization": f"Bearer {META_TEST_ACCESS_TOKEN}"})
+        try:
+            with urlopen(request, timeout=25) as response:
+                content = response.read(12 * 1024 * 1024 + 1)
+        except HTTPError as error:
+            raise RuntimeError(f"Meta respondeu {error.code} ao baixar o Ã¡udio de teste.") from error
+        except (URLError, TimeoutError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel baixar o Ã¡udio da Meta no laboratÃ³rio.") from error
+        if not content or len(content) > 12 * 1024 * 1024:
+            raise RuntimeError("O Ã¡udio recebido excede o limite seguro de 12 MB.")
+        extension = self.crm_media_extension(mime_type)
+        digest = hashlib.md5(f"meta-test:{safe_media_id}".encode(), usedforsecurity=False).hexdigest()
+        file_name = f"{digest}.{extension}"
+        CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        target = CRM_MEDIA_DIR / file_name
+        if not target.exists():
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_bytes(content)
+            temporary.replace(target)
+        duration_seconds = crm_audio_duration_seconds(content)
+        return f"/api/crm/media/{file_name}", mime_type, duration_seconds
+
+    def send_meta_test_audio(self, phone_number_id: str, recipient_phone: str, audio_bytes: bytes) -> str:
+        """Upload and send an OGG voice message through the test Cloud API only."""
+        if not phone_number_id or not recipient_phone:
+            raise RuntimeError("O nÃºmero de teste da Meta ou o destinatÃ¡rio nÃ£o foi configurado.")
+        boundary = f"----IEAMeta{secrets.token_hex(12)}"
+        body = b"".join((
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"messaging_product\"\r\n\r\nwhatsapp\r\n".encode(),
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.ogg\"\r\nContent-Type: audio/ogg\r\n\r\n".encode(),
+            audio_bytes,
+            f"\r\n--{boundary}--\r\n".encode(),
+        ))
+        # meta_test_api_request serializa JSON por padrÃ£o; para upload binÃ¡rio, a
+        # requisiÃ§Ã£o Ã© formada aqui mantendo a mesma barreira de ambiente e token.
+        if not META_TEST_MODE or not META_TEST_ACCESS_TOKEN:
+            raise RuntimeError("O envio pela Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio configurado.")
+        upload_request = Request(
+            f"{META_GRAPH_API_URL}/{quote(str(phone_number_id), safe='')}/media",
+            data=body,
+            method="POST",
+            headers={"Authorization": f"Bearer {META_TEST_ACCESS_TOKEN}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        try:
+            with urlopen(upload_request, timeout=60) as response:
+                uploaded = json.loads(response.read().decode("utf-8") or "{}")
+        except HTTPError as error:
+            raise RuntimeError(f"Meta respondeu {error.code} ao enviar o Ã¡udio de teste.") from error
+        except (URLError, TimeoutError, json.JSONDecodeError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel enviar o Ã¡udio para a Meta no laboratÃ³rio.") from error
+        media_id = str(uploaded.get("id") or "").strip() if isinstance(uploaded, dict) else ""
+        if not media_id:
+            raise RuntimeError("A Meta nÃ£o confirmou o upload do Ã¡udio.")
+        sent = self.meta_test_api_request(
+            f"/{quote(str(phone_number_id), safe='')}/messages",
+            method="POST",
+            payload={"messaging_product": "whatsapp", "to": recipient_phone, "type": "audio", "audio": {"id": media_id}},
+            timeout=60,
+        )
+        messages = sent.get("messages") if isinstance(sent.get("messages"), list) else []
+        external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
+        if not external_id:
+            raise RuntimeError("A Meta nÃ£o confirmou o envio do Ã¡udio.")
+        return external_id
+
     def mirror_meta_test_messages_to_crm(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
         """Mirror the explicitly authorized Meta test number into the test CRM inbox.
 
@@ -8919,6 +9089,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         message_at = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
                     message_type = str(message.get("type") or "unknown")[:40]
                     body = self.meta_test_message_preview(message) or f"[Mensagem Meta de teste: {message_type}]"
+                    media_url = None
+                    mime_type = None
+                    duration_seconds = None
+                    media_error = None
+                    if message_type == "audio":
+                        audio = message.get("audio") if isinstance(message.get("audio"), dict) else {}
+                        try:
+                            media_url, mime_type, duration_seconds = self.download_meta_test_audio(
+                                str(audio.get("id") or ""),
+                                str(audio.get("mime_type") or "") or None,
+                            )
+                            body = "Ãudio"
+                        except RuntimeError as error:
+                            # MantÃ©m um registro auditÃ¡vel sem exibir player quebrado.
+                            media_error = str(error)
+                            message_type = "text"
+                            body = "[Ãudio de teste recebido, mas nÃ£o foi possÃ­vel baixÃ¡-lo.]"
                     db.execute(
                         """INSERT INTO crm_contacts(name,phone) VALUES(?,?)
                            ON CONFLICT(phone) DO UPDATE SET
@@ -8950,11 +9137,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         (conversation_id, meta_tag_id),
                     )
                     inserted = db.execute(
-                        """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,sender_name,
+                        """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,
                                                     author_type,author_label,source_channel,delivery_status,message_at)
-                           VALUES(?,?, 'inbound','text',? ,?,'patient',?,'meta-test','Recebida',?)
+                           VALUES(?,?, 'inbound',?,?,?,?,?,?,'patient',?,'meta-test','Recebida',?)
                            ON CONFLICT(external_message_id) DO NOTHING""",
-                        (conversation_id, message_id, body, contact_name, contact_name, message_at),
+                        (conversation_id, message_id, message_type, body, media_url, mime_type, duration_seconds,
+                         contact_name, contact_name, message_at),
                     )
                     if inserted.rowcount:
                         mirrored += 1
