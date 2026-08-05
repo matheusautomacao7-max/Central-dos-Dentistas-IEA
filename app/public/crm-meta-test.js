@@ -14,6 +14,7 @@
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
   const label = element => (element?.textContent || "").trim().toLowerCase();
   let refreshPromise = null;
+  let loadedPanel = null;
 
   function integrationHeader() {
     return [...document.querySelectorAll("h1")].find(item => label(item).includes("integra"));
@@ -106,7 +107,13 @@
   const schedule = () => {
     if (queued || document.hidden) return;
     queued = true;
-    requestAnimationFrame(() => { queued = false; refresh(); });
+    requestAnimationFrame(() => {
+      queued = false;
+      const panel = getPanel();
+      if (!panel || panel === loadedPanel) return;
+      loadedPanel = panel;
+      refresh();
+    });
   };
   new MutationObserver(schedule).observe(document.documentElement, {childList:true,subtree:true});
   schedule();

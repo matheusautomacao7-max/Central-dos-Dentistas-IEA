@@ -10,6 +10,7 @@ LOADER = (ROOT / "app" / "public" / "crm-whatsapp.html").read_text(encoding="utf
 assert "/api/crm/meta/test/status" in BRIDGE
 assert "/api/crm/meta/test/config" in BRIDGE
 assert "Tokens não são salvos nesta tela" in BRIDGE
+assert "loadedPanel" in BRIDGE
 assert "crm-meta-test.js" in LOADER
 assert "production" not in BRIDGE.lower()
 
