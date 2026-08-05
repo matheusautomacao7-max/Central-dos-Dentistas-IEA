@@ -785,6 +785,7 @@ CREATE TABLE IF NOT EXISTS crm_meta_test_settings (
     app_id TEXT,
     whatsapp_test_phone_number_id TEXT,
     instagram_test_account_id TEXT,
+    authorized_test_phone TEXT,
     updated_by_user_id INTEGER,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -801,6 +802,20 @@ CREATE TABLE IF NOT EXISTS crm_meta_test_events (
 );
 CREATE INDEX IF NOT EXISTS idx_crm_meta_test_events_received
 ON crm_meta_test_events(received_at DESC);
+
+-- Caixa de entrada separada do CRM: guarda somente mensagens recebidas de um
+-- número explicitamente autorizado no laboratório Meta.
+CREATE TABLE IF NOT EXISTS crm_meta_test_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL,
+    meta_message_id TEXT NOT NULL UNIQUE,
+    message_type TEXT NOT NULL,
+    body_preview TEXT NOT NULL DEFAULT '',
+    occurred_at TEXT,
+    received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_crm_meta_test_messages_received
+ON crm_meta_test_messages(received_at DESC);
 
 CREATE TABLE IF NOT EXISTS crm_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

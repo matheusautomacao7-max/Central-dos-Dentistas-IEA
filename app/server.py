@@ -496,6 +496,9 @@ def initialize_database() -> None:
         lia_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_lia_settings)").fetchall()}
         if lia_settings_columns and "general_assistance" not in lia_settings_columns:
             db.execute("ALTER TABLE crm_lia_settings ADD COLUMN general_assistance INTEGER NOT NULL DEFAULT 0")
+        meta_test_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_meta_test_settings)").fetchall()}
+        if "authorized_test_phone" not in meta_test_settings_columns:
+            db.execute("ALTER TABLE crm_meta_test_settings ADD COLUMN authorized_test_phone TEXT")
         crm_resolution_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
         }
@@ -1454,6 +1457,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_integration_health()
         if parsed.path == "/api/crm/meta/test/status":
             return self.get_crm_meta_test_status()
+        if parsed.path == "/api/crm/meta/test/inbox":
+            return self.get_crm_meta_test_inbox()
         if parsed.path == "/api/crm/n8n/config":
             return self.get_crm_n8n_config()
         if parsed.path == "/api/crm/n8n/overview":
@@ -3105,19 +3110,27 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             professionals = {self.import_key(row["name"]): row["id"] for row in db.execute("SELECT id, name FROM professionals WHERE active=1").fetchall()}
         missing = sorted({item["professional"] for item in items if self.import_key(item["professional"]) not in professionals})
-        self.send_json({"valid": len(items) - (len(items) if missing else 0), "total": len(items), "missing_professionals": missing, "can_confirm": not missing, "preview": items[:10]})
+        valid = sum(1 for item in items if self.import_key(item["professional"]) in professionals)
+        self.send_json({"valid": valid, "total": len(items), "missing_professionals": missing, "can_confirm": not missing and bool(items), "can_confirm_partial": bool(missing) and valid > 0, "preview": items[:10]})
 
     def appointment_confirm(self, payload: dict) -> None:
         token = str(payload.get("token") or "")
         items = self.get_import_batch(token)
         if items is None:
             return self.send_json({"error": "Auditoria expirada. Rode a auditoria novamente."}, HTTPStatus.GONE)
-        imported = updated = unchanged = 0
+        allow_partial = payload.get("allow_partial") is True
+        imported = updated = unchanged = skipped = 0
         with connect() as db:
             professionals = {self.import_key(row["name"]): row["id"] for row in db.execute("SELECT id, name FROM professionals WHERE active=1").fetchall()}
             missing = sorted({item["professional"] for item in items if self.import_key(item["professional"]) not in professionals})
-            if missing:
+            if missing and not allow_partial:
                 return self.send_json({"error": "Cadastre primeiro: " + ", ".join(missing)}, HTTPStatus.CONFLICT)
+            if missing:
+                importable_items = [item for item in items if self.import_key(item["professional"]) in professionals]
+                skipped = len(items) - len(importable_items)
+                if not importable_items:
+                    return self.send_json({"error": "Nenhuma carteira pertence a um profissional cadastrado."}, HTTPStatus.CONFLICT)
+                items = importable_items
             assignments = {}
             for row in db.execute("""
                 SELECT p.id, p.name, pa.professional_id, f.last_visit
@@ -3155,7 +3168,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     assignments[key] = {"id": patient_id, "last_visit": item["date"]}
                     imported += 1
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
-        self.send_json({"imported": imported, "updated": updated, "unchanged": unchanged, "total": len(items)})
+        self.send_json({"imported": imported, "updated": updated, "unchanged": unchanged, "skipped": skipped, "skipped_professionals": missing if skipped else [], "total": len(items)})
 
     def update_professional_photo(self, professional_id: int, payload: dict, audit_event: str | None = None) -> None:
         image = str(payload.get("image") or "")
@@ -8759,7 +8772,57 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return dict(row)
         db.execute("INSERT INTO crm_meta_test_settings(id,enabled,test_mode) VALUES(1,0,1)")
         return {"id": 1, "enabled": 0, "test_mode": 1, "app_id": None,
-                "whatsapp_test_phone_number_id": None, "instagram_test_account_id": None}
+                "whatsapp_test_phone_number_id": None, "instagram_test_account_id": None,
+                "authorized_test_phone": None}
+
+    @staticmethod
+    def meta_test_message_preview(message: dict) -> str:
+        """Return a bounded, text-only preview for the opt-in laboratory inbox."""
+        message_type = str(message.get("type") or "unknown")
+        if message_type == "text":
+            raw = str((message.get("text") or {}).get("body") or "")
+        elif message_type == "button":
+            raw = str((message.get("button") or {}).get("text") or "")
+        elif message_type == "interactive":
+            interactive = message.get("interactive") or {}
+            raw = str(((interactive.get("button_reply") or interactive.get("list_reply") or {}).get("title")) or "")
+        else:
+            raw = f"[Mensagem de teste: {message_type}]"
+        return re.sub(r"\s+", " ", raw).strip()[:500]
+
+    def record_meta_test_messages(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
+        """Persist only inbound messages from the administrator-approved test number."""
+        if not authorized_phone:
+            return 0
+        recorded = 0
+        for entry in payload.get("entry") or []:
+            if not isinstance(entry, dict):
+                continue
+            for change in entry.get("changes") or []:
+                value = change.get("value") if isinstance(change, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                for message in value.get("messages") or []:
+                    if not isinstance(message, dict) or self.crm_phone(message.get("from")) != authorized_phone:
+                        continue
+                    message_id = str(message.get("id") or "").strip()
+                    if not message_id:
+                        continue
+                    try:
+                        timestamp = int(message.get("timestamp") or 0)
+                        occurred_at = datetime.fromtimestamp(timestamp, timezone.utc).astimezone(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S") if timestamp else None
+                    except (TypeError, ValueError, OSError):
+                        occurred_at = None
+                    try:
+                        db.execute(
+                            """INSERT INTO crm_meta_test_messages(event_key,meta_message_id,message_type,body_preview,occurred_at)
+                               VALUES(?,?,?,?,?)""",
+                            (event_key, message_id, str(message.get("type") or "unknown")[:40], self.meta_test_message_preview(message), occurred_at),
+                        )
+                        recorded += 1
+                    except IntegrityError:
+                        pass
+        return recorded
 
     def verify_meta_test_webhook(self, query: dict) -> None:
         """Handle Meta's public GET verification for the isolated laboratory only."""
@@ -8811,6 +8874,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         }
         event_key = hashlib.sha256(raw_body).hexdigest()
         with connect() as db:
+            settings = self.crm_meta_test_settings(db)
             try:
                 db.execute(
                     """INSERT INTO crm_meta_test_events(event_key,platform,event_type,payload_json,processing_status)
@@ -8820,7 +8884,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 duplicate = False
             except IntegrityError:
                 duplicate = True
-        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate})
+            recorded_messages = 0 if duplicate else self.record_meta_test_messages(
+                db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
+            )
+        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate, "laboratory_messages": recorded_messages})
 
     def get_crm_meta_test_status(self) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
@@ -8830,7 +8897,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             settings = self.crm_meta_test_settings(db)
             total = db.execute("SELECT COUNT(*) AS total FROM crm_meta_test_events").fetchone()
         self.send_json({
-            "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "updated_at")},
+            "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "authorized_test_phone", "updated_at")},
             "event_count": int(total["total"] or 0),
             "status": "laboratory",
             "webhook": {
@@ -8841,6 +8908,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "safety": {"production_writes": False, "patient_messages": False, "webhook_enabled": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET)},
         })
 
+    def get_crm_meta_test_inbox(self) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem acessar o laboratório da Meta."}, HTTPStatus.FORBIDDEN)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+            rows = db.execute("""SELECT id,message_type,body_preview,occurred_at,received_at
+                               FROM crm_meta_test_messages ORDER BY id DESC LIMIT 50""").fetchall()
+        self.send_json({
+            "authorized": bool(self.crm_phone(settings.get("authorized_test_phone"))),
+            "items": [dict(row) for row in rows],
+            "read_only": True,
+        })
+
     def save_crm_meta_test_config(self, payload: dict) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
         if not self.can_manage_crm(self.authenticated_user):
@@ -8849,19 +8930,24 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "app_id": str(payload.get("app_id") or "").strip()[:160],
             "whatsapp_test_phone_number_id": str(payload.get("whatsapp_test_phone_number_id") or "").strip()[:160],
             "instagram_test_account_id": str(payload.get("instagram_test_account_id") or "").strip()[:160],
+            "authorized_test_phone": self.crm_phone(payload.get("authorized_test_phone")),
         }
+        if payload.get("authorized_test_phone") and not fields["authorized_test_phone"]:
+            return self.send_json({"error": "Informe um telefone de teste válido para autorizar a caixa de laboratório."}, HTTPStatus.BAD_REQUEST)
         if any("\n" in value or "\r" in value for value in fields.values()):
             return self.send_json({"error": "Os identificadores de teste da Meta nÃ£o podem conter quebras de linha."}, HTTPStatus.BAD_REQUEST)
         enabled = 1 if payload.get("enabled") is True else 0
         with connect() as db:
             db.execute("""INSERT INTO crm_meta_test_settings(id,enabled,test_mode,app_id,whatsapp_test_phone_number_id,
-                          instagram_test_account_id,updated_by_user_id,updated_at) VALUES(1,?,1,?,?,?,?,CURRENT_TIMESTAMP)
+                          instagram_test_account_id,authorized_test_phone,updated_by_user_id,updated_at) VALUES(1,?,1,?,?,?,?,?,CURRENT_TIMESTAMP)
                           ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,test_mode=1,app_id=excluded.app_id,
                           whatsapp_test_phone_number_id=excluded.whatsapp_test_phone_number_id,
                           instagram_test_account_id=excluded.instagram_test_account_id,
+                          authorized_test_phone=excluded.authorized_test_phone,
                           updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP""",
                        (enabled, fields["app_id"] or None, fields["whatsapp_test_phone_number_id"] or None,
-                        fields["instagram_test_account_id"] or None, self.authenticated_user["id"]))
+                        fields["instagram_test_account_id"] or None, fields["authorized_test_phone"] or None,
+                        self.authenticated_user["id"]))
         self.get_crm_meta_test_status()
 
     def get_crm_webhook_events(self) -> None:
