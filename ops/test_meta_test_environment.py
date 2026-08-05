@@ -24,5 +24,6 @@ assert "../" not in COMPOSE
 SERVER = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
 assert "ensure_meta_test_crc_user" in SERVER
 assert 'os.environ.get("META_TEST_MODE") == "1"' in SERVER
+assert 'relative = "crm-whatsapp.html" if META_TEST_MODE else "crm-next.html"' in SERVER
 
 print("meta-test-environment-ok")

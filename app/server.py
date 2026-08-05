@@ -9965,7 +9965,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif request_path in (CRC_ROUTE, f"{CRC_ROUTE}/"):
             relative = "crc.html"
         elif request_path in (CRM_NEXT_ROUTE, f"{CRM_NEXT_ROUTE}/"):
-            relative = "crm-next.html"
+            # A homologação Meta abre o CRM operacional completo. A tela
+            # /crm é um protótipo paralelo e não possui as ações reais do
+            # Inbox; a operação oficial continua inalterada.
+            relative = "crm-whatsapp.html" if META_TEST_MODE else "crm-next.html"
         elif request_path in (f"{CRM_NEXT_ROUTE}/operacional", f"{CRM_NEXT_ROUTE}/operacional/"):
             # Corte seguro: o CRM completo passa a ter uma rota própria,
             # fora da Central, preservando todas as regras operacionais já
