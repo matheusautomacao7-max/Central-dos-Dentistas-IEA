@@ -8839,6 +8839,27 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         pass
         return recorded
 
+    def meta_test_message_counts(self, payload: dict, authorized_phone: str) -> tuple[int, int, int]:
+        """Count inbound test messages without retaining their contents in diagnostics."""
+        inbound = authorized = identifiable = 0
+        for entry in payload.get("entry") or []:
+            if not isinstance(entry, dict):
+                continue
+            for change in entry.get("changes") or []:
+                value = change.get("value") if isinstance(change, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                for message in value.get("messages") or []:
+                    if not isinstance(message, dict):
+                        continue
+                    inbound += 1
+                    if self.crm_phone(message.get("from")) != authorized_phone:
+                        continue
+                    authorized += 1
+                    if str(message.get("id") or "").strip():
+                        identifiable += 1
+        return inbound, authorized, identifiable
+
     def mirror_meta_test_messages_to_crm(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
         """Mirror the explicitly authorized Meta test number into the test CRM inbox.
 
@@ -8980,20 +9001,33 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         event_key = hashlib.sha256(raw_body).hexdigest()
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
+            authorized_phone = self.crm_phone(settings.get("authorized_test_phone"))
+            inbound_messages, authorized_messages, identifiable_messages = self.meta_test_message_counts(payload, authorized_phone)
+            event_summary["inbound_message_count"] = inbound_messages
+            event_summary["authorized_message_count"] = authorized_messages
+            event_summary["identifiable_message_count"] = identifiable_messages
+            if not inbound_messages:
+                processing_status = "Webhook técnico: sem mensagem de entrada"
+            elif not authorized_messages:
+                processing_status = "Mensagem de número não autorizado"
+            elif not identifiable_messages:
+                processing_status = "Mensagem autorizada sem identificador"
+            else:
+                processing_status = "Mensagem autorizada recebida"
             try:
                 db.execute(
                     """INSERT INTO crm_meta_test_events(event_key,platform,event_type,payload_json,processing_status)
                        VALUES(?,?,?,?,?)""",
-                    (event_key, platform, "webhook.received", json.dumps(event_summary, ensure_ascii=False), "Recebido somente em teste"),
+                    (event_key, platform, "webhook.received", json.dumps(event_summary, ensure_ascii=False), processing_status),
                 )
                 duplicate = False
             except IntegrityError:
                 duplicate = True
             recorded_messages = 0 if duplicate else self.record_meta_test_messages(
-                db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
+                db, event_key, payload, authorized_phone
             )
             mirrored_messages = 0 if duplicate else self.mirror_meta_test_messages_to_crm(
-                db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
+                db, event_key, payload, authorized_phone
             )
             if mirrored_messages:
                 db.execute("UPDATE crm_meta_test_events SET processing_status='Espelhado no Inbox de teste' WHERE event_key=?", (event_key,))
@@ -9007,9 +9041,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
             total = db.execute("SELECT COUNT(*) AS total FROM crm_meta_test_events").fetchone()
+            last_event = db.execute("SELECT processing_status FROM crm_meta_test_events ORDER BY id DESC LIMIT 1").fetchone()
         self.send_json({
             "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "authorized_test_phone", "updated_at")},
             "event_count": int(total["total"] or 0),
+            "last_event_status": str(last_event["processing_status"]) if last_event else "Nenhum evento recebido",
             "status": "laboratory",
             "webhook": {
                 "url": f"{PUBLIC_APP_URL}/api/integrations/meta/test/webhook",
