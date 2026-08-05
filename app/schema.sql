@@ -775,6 +775,33 @@ CREATE TABLE IF NOT EXISTS crm_integration_alerts (
     resolved_at TEXT
 );
 
+-- LaboratÃ³rio isolado para a futura integraÃ§Ã£o Meta. Esta estrutura nÃ£o
+-- recebe tokens nem cria conversas; eventos e configuraÃ§Ãµes de teste ficam
+-- separados da Evolution atÃ© a aprovaÃ§Ã£o da homologação.
+CREATE TABLE IF NOT EXISTS crm_meta_test_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+    test_mode INTEGER NOT NULL DEFAULT 1 CHECK (test_mode = 1),
+    app_id TEXT,
+    whatsapp_test_phone_number_id TEXT,
+    instagram_test_account_id TEXT,
+    updated_by_user_id INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS crm_meta_test_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL CHECK (platform IN ('whatsapp','instagram')),
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    processing_status TEXT NOT NULL DEFAULT 'Recebido em teste',
+    received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_crm_meta_test_events_received
+ON crm_meta_test_events(received_at DESC);
+
 CREATE TABLE IF NOT EXISTS crm_tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,

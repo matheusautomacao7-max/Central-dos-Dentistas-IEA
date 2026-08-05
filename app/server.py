@@ -1416,6 +1416,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_lia_usage()
         if parsed.path == "/api/crm/integrations/health":
             return self.get_crm_integration_health()
+        if parsed.path == "/api/crm/meta/test/status":
+            return self.get_crm_meta_test_status()
         if parsed.path == "/api/crm/n8n/config":
             return self.get_crm_n8n_config()
         if parsed.path == "/api/crm/n8n/overview":
@@ -1567,6 +1569,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.save_crm_lia_settings(self.read_json())
         if parsed.path == "/api/crm/lia/ask":
             return self.ask_crm_lia(self.read_json())
+        if parsed.path == "/api/crm/meta/test/config":
+            return self.save_crm_meta_test_config(self.read_json())
         if parsed.path == "/api/crm/goals":
             return self.save_crm_goals(self.read_json())
         if parsed.path == "/api/crm/profile/achievements":
@@ -8708,6 +8712,51 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 {"from_user_id": None, "to_user_id": self.authenticated_user["id"], "source": "conversation.opened"},
             )
         self.send_json({"claimed": True, "id": conversation_id})
+
+    def crm_meta_test_settings(self, db) -> dict:
+        row = db.execute("SELECT * FROM crm_meta_test_settings WHERE id=1").fetchone()
+        if row:
+            return dict(row)
+        db.execute("INSERT INTO crm_meta_test_settings(id,enabled,test_mode) VALUES(1,0,1)")
+        return {"id": 1, "enabled": 0, "test_mode": 1, "app_id": None,
+                "whatsapp_test_phone_number_id": None, "instagram_test_account_id": None}
+
+    def get_crm_meta_test_status(self) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem acessar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+            total = db.execute("SELECT COUNT(*) AS total FROM crm_meta_test_events").fetchone()
+        self.send_json({
+            "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "updated_at")},
+            "event_count": int(total["total"] or 0),
+            "status": "laboratory",
+            "safety": {"production_writes": False, "patient_messages": False, "webhook_enabled": False},
+        })
+
+    def save_crm_meta_test_config(self, payload: dict) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem configurar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+        fields = {
+            "app_id": str(payload.get("app_id") or "").strip()[:160],
+            "whatsapp_test_phone_number_id": str(payload.get("whatsapp_test_phone_number_id") or "").strip()[:160],
+            "instagram_test_account_id": str(payload.get("instagram_test_account_id") or "").strip()[:160],
+        }
+        if any("\n" in value or "\r" in value for value in fields.values()):
+            return self.send_json({"error": "Os identificadores de teste da Meta nÃ£o podem conter quebras de linha."}, HTTPStatus.BAD_REQUEST)
+        enabled = 1 if payload.get("enabled") is True else 0
+        with connect() as db:
+            db.execute("""INSERT INTO crm_meta_test_settings(id,enabled,test_mode,app_id,whatsapp_test_phone_number_id,
+                          instagram_test_account_id,updated_by_user_id,updated_at) VALUES(1,?,1,?,?,?,?,CURRENT_TIMESTAMP)
+                          ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,test_mode=1,app_id=excluded.app_id,
+                          whatsapp_test_phone_number_id=excluded.whatsapp_test_phone_number_id,
+                          instagram_test_account_id=excluded.instagram_test_account_id,
+                          updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP""",
+                       (enabled, fields["app_id"] or None, fields["whatsapp_test_phone_number_id"] or None,
+                        fields["instagram_test_account_id"] or None, self.authenticated_user["id"]))
+        self.get_crm_meta_test_status()
 
     def get_crm_webhook_events(self) -> None:
         if not self.require_crm_feature("integrations"): return
