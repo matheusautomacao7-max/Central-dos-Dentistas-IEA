@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: instituto-ayub-meta-test-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: instituto_ayub_meta_test
+      POSTGRES_USER: instituto_ayub_meta_test
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: America/Cuiaba
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U instituto_ayub_meta_test -d instituto_ayub_meta_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - meta_test_postgres_data:/var/lib/postgresql/data
+
+  instituto-ayub-meta-test:
+    build: .
+    container_name: instituto-ayub-meta-test
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      SESSION_SECURE: "1"
+      APP_SECRET_KEY: ${APP_SECRET_KEY}
+      APP_RELEASE_ID: ${APP_RELEASE_ID:-meta-test}
+      DATABASE_URL: postgresql://instituto_ayub_meta_test:${POSTGRES_PASSWORD}@instituto-ayub-meta-test-postgres:5432/instituto_ayub_meta_test
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      TZ: America/Cuiaba
+    ports:
+      - "127.0.0.1:8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.instituto-ayub-meta-test.rule=Host(`${META_TEST_HOST}`)"
+      - "traefik.http.routers.instituto-ayub-meta-test.entrypoints=websecure"
+      - "traefik.http.routers.instituto-ayub-meta-test.tls=true"
+      - "traefik.http.routers.instituto-ayub-meta-test.tls.certresolver=letsencrypt"
+      - "traefik.http.services.instituto-ayub-meta-test.loadbalancer.server.port=8000"
+    volumes:
+      - ./data/crm-media:/app/data/crm-media
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  meta_test_postgres_data:
