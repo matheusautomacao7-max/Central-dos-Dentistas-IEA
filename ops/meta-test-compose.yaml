@@ -17,11 +17,11 @@ services:
       - meta_test_postgres_data:/var/lib/postgresql/data
 
   instituto-ayub-meta-test:
-    build: .
+    build: ..
     container_name: instituto-ayub-meta-test
     restart: unless-stopped
     env_file:
-      - .env
+      - ../.env
     environment:
       HOST: 0.0.0.0
       PORT: 8000
@@ -47,7 +47,7 @@ services:
       - "traefik.http.routers.instituto-ayub-meta-test.tls.certresolver=letsencrypt"
       - "traefik.http.services.instituto-ayub-meta-test.loadbalancer.server.port=8000"
     volumes:
-      - ./data/crm-media:/app/data/crm-media
+      - ../data/crm-media:/app/data/crm-media
     depends_on:
       postgres:
         condition: service_healthy
