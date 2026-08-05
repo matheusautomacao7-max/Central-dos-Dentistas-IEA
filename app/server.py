@@ -3717,6 +3717,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             digits = digits[2:]
         return digits if len(digits) in {10, 11} else ""
 
+    @classmethod
+    def crm_phone_matches(cls, left, right) -> bool:
+        """Match Brazilian WhatsApp numbers across Meta's optional ninth-digit form."""
+        def variants(value):
+            phone = cls.crm_phone(value)
+            if not phone:
+                return set()
+            values = {phone}
+            if len(phone) == 11 and phone[2] == "9":
+                values.add(phone[:2] + phone[3:])
+            elif len(phone) == 10:
+                values.add(phone[:2] + "9" + phone[2:])
+            return values
+        return bool(variants(left) & variants(right))
+
     # CRM_PATIENT_OWNERSHIP_LOCK_V16
     @staticmethod
     def crm_contact_active_owner(db, contact_id: int):
@@ -8818,7 +8833,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 if not isinstance(value, dict):
                     continue
                 for message in value.get("messages") or []:
-                    if not isinstance(message, dict) or self.crm_phone(message.get("from")) != authorized_phone:
+                    if not isinstance(message, dict) or not self.crm_phone_matches(message.get("from"), authorized_phone):
                         continue
                     message_id = str(message.get("id") or "").strip()
                     if not message_id:
@@ -8853,7 +8868,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     if not isinstance(message, dict):
                         continue
                     inbound += 1
-                    if self.crm_phone(message.get("from")) != authorized_phone:
+                    if not self.crm_phone_matches(message.get("from"), authorized_phone):
                         continue
                     authorized += 1
                     if str(message.get("id") or "").strip():
@@ -8892,7 +8907,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 contact_profile = contacts[0].get("profile") if contacts and isinstance(contacts[0], dict) else {}
                 contact_name = str((contact_profile or {}).get("name") or "Contato Meta de teste").strip()[:160]
                 for message in value.get("messages") or []:
-                    if not isinstance(message, dict) or self.crm_phone(message.get("from")) != authorized_phone:
+                    if not isinstance(message, dict) or not self.crm_phone_matches(message.get("from"), authorized_phone):
                         continue
                     message_id = str(message.get("id") or "").strip()
                     if not message_id:
