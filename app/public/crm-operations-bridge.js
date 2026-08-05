@@ -239,6 +239,7 @@
   }
 
   async function openContacts() {
+    window.dispatchEvent(new CustomEvent("iea:crm-media-reset"));
     const body = screen("Pacientes", "Encontre um contato por nome ou telefone e inicie novos atendimentos.");
     body.innerHTML = `<div class="iea-panel"><div class="iea-contacts-toolbar"><input class="iea-field" data-contact-search placeholder="Buscar por nome ou qualquer parte do telefone"><button class="iea-btn iea-btn-primary" data-new-contact>+ Iniciar contato novo</button></div><div class="iea-contact-list" data-contact-list>Carregando contatos...</div></div>`;
     let contacts = [];
@@ -357,6 +358,7 @@
   }
 
   async function openConversationModal(contact) {
+    window.dispatchEvent(new CustomEvent("iea:crm-media-reset"));
     css();
     const savedContact = contact || null;
     const title = savedContact ? "Iniciar conversa" : "Iniciar contato novo";

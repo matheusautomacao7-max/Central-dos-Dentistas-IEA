@@ -132,6 +132,15 @@
       });
   }
 
+  function resetMediaState() {
+    activeConversationId = null;
+    mediaItems = [];
+    mediaSignature = "";
+    clearTimeout(renderTimer);
+    removeOrphanedMedia();
+    removeLegacyPanels();
+  }
+
   function timelineElement() {
     removeLegacyPanels();
     var timeline = findTimeline();
@@ -535,6 +544,10 @@
     );
     scheduleRender();
   }
+
+  // A troca para Pacientes/Funil ou a abertura de um modal não pode carregar
+  // os anexos da conversa anterior por cima da nova tela.
+  window.addEventListener("iea:crm-media-reset", resetMediaState);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init, { once: true });
