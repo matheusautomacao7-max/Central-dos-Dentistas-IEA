@@ -765,6 +765,10 @@ def initialize_database() -> None:
         count = db.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
         if count:
             return
+        # A seedless homologation may be restarted after its owner account has
+        # already been created. There is no patient seed left to process.
+        if owner and not SEED_PATH.exists():
+            return
         professional_id = db.execute(
             "INSERT INTO professionals (name, role, is_owner) VALUES (?, ?, ?)",
             ("Dra. Dulce", "Cirurgiã-dentista", 1),
