@@ -406,6 +406,18 @@ def cleanup_retention_data(db) -> None:
     )
 
 
+def ensure_meta_test_crc_user(db, professional_id: int | None) -> None:
+    """Create a non-production CRC record only for the isolated Meta lab."""
+    if os.environ.get("META_TEST_MODE") != "1" or not professional_id:
+        return
+    db.execute(
+        """INSERT INTO users (professional_id, name, email, access_role, crm_access_level, service_sector)
+           VALUES (?, ?, ?, 'crc', 'admin', 'CRC')
+           ON CONFLICT(email) DO UPDATE SET active=1, crm_access_level='admin', service_sector='CRC'""",
+        (professional_id, "CRC de teste", "crc-teste@instituto.local"),
+    )
+
+
 def initialize_database() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -768,6 +780,7 @@ def initialize_database() -> None:
         # A seedless homologation may be restarted after its owner account has
         # already been created. There is no patient seed left to process.
         if owner and not SEED_PATH.exists():
+            ensure_meta_test_crc_user(db, int(owner[0]))
             return
         professional_id = db.execute(
             "INSERT INTO professionals (name, role, is_owner) VALUES (?, ?, ?)",
@@ -782,6 +795,7 @@ def initialize_database() -> None:
             "INSERT INTO users (professional_id, name, email, access_role) VALUES (?, ?, ?, ?)",
             (professional_id, "Dra. Dulce", "dulce@instituto.local", "owner"),
         )
+        ensure_meta_test_crc_user(db, professional_id)
         # Homologation can start without patient seed data. Production keeps its
         # existing initial-load behavior whenever the example file is present.
         seed = json.loads(SEED_PATH.read_text(encoding="utf-8")) if SEED_PATH.exists() else []
@@ -1507,7 +1521,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 self.send_header("Location", "/")
                 self.end_headers()
                 return
-            if parsed.path.startswith(CRM_NEXT_ROUTE) and user["access_role"] != "crc":
+            if parsed.path.startswith(CRM_NEXT_ROUTE) and user["access_role"] != "crc" and os.environ.get("META_TEST_MODE") != "1":
                 self.send_response(HTTPStatus.FOUND)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -3682,6 +3696,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def require_crc_access(self) -> bool:
         if self.authenticated_user and self.authenticated_user["access_role"] == "crc":
+            return True
+        if self.authenticated_user and os.environ.get("META_TEST_MODE") == "1" and self.can_manage_crm(self.authenticated_user):
             return True
         self.send_json({"error": "Acesso exclusivo da Central CRC."}, HTTPStatus.FORBIDDEN)
         return False

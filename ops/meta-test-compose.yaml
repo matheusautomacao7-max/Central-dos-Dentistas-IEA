@@ -26,6 +26,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       SESSION_SECURE: "1"
+      META_TEST_MODE: "1"
       APP_SECRET_KEY: ${APP_SECRET_KEY}
       APP_RELEASE_ID: ${APP_RELEASE_ID:-meta-test}
       DATABASE_URL: postgresql://instituto_ayub_meta_test:${POSTGRES_PASSWORD}@instituto-ayub-meta-test-postgres:5432/instituto_ayub_meta_test

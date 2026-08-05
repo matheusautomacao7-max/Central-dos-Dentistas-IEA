@@ -14,10 +14,15 @@ assert "meta_test_postgres_data" in COMPOSE
 assert "evolution" not in COMPOSE.lower()
 assert "n8n" not in COMPOSE.lower()
 assert "OPENAI_API_KEY" not in COMPOSE
+assert 'META_TEST_MODE: "1"' in COMPOSE
 assert "META_TEST_HOST" in COMPOSE
 assert "AUTH_SETUP_TOKEN" in ENV_EXAMPLE
 assert "Nunca reutilize o .env da produção" in ENV_EXAMPLE
 
 assert "../" not in COMPOSE
+
+SERVER = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+assert "ensure_meta_test_crc_user" in SERVER
+assert 'os.environ.get("META_TEST_MODE") == "1"' in SERVER
 
 print("meta-test-environment-ok")
