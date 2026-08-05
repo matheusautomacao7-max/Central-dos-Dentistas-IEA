@@ -369,13 +369,88 @@
       <label>Nome do contato<input class="iea-field" name="name" required placeholder="Nome do paciente" value="${esc(savedContact?.name || "")}"></label>
       <label>Telefone com DDD<input class="iea-field" name="phone" required inputmode="tel" placeholder="(65) 99999-9999" value="${esc(savedContact?.phone || "")}"></label>
       <label>Canal<select class="iea-field" name="channel_id" required><option value="">Selecione o número de saída</option></select></label>
-      <label>Primeira mensagem <span style="font-weight:400">(opcional)</span><textarea class="iea-field" name="text" rows="4" placeholder="Digite a mensagem ou deixe em branco para apenas abrir o atendimento"></textarea></label>
+      <label>Primeira mensagem <span style="font-weight:400">(opcional)</span>
+        <div style="position:relative">
+          <textarea class="iea-field" name="text" rows="4" placeholder="Digite a mensagem ou deixe em branco para apenas abrir o atendimento"></textarea>
+          <button type="button" data-first-audio-record aria-label="Gravar áudio" title="Gravar áudio" style="position:absolute;right:10px;bottom:10px;width:34px;height:34px;border:1px solid #d9e2ec;border-radius:50%;background:#fff;color:#ef4444;cursor:pointer;font-size:16px">●</button>
+        </div>
+        <div data-first-audio-status style="font-size:12px;color:#718295;margin-top:6px">Você também pode gravar um áudio para enviar ou transcrever.</div>
+        <div data-first-audio-actions hidden style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="iea-btn" data-first-audio-transcribe>Transcrever áudio</button>
+          <button type="button" class="iea-btn" data-first-audio-send>Enviar áudio</button>
+          <button type="button" class="iea-btn" data-first-audio-clear>Descartar</button>
+        </div>
+      </label>
       <div style="display:flex;justify-content:flex-end;gap:9px"><button type="button" class="iea-btn" data-cancel>Cancelar</button><button class="iea-btn iea-btn-primary">${savedContact ? "Iniciar conversa" : "Criar e iniciar atendimento"}</button></div>
       <div data-error style="color:#bd2436;font-size:13px"></div>
     </form></div>`;
     document.body.appendChild(overlay);
     overlay.querySelector("[data-cancel]").onclick = () => overlay.remove();
     overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+    let firstAudio = null;
+    let firstRecorder = null;
+    let firstChunks = [];
+    const audioRecordButton = overlay.querySelector("[data-first-audio-record]");
+    const audioStatus = overlay.querySelector("[data-first-audio-status]");
+    const audioActions = overlay.querySelector("[data-first-audio-actions]");
+    const audioText = overlay.querySelector("[name=text]");
+    const setAudioStatus = (text, color = "#718295") => { audioStatus.textContent = text; audioStatus.style.color = color; };
+    const blobToBase64 = blob => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    audioRecordButton.onclick = async () => {
+      if (firstRecorder && firstRecorder.state === "recording") {
+        firstRecorder.stop();
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        setAudioStatus("Este navegador não oferece gravação de áudio.", "#bd2436");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find(type => MediaRecorder.isTypeSupported(type)) || "";
+        firstChunks = [];
+        firstRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        firstRecorder.ondataavailable = event => { if (event.data?.size) firstChunks.push(event.data); };
+        firstRecorder.onstop = async () => {
+          stream.getTracks().forEach(track => track.stop());
+          const blob = new Blob(firstChunks, { type: firstRecorder.mimeType || mimeType || "audio/webm" });
+          if (!blob.size) { setAudioStatus("Nenhum áudio foi gravado.", "#bd2436"); return; }
+          firstAudio = { base64: await blobToBase64(blob), mimeType: blob.type || "audio/webm" };
+          audioActions.hidden = false;
+          audioRecordButton.textContent = "●";
+          audioRecordButton.style.background = "#fff";
+          setAudioStatus("Áudio gravado. Escolha transcrever, enviar ou descartar.", "#16834c");
+        };
+        firstRecorder.start();
+        audioRecordButton.textContent = "■";
+        audioRecordButton.style.background = "#fee2e2";
+        setAudioStatus("Gravando… clique novamente para parar.", "#bd2436");
+      } catch (error) {
+        setAudioStatus("Permita o uso do microfone para gravar o áudio.", "#bd2436");
+      }
+    };
+    overlay.querySelector("[data-first-audio-clear]").onclick = () => {
+      firstAudio = null; firstChunks = []; audioActions.hidden = true; audioText.value = "";
+      setAudioStatus("Áudio descartado. Você pode gravar outro.");
+    };
+    overlay.querySelector("[data-first-audio-transcribe]").onclick = async () => {
+      if (!firstAudio) return;
+      const button = overlay.querySelector("[data-first-audio-transcribe]");
+      button.disabled = true; setAudioStatus("Transcrevendo áudio…");
+      try {
+        const result = await request("/api/crm/transcribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(firstAudio) });
+        audioText.value = String(result.text || "").trim();
+        firstAudio = null; audioActions.hidden = true;
+        setAudioStatus("Transcrição inserida na mensagem. Revise antes de iniciar.", "#16834c");
+      } catch (error) { setAudioStatus(error.message || "Não foi possível transcrever o áudio.", "#bd2436"); }
+      finally { button.disabled = false; }
+    };
+    overlay.querySelector("[data-first-audio-send]").onclick = () => { setAudioStatus("O áudio será enviado ao iniciar o atendimento.", "#16834c"); };
     try {
       const channels = await request("/api/crm/channels");
       const select = overlay.querySelector("[name=channel_id]");
@@ -395,9 +470,11 @@
       }
       try {
         const text = String(form.get("text") || "").trim();
+        const payload = { name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text, open_only: !text && !firstAudio };
+        if (firstAudio) { payload.message_type = "audio"; payload.audio_base64 = firstAudio.base64; payload.mime_type = firstAudio.mimeType; payload.open_only = false; }
         await request("/api/crm/conversations", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text, open_only: !text })
+          body: JSON.stringify(payload)
         });
         overlay.remove();
         window.dispatchEvent(new CustomEvent("iea:crm-conversation-created"));

@@ -1615,6 +1615,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.save_crm_lia_settings(self.read_json())
         if parsed.path == "/api/crm/lia/ask":
             return self.ask_crm_lia(self.read_json())
+        if parsed.path == "/api/crm/transcribe":
+            return self.transcribe_crm_audio(self.read_json())
         if parsed.path == "/api/crm/meta/test/config":
             return self.save_crm_meta_test_config(self.read_json())
         if parsed.path == "/api/crm/goals":
@@ -8196,6 +8198,49 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               updated_at=datetime('now','localtime') WHERE contact_id=?""", (contact_id,))
         self.send_json({"updated": True, "id": contact_id, "is_internal": bool(is_internal)})
 
+    def transcribe_crm_audio(self, payload: dict) -> None:
+        """Transcreve um áudio curto da tela de contatos sem expor a chave da OpenAI."""
+        if not self.require_crc_access() or not self.require_crm_feature("contacts"):
+            return
+        if not OPENAI_API_KEY:
+            return self.send_json({"error": "A transcrição ainda não está configurada no servidor."}, HTTPStatus.CONFLICT)
+        encoded = str(payload.get("base64") or "").strip()
+        mime_type = str(payload.get("mimeType") or "audio/webm").split(";", 1)[0].strip().lower()
+        allowed = {"audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/x-m4a"}
+        if mime_type not in allowed:
+            return self.send_json({"error": "Formato de áudio não suportado para transcrição."}, HTTPStatus.BAD_REQUEST)
+        try:
+            audio_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, TypeError):
+            return self.send_json({"error": "A gravação de áudio está corrompida."}, HTTPStatus.BAD_REQUEST)
+        if not audio_bytes:
+            return self.send_json({"error": "Grave um áudio antes de transcrever."}, HTTPStatus.BAD_REQUEST)
+        if len(audio_bytes) > 8 * 1024 * 1024:
+            return self.send_json({"error": "O áudio ultrapassa o limite de 8 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "mp4", "audio/mpeg": "mp3", "audio/x-m4a": "m4a"}[mime_type]
+        boundary = "----iea-transcription-" + secrets.token_hex(12)
+        parts = []
+        parts.append((f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n".encode() + b"gpt-4o-mini-transcribe\r\n"))
+        parts.append((f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.{extension}\"\r\nContent-Type: {mime_type}\r\n\r\n".encode() + audio_bytes + b"\r\n"))
+        body = b"".join(parts) + f"--{boundary}--\r\n".encode()
+        request = Request("https://api.openai.com/v1/audio/transcriptions", data=body, method="POST", headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        })
+        try:
+            with urlopen(request, timeout=45) as response:
+                result = json.loads(response.read().decode("utf-8") or "{}")
+        except HTTPError as error:
+            detail = error.read().decode(errors="replace")[:300]
+            print(f"[crm-transcribe] OpenAI HTTP {error.code}: {detail}", flush=True)
+            return self.send_json({"error": "A transcrição ficou indisponível. Tente novamente ou envie o áudio."}, HTTPStatus.BAD_GATEWAY)
+        except (URLError, TimeoutError, ValueError):
+            return self.send_json({"error": "A transcrição ficou indisponível. Tente novamente."}, HTTPStatus.BAD_GATEWAY)
+        text = str(result.get("text") or "").strip()[:8000]
+        if not text:
+            return self.send_json({"error": "Não foi possível identificar fala nesse áudio."}, HTTPStatus.UNPROCESSABLE_ENTITY)
+        self.send_json({"text": text})
+
     def start_crm_conversation(self, payload: dict) -> None:
         """Open (or reopen) a conversation, optionally without sending a message."""
         if not self.require_crc_access():
@@ -8205,6 +8250,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         name = str(payload.get("name") or "").strip()[:160]
         phone = self.crm_phone(payload.get("phone"))
         body = str(payload.get("text") or "").strip()
+        message_type = str(payload.get("message_type") or "text").strip().lower()
+        has_audio = message_type == "audio" and bool(str(payload.get("audio_base64") or "").strip())
         open_only = bool(payload.get("open_only"))
         try:
             channel_id = int(payload.get("channel_id") or 0)
@@ -8216,8 +8263,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "O contato precisa ter um telefone válido com DDD."}, HTTPStatus.BAD_REQUEST)
         if not channel_id:
             return self.send_json({"error": "Selecione o número que enviará a mensagem."}, HTTPStatus.BAD_REQUEST)
-        if not open_only and not body:
+        if not open_only and not body and not has_audio:
             return self.send_json({"error": "Digite a primeira mensagem."}, HTTPStatus.BAD_REQUEST)
+        if message_type not in {"text", "audio"}:
+            return self.send_json({"error": "A primeira mensagem aceita texto ou áudio."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             channel = db.execute("SELECT id FROM crm_channels WHERE id=? AND active=1 AND sync_enabled=1", (channel_id,)).fetchone()
             if not channel:
@@ -8290,7 +8339,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if open_only:
             return self.send_json({"ok": True, "conversation_id": int(conversation["id"]),
                                    "reused": bool(existing), "channel_id": int(conversation["channel_id"])})
-        return self.send_crm_message(int(conversation["id"]), {"text": body})
+        message_payload = {"text": body, "message_type": message_type}
+        if has_audio:
+            message_payload.update({"audio_base64": payload.get("audio_base64"), "mime_type": payload.get("mime_type")})
+        return self.send_crm_message(int(conversation["id"]), message_payload)
 
     def resolve_crm_conversation(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
