@@ -65,6 +65,9 @@ EVOLUTION_API_URL = os.environ.get("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.environ.get("EVOLUTION_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+META_TEST_MODE = os.environ.get("META_TEST_MODE") == "1"
+META_TEST_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_TEST_WEBHOOK_VERIFY_TOKEN", "").strip()
+META_TEST_APP_SECRET = os.environ.get("META_TEST_APP_SECRET", "").strip()
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
 CLINIC_UTC_OFFSET_HOURS = int(os.environ.get("CLINIC_UTC_OFFSET_HOURS", "-4"))
@@ -942,6 +945,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_text(self, value: str, status=HTTPStatus.OK) -> None:
+        """Return the Meta webhook challenge without treating it as a JSON API response."""
+        body = value.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_csv(self, rows: list[dict], file_name: str) -> None:
         """Send a UTF-8 spreadsheet-friendly CSV without exposing raw database data."""
         output = io.StringIO()
@@ -1348,6 +1362,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             return self.get_health()
+        if parsed.path == "/api/integrations/meta/test/webhook":
+            return self.verify_meta_test_webhook(parse_qs(parsed.query))
         if parsed.path == "/api/release":
             return self.send_json({"release": RELEASE_ID})
         if parsed.path == "/api/auth/status":
@@ -1532,6 +1548,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/integrations/evolution/webhook":
             return self.receive_evolution_webhook(self.read_json(), parse_qs(parsed.query))
+        if parsed.path == "/api/integrations/meta/test/webhook":
+            return self.receive_meta_test_webhook()
         if parsed.path == "/api/integrations/crm/handoff":
             return self.receive_crm_handoff(self.read_json(), parse_qs(parsed.query))
         if parsed.path == "/api/integrations/crm/automation-event":
@@ -8743,6 +8761,67 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return {"id": 1, "enabled": 0, "test_mode": 1, "app_id": None,
                 "whatsapp_test_phone_number_id": None, "instagram_test_account_id": None}
 
+    def verify_meta_test_webhook(self, query: dict) -> None:
+        """Handle Meta's public GET verification for the isolated laboratory only."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+        mode = (query.get("hub.mode") or [""])[0]
+        token = (query.get("hub.verify_token") or [""])[0]
+        challenge = (query.get("hub.challenge") or [""])[0]
+        if mode != "subscribe" or not challenge or not META_TEST_WEBHOOK_VERIFY_TOKEN:
+            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        if not hmac.compare_digest(token, META_TEST_WEBHOOK_VERIFY_TOKEN):
+            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        return self.send_text(challenge)
+
+    def receive_meta_test_webhook(self) -> None:
+        """Accept signed Meta test events without ever creating CRM data or sending messages."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+        if not META_TEST_APP_SECRET:
+            return self.send_json({"error": "Webhook de teste ainda não foi configurado no servidor."}, HTTPStatus.SERVICE_UNAVAILABLE)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self.send_json({"error": "Tamanho do webhook inválido."}, HTTPStatus.BAD_REQUEST)
+        if length < 1 or length > MAX_BODY_BYTES:
+            return self.send_json({"error": "Corpo do webhook inválido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        raw_body = self.rfile.read(length)
+        supplied_signature = self.headers.get("X-Hub-Signature-256", "")
+        expected_signature = "sha256=" + hmac.new(
+            META_TEST_APP_SECRET.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest()
+        if not supplied_signature or not hmac.compare_digest(supplied_signature, expected_signature):
+            return self.send_json({"error": "Assinatura do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return self.send_json({"error": "Webhook não contém JSON válido."}, HTTPStatus.BAD_REQUEST)
+        if not isinstance(payload, dict):
+            return self.send_json({"error": "Webhook não contém objeto válido."}, HTTPStatus.BAD_REQUEST)
+        meta_object = str(payload.get("object") or "").strip()
+        platform = "instagram" if meta_object == "instagram" else "whatsapp"
+        entry_count = len(payload.get("entry") or []) if isinstance(payload.get("entry"), list) else 0
+        event_summary = {
+            "mode": "test_only",
+            "meta_object": meta_object or "unknown",
+            "entry_count": entry_count,
+            "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "note": "Evento assinado registrado sem criar conversa, contato, mensagem ou atendimento.",
+        }
+        event_key = hashlib.sha256(raw_body).hexdigest()
+        with connect() as db:
+            try:
+                db.execute(
+                    """INSERT INTO crm_meta_test_events(event_key,platform,event_type,payload_json,processing_status)
+                       VALUES(?,?,?,?,?)""",
+                    (event_key, platform, "webhook.received", json.dumps(event_summary, ensure_ascii=False), "Recebido somente em teste"),
+                )
+                duplicate = False
+            except IntegrityError:
+                duplicate = True
+        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate})
+
     def get_crm_meta_test_status(self) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
         if not self.can_manage_crm(self.authenticated_user):
@@ -8754,7 +8833,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "updated_at")},
             "event_count": int(total["total"] or 0),
             "status": "laboratory",
-            "safety": {"production_writes": False, "patient_messages": False, "webhook_enabled": False},
+            "webhook": {
+                "url": f"{PUBLIC_APP_URL}/api/integrations/meta/test/webhook",
+                "ready": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET),
+                "accepts_signed_events_only": True,
+            },
+            "safety": {"production_writes": False, "patient_messages": False, "webhook_enabled": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET)},
         })
 
     def save_crm_meta_test_config(self, payload: dict) -> None:

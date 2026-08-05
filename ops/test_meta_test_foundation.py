@@ -16,7 +16,7 @@ assert "def get_crm_meta_test_status" in SERVER
 assert "def save_crm_meta_test_config" in SERVER
 assert '"production_writes": False' in SERVER
 assert '"patient_messages": False' in SERVER
-assert '"webhook_enabled": False' in SERVER
+assert '"webhook_enabled": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET)' in SERVER
 assert "can_manage_crm(self.authenticated_user)" in SERVER
 
 print("meta-test-foundation-ok")

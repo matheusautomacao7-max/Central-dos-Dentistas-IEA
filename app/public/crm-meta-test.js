@@ -22,6 +22,7 @@
 
   function panelMarkup(status) {
     const settings = status.settings || {};
+    const webhook = status.webhook || {};
     const enabled = Number(settings.enabled) === 1;
     const badge = enabled
       ? '<span style="background:#dcfce7;color:#15803d;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800">Laboratório ativo</span>'
@@ -32,6 +33,10 @@
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:17px 0">
       ${[["WhatsApp de teste",settings.whatsapp_test_phone_number_id ? "ID salvo" : "Aguardando ID"],["Instagram de teste",settings.instagram_test_account_id ? "ID salvo" : "Aguardando ID"],["Eventos recebidos",String(status.event_count || 0)]].map(([title,value]) => `<div style="border:1px solid var(--line);background:var(--panel2);border-radius:11px;padding:12px"><small style="display:block;color:var(--text3);font-weight:700">${title}</small><strong style="display:block;margin-top:5px;font-size:14px">${escapeHtml(value)}</strong></div>`).join("")}
+    </div>
+    <div style="border:1px solid #bcd1ff;background:rgba(255,255,255,.58);border-radius:11px;padding:13px 14px;margin:0 0 17px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div><small style="display:block;color:#175cd3;font-weight:900;letter-spacing:.04em">WEBHOOK DE TESTE</small><strong style="display:block;margin-top:4px;color:var(--text);font-size:14px">${webhook.ready ? "Pronto para validar na Meta" : "Aguardando configuração segura no servidor"}</strong><code style="display:block;margin-top:6px;word-break:break-all;color:var(--text2);font:12px ui-monospace,monospace">${escapeHtml(webhook.url || "")}</code><small style="display:block;margin-top:7px;color:var(--text3);line-height:1.45">Aceita somente eventos assinados. Nesta fase, cada evento é apenas registrado no laboratório — não cria conversa, contato ou mensagem.</small></div>
+      <button type="button" data-meta-copy-webhook style="border:1px solid #bcd1ff;background:#fff;color:#175cd3;border-radius:8px;padding:8px 11px;font:800 12px inherit;cursor:pointer">Copiar URL</button>
     </div>
     <form data-meta-config style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;border-top:1px solid var(--line);padding-top:16px">
       <label style="display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--text2)">ID do App Meta<input name="app_id" value="${escapeHtml(settings.app_id)}" placeholder="Ex.: 123456789" style="padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);font:inherit"></label>
@@ -74,6 +79,18 @@
   }
 
   document.addEventListener("click", event => {
+    const copy = event.target.closest("[data-meta-copy-webhook]");
+    if (copy) {
+      event.preventDefault();
+      const url = copy.closest("section")?.querySelector("code")?.textContent || "";
+      if (!url) return;
+      navigator.clipboard?.writeText(url).then(() => {
+        const original = copy.textContent;
+        copy.textContent = "URL copiada";
+        setTimeout(() => { copy.textContent = original; }, 1400);
+      }).catch(() => window.prompt("Copie a URL do webhook:", url));
+      return;
+    }
     if (!event.target.closest("[data-meta-refresh]")) return;
     event.preventDefault();
     refresh();
