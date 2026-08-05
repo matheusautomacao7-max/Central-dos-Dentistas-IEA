@@ -778,7 +778,9 @@ def initialize_database() -> None:
             "INSERT INTO users (professional_id, name, email, access_role) VALUES (?, ?, ?, ?)",
             (professional_id, "Dra. Dulce", "dulce@instituto.local", "owner"),
         )
-        seed = json.loads(SEED_PATH.read_text(encoding="utf-8"))
+        # Homologation can start without patient seed data. Production keeps its
+        # existing initial-load behavior whenever the example file is present.
+        seed = json.loads(SEED_PATH.read_text(encoding="utf-8")) if SEED_PATH.exists() else []
         for patient in seed:
             patient_id = db.execute(
                 """
