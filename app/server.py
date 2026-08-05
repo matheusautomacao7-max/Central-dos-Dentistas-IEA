@@ -7863,6 +7863,45 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchone()
         self.send_json(dict(result), HTTPStatus.CREATED)
 
+    def send_crm_meta_test_text_message(self, conversation_id: int, channel: dict, body: str) -> None:
+        """Reply with text through the same isolated Meta test conversation."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "O canal de teste da Meta nÃ£o estÃ¡ disponÃ­vel neste ambiente."}, HTTPStatus.CONFLICT)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+        phone_number_id = str(settings.get("whatsapp_test_phone_number_id") or "").strip()
+        recipient_phone = self.meta_test_recipient_phone(channel.get("phone"))
+        try:
+            external_id = self.send_meta_test_text(phone_number_id, recipient_phone, body)
+        except RuntimeError as error:
+            return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
+        service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
+        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+        with connect() as db:
+            message_row = db.execute(
+                """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,sender_name,sent_by_user_id,
+                                                author_type,author_label,source_channel,delivery_status,message_at)
+                   VALUES(?,?,'outbound','text',?,?,?,'human',?,'meta-test','Enviada',datetime('now','localtime'))
+                   RETURNING id""",
+                (conversation_id, external_id, body, self.authenticated_user["name"], self.authenticated_user["id"], author_label),
+            ).fetchone()
+            message_id = int(message_row["id"] if hasattr(message_row, "keys") else message_row[0])
+            db.execute(
+                """UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
+                   first_response_at=COALESCE(first_response_at,datetime('now','localtime')),automation_state='paused',unread_count=0,
+                   last_direction='outbound',last_message_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
+                   WHERE id=? AND status<>'Resolvida'""",
+                (conversation_id,),
+            )
+            self.crm_record_event(db, conversation_id, "meta.test.text.sent", {"message_type": "text"})
+            result = db.execute(
+                """SELECT id,conversation_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,
+                          author_type,author_label,source_channel,delivery_status,message_at
+                   FROM crm_messages WHERE id=?""",
+                (message_id,),
+            ).fetchone()
+        self.send_json(dict(result), HTTPStatus.CREATED)
+
     def send_crm_message(self, conversation_id: int, payload: dict) -> None:
         if not self.require_crc_access(): return
         if not self.require_crm_feature("inbox"):
@@ -7966,9 +8005,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error":"Inicie o atendimento antes de enviar mensagens para um contato externo."},HTTPStatus.CONFLICT)
             row = dict(row)
         if row["instance_name"] == "meta-test-whatsapp":
-            if message_type != "audio":
-                return self.send_json({"error": "No laboratÃ³rio da Meta, esta etapa libera apenas o envio de Ã¡udio."}, HTTPStatus.CONFLICT)
-            return self.send_crm_meta_test_audio_message(conversation_id, row, audio_bytes, mime_type or "audio/ogg", duration_seconds)
+            if message_type == "audio":
+                return self.send_crm_meta_test_audio_message(conversation_id, row, audio_bytes, mime_type or "audio/ogg", duration_seconds)
+            if message_type == "text":
+                return self.send_crm_meta_test_text_message(conversation_id, row, body)
+            return self.send_json({"error": "No laboratÃ³rio da Meta, esta etapa libera texto e Ã¡udio."}, HTTPStatus.CONFLICT)
         configured_url, configured_key = ("", "")
         if not row["evolution_base_url"] or not row["evolution_api_key"]:
             configured_url, configured_key = self.evolution_credentials()  # CRM_OUTBOUND_SHORT_TRANSACTIONS_V1
@@ -9043,6 +9084,24 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
         if not external_id:
             raise RuntimeError("A Meta nÃ£o confirmou o envio do Ã¡udio.")
+        return external_id
+
+    def send_meta_test_text(self, phone_number_id: str, recipient_phone: str, body: str) -> str:
+        """Send a text reply only after the test recipient opened the conversation."""
+        if not phone_number_id or not recipient_phone:
+            raise RuntimeError("O nÃºmero de teste da Meta ou o destinatÃ¡rio nÃ£o foi configurado.")
+        if not META_TEST_MODE:
+            raise RuntimeError("O envio pela Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio configurado.")
+        sent = self.meta_test_api_request(
+            f"/{quote(str(phone_number_id), safe='')}/messages",
+            method="POST",
+            payload={"messaging_product": "whatsapp", "to": recipient_phone, "type": "text", "text": {"body": body}},
+            timeout=30,
+        )
+        messages = sent.get("messages") if isinstance(sent.get("messages"), list) else []
+        external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
+        if not external_id:
+            raise RuntimeError("A Meta nÃ£o confirmou o envio da mensagem.")
         return external_id
 
     def mirror_meta_test_messages_to_crm(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
