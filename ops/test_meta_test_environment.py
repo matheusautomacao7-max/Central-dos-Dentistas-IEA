@@ -18,4 +18,6 @@ assert "META_TEST_HOST" in COMPOSE
 assert "AUTH_SETUP_TOKEN" in ENV_EXAMPLE
 assert "Nunca reutilize o .env da produção" in ENV_EXAMPLE
 
+assert "../" not in COMPOSE
+
 print("meta-test-environment-ok")
