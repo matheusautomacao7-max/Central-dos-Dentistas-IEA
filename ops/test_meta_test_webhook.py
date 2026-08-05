@@ -17,7 +17,9 @@ assert "X-Hub-Signature-256" in SERVER
 assert "hmac.compare_digest" in SERVER
 assert '"webhook.received"' in SERVER
 assert '"Recebido somente em teste"' in SERVER
-assert "INSERT INTO crm_conversations" not in SERVER[SERVER.index("def receive_meta_test_webhook"):SERVER.index("def get_crm_meta_test_status")]
+webhook = SERVER[SERVER.index("def receive_meta_test_webhook"):SERVER.index("def get_crm_meta_test_status")]
+assert "mirror_meta_test_messages_to_crm" in webhook
+assert "META_TEST_MODE" in webhook
 assert "WEBHOOK DE TESTE" in BRIDGE
 assert "data-meta-copy-webhook" in BRIDGE
 

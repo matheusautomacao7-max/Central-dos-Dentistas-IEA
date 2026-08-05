@@ -497,7 +497,7 @@ def initialize_database() -> None:
         if lia_settings_columns and "general_assistance" not in lia_settings_columns:
             db.execute("ALTER TABLE crm_lia_settings ADD COLUMN general_assistance INTEGER NOT NULL DEFAULT 0")
         meta_test_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_meta_test_settings)").fetchall()}
-        if "authorized_test_phone" not in meta_test_settings_columns:
+        if meta_test_settings_columns and "authorized_test_phone" not in meta_test_settings_columns:
             db.execute("ALTER TABLE crm_meta_test_settings ADD COLUMN authorized_test_phone TEXT")
         crm_resolution_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
@@ -3119,7 +3119,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if items is None:
             return self.send_json({"error": "Auditoria expirada. Rode a auditoria novamente."}, HTTPStatus.GONE)
         allow_partial = payload.get("allow_partial") is True
-        imported = updated = unchanged = skipped = 0
+        imported = updated = scheduled = unchanged = skipped = 0
+        today = datetime.now().date().isoformat()
         with connect() as db:
             professionals = {self.import_key(row["name"]): row["id"] for row in db.execute("SELECT id, name FROM professionals WHERE active=1").fetchall()}
             missing = sorted({item["professional"] for item in items if self.import_key(item["professional"]) not in professionals})
@@ -3133,7 +3134,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 items = importable_items
             assignments = {}
             for row in db.execute("""
-                SELECT p.id, p.name, pa.professional_id, f.last_visit
+                SELECT p.id, p.name, pa.professional_id, f.last_visit, f.next_appointment
                 FROM patients p
                 JOIN patient_assignments pa ON pa.patient_id=p.id AND pa.is_primary=1
                 JOIN patient_followup f ON f.patient_id=p.id
@@ -3141,7 +3142,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 key = (self.import_key(row["name"]), row["professional_id"])
                 current = assignments.get(key)
                 if not current or (row["last_visit"] or "") > (current["last_visit"] or ""):
-                    assignments[key] = {"id": row["id"], "last_visit": row["last_visit"]}
+                    assignments[key] = {"id": row["id"], "last_visit": row["last_visit"], "next_appointment": row["next_appointment"]}
             for item in items:
                 professional_id = professionals[self.import_key(item["professional"])]
                 key = (self.import_key(item["patient"]), professional_id)
@@ -3150,8 +3151,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 status = requested_status or ("Tratamento" if "TRATAMENTO" in self.import_key(item["category"]) else "Consulta")
                 base_status, custom_status = self.patient_status_values(status)
                 self.ensure_patient_status(db, status)
+                is_future_appointment = item["date"] > today
                 if existing:
                     patient_id = existing["id"]
+                    if is_future_appointment:
+                        db.execute("UPDATE patients SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (base_status, patient_id))
+                        db.execute("UPDATE patient_followup SET next_appointment=?, next_appointment_type='Programado', custom_status=? WHERE patient_id=?", (item["date"], custom_status, patient_id))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        existing["next_appointment"] = item["date"]
+                        scheduled += 1
+                        continue
                     if existing["last_visit"] and item["date"] <= existing["last_visit"]:
                         unchanged += 1
                         continue
@@ -3163,12 +3172,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 else:
                     patient_id = db.execute("INSERT INTO patients (name, status) VALUES (?, ?)", (item["patient"], base_status)).lastrowid
                     db.execute("INSERT INTO patient_assignments (patient_id, professional_id, is_primary) VALUES (?, ?, 1)", (patient_id, professional_id))
-                    db.execute("INSERT INTO patient_followup (patient_id, last_visit, custom_status) VALUES (?, ?, ?)", (patient_id, item["date"], custom_status))
-                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
-                    assignments[key] = {"id": patient_id, "last_visit": item["date"]}
+                    if is_future_appointment:
+                        db.execute("INSERT INTO patient_followup (patient_id, next_appointment, next_appointment_type, custom_status) VALUES (?, ?, 'Programado', ?)", (patient_id, item["date"], custom_status))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        assignments[key] = {"id": patient_id, "last_visit": None, "next_appointment": item["date"]}
+                        scheduled += 1
+                    else:
+                        db.execute("INSERT INTO patient_followup (patient_id, last_visit, custom_status) VALUES (?, ?, ?)", (patient_id, item["date"], custom_status))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
+                        assignments[key] = {"id": patient_id, "last_visit": item["date"], "next_appointment": None}
                     imported += 1
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
-        self.send_json({"imported": imported, "updated": updated, "unchanged": unchanged, "skipped": skipped, "skipped_professionals": missing if skipped else [], "total": len(items)})
+        self.send_json({"imported": imported, "updated": updated, "scheduled": scheduled, "unchanged": unchanged, "skipped": skipped, "skipped_professionals": missing if skipped else [], "total": len(items)})
 
     def update_professional_photo(self, professional_id: int, payload: dict, audit_event: str | None = None) -> None:
         image = str(payload.get("image") or "")
@@ -8824,6 +8839,96 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         pass
         return recorded
 
+    def mirror_meta_test_messages_to_crm(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
+        """Mirror the explicitly authorized Meta test number into the test CRM inbox.
+
+        This method is reachable only from the META_TEST_MODE webhook.  It never
+        sends a WhatsApp message and does not run in the official environment.
+        Meta message IDs are used as external IDs, making delivery idempotent.
+        """
+        if not META_TEST_MODE or not authorized_phone:
+            return 0
+        db.execute(
+            """INSERT INTO crm_channels(instance_name,display_name,active,sync_enabled,connection_status,last_event_at)
+               VALUES('meta-test-whatsapp','Meta · Teste',1,1,'Laboratório',datetime('now','localtime'))
+               ON CONFLICT(instance_name) DO UPDATE SET display_name='Meta · Teste',active=1,sync_enabled=1,
+                   connection_status='Laboratório',last_event_at=datetime('now','localtime'),updated_at=datetime('now','localtime')"""
+        )
+        channel_id = db.execute(
+            "SELECT id FROM crm_channels WHERE instance_name='meta-test-whatsapp'"
+        ).fetchone()[0]
+        db.execute("INSERT INTO crm_tags(name,color) VALUES('Meta · Teste','#2563eb') ON CONFLICT(name) DO NOTHING")
+        meta_tag_id = db.execute("SELECT id FROM crm_tags WHERE name='Meta · Teste'").fetchone()[0]
+        mirrored = 0
+        for entry in payload.get("entry") or []:
+            if not isinstance(entry, dict):
+                continue
+            for change in entry.get("changes") or []:
+                value = change.get("value") if isinstance(change, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                contacts = value.get("contacts") if isinstance(value.get("contacts"), list) else []
+                contact_profile = contacts[0].get("profile") if contacts and isinstance(contacts[0], dict) else {}
+                contact_name = str((contact_profile or {}).get("name") or "Contato Meta de teste").strip()[:160]
+                for message in value.get("messages") or []:
+                    if not isinstance(message, dict) or self.crm_phone(message.get("from")) != authorized_phone:
+                        continue
+                    message_id = str(message.get("id") or "").strip()
+                    if not message_id:
+                        continue
+                    try:
+                        timestamp = int(message.get("timestamp") or 0)
+                        message_at = datetime.fromtimestamp(timestamp, timezone.utc).astimezone(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S") if timestamp else datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+                    except (TypeError, ValueError, OSError):
+                        message_at = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+                    message_type = str(message.get("type") or "unknown")[:40]
+                    body = self.meta_test_message_preview(message) or f"[Mensagem Meta de teste: {message_type}]"
+                    db.execute(
+                        """INSERT INTO crm_contacts(name,phone) VALUES(?,?)
+                           ON CONFLICT(phone) DO UPDATE SET
+                             name=CASE WHEN crm_contacts.name=crm_contacts.phone OR crm_contacts.name='Contato Meta de teste'
+                                       THEN excluded.name ELSE crm_contacts.name END,
+                             updated_at=datetime('now','localtime')""",
+                        (contact_name, authorized_phone),
+                    )
+                    contact_id = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (authorized_phone,)).fetchone()[0]
+                    db.execute(
+                        """INSERT INTO crm_conversations(channel_id,contact_id,status,priority,queue_name,pipeline_stage,
+                                                            unread_count,last_direction,last_message_at,queue_entered_at)
+                           VALUES(?,?,'Aberta','Normal','Entrada','Novo',1,'inbound',?,?)
+                           ON CONFLICT(channel_id,contact_id) DO UPDATE SET
+                              status='Aberta', pipeline_stage='Novo', resolved_at=NULL, resolved_by_user_id=NULL,
+                              assigned_user_id=CASE WHEN crm_conversations.status='Resolvida' THEN NULL ELSE crm_conversations.assigned_user_id END,
+                              assigned_at=CASE WHEN crm_conversations.status='Resolvida' THEN NULL ELSE crm_conversations.assigned_at END,
+                              queue_entered_at=CASE WHEN crm_conversations.status='Resolvida' OR crm_conversations.queue_entered_at IS NULL
+                                                    THEN excluded.last_message_at ELSE crm_conversations.queue_entered_at END,
+                              last_direction='inbound', last_message_at=excluded.last_message_at,
+                              unread_count=crm_conversations.unread_count+1, updated_at=datetime('now','localtime')""",
+                        (channel_id, contact_id, message_at, message_at),
+                    )
+                    conversation_id = db.execute(
+                        "SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?", (channel_id, contact_id)
+                    ).fetchone()[0]
+                    db.execute(
+                        "INSERT INTO crm_conversation_tags(conversation_id,tag_id) VALUES(?,?) ON CONFLICT(conversation_id,tag_id) DO NOTHING",
+                        (conversation_id, meta_tag_id),
+                    )
+                    inserted = db.execute(
+                        """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,sender_name,
+                                                    author_type,author_label,source_channel,delivery_status,message_at)
+                           VALUES(?,?, 'inbound','text',? ,?,'patient',?,'meta-test','Recebida',?)
+                           ON CONFLICT(external_message_id) DO NOTHING""",
+                        (conversation_id, message_id, body, contact_name, contact_name, message_at),
+                    )
+                    if inserted.rowcount:
+                        mirrored += 1
+                        db.execute(
+                            """INSERT INTO crm_conversation_events(conversation_id,event_type,actor_name,details_json)
+                               VALUES(?,'meta.test.received','Meta · Teste',?)""",
+                            (conversation_id, json.dumps({"event_key": event_key, "message_id": message_id}, ensure_ascii=False)),
+                        )
+        return mirrored
+
     def verify_meta_test_webhook(self, query: dict) -> None:
         """Handle Meta's public GET verification for the isolated laboratory only."""
         if not META_TEST_MODE:
@@ -8838,7 +8943,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return self.send_text(challenge)
 
     def receive_meta_test_webhook(self) -> None:
-        """Accept signed Meta test events without ever creating CRM data or sending messages."""
+        """Accept signed Meta test events and mirror only the authorized test number."""
         if not META_TEST_MODE:
             return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
         if not META_TEST_APP_SECRET:
@@ -8870,7 +8975,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "meta_object": meta_object or "unknown",
             "entry_count": entry_count,
             "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "note": "Evento assinado registrado sem criar conversa, contato, mensagem ou atendimento.",
+            "note": "Evento assinado recebido exclusivamente no laboratório Meta.",
         }
         event_key = hashlib.sha256(raw_body).hexdigest()
         with connect() as db:
@@ -8887,7 +8992,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             recorded_messages = 0 if duplicate else self.record_meta_test_messages(
                 db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
             )
-        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate, "laboratory_messages": recorded_messages})
+            mirrored_messages = 0 if duplicate else self.mirror_meta_test_messages_to_crm(
+                db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
+            )
+            if mirrored_messages:
+                db.execute("UPDATE crm_meta_test_events SET processing_status='Espelhado no Inbox de teste' WHERE event_key=?", (event_key,))
+        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate,
+                        "laboratory_messages": recorded_messages, "inbox_messages": mirrored_messages})
 
     def get_crm_meta_test_status(self) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
