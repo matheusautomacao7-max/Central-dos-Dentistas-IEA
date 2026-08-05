@@ -9672,7 +9672,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         # The bundled CRM is generated as one large JSON payload. Serving a
         # stale HTML or bridge file makes browsers execute a mismatched
         # version, so always revalidate these operational screens.
-        if target.suffix == ".html" or target.name == "crm-evolution-bridge.js":
+        if target.suffix == ".html" or target.name in {"crm-evolution-bridge.js", "crm-meta-test.js"}:
             self.send_header("Cache-Control", "no-store, max-age=0")
         self.send_security_headers(
             allow_bundled_ui=relative == "crm-whatsapp.html",
