@@ -1157,10 +1157,12 @@
   let lastIntegrationRender = 0;
   let lastConversationOriginRun = 0;
   let pendingEnhancementMutations = 0;
+  let navStabilizationTimer = null;
   const ENHANCE_THROTTLE_MS = 900;
   const CAMPAIGN_REFRESH_MS = 7000;
   const INTEGRATION_REFRESH_MS = 12000;
   const CONVERSATION_ORIGIN_MS = 1800;
+  const SIDEBAR_STABILIZE_DELAY_MS = 260;
 
   function getActiveScreen() {
     const firstTitle = document.querySelector("h1");
@@ -1237,25 +1239,37 @@
     }
   }
   const observer = new MutationObserver(mutations => {
+    let shouldRun = false;
     for (const mutation of mutations) {
       if (mutation.type !== "childList") continue;
-      if (mutation.addedNodes.length || mutation.removedNodes.length) {
+      if ((mutation.addedNodes.length || mutation.removedNodes.length) && !shouldRun) {
         for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
-          if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          const element = node;
-          if (element.matches && (element.matches("h1") || element.matches("h2") || element.matches("aside") || element.matches("main") || element.matches("section"))) {
-            scheduleEnhancements();
-            return;
-          }
-          if (element.querySelector && element.querySelector("h1,h2,aside,main,section")) {
-            scheduleEnhancements();
-            return;
+          if (!(node instanceof Element)) continue;
+          if (
+            node.matches("h1,h2,aside,main,section,header,nav") ||
+            node.querySelector?.("h1,h2,aside,main,section,header,nav")
+          ) {
+            shouldRun = true;
+            break;
           }
         }
       }
+      if (!shouldRun && mutation.target instanceof Element) {
+        shouldRun = mutation.target.matches("aside,main,section,header,nav");
+      }
+      if (shouldRun) break;
     }
-    scheduleEnhancements();
+    if (shouldRun) scheduleEnhancements();
   });
+  document.addEventListener("click", event => {
+    const target = event.target.closest("a,button");
+    if (!target || !target.closest("aside")) return;
+    if (navStabilizationTimer) clearTimeout(navStabilizationTimer);
+    navStabilizationTimer = setTimeout(() => {
+      navStabilizationTimer = null;
+      scheduleEnhancements();
+    }, SIDEBAR_STABILIZE_DELAY_MS);
+  }, true);
   observer.observe(document.body || document.documentElement, {childList: true, subtree: true});
   scheduleEnhancements();
   document.addEventListener("visibilitychange", () => {
