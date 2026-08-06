@@ -6079,7 +6079,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             days = max(1, min(180, int(query.get("days", ["30"])[0] or 30)))
         except (TypeError, ValueError):
             days = 30
+        mine_flag = str(query.get("mine", ["0"])[0]).strip().lower() in {"1", "true", "yes", "on"}
+        channel_filter = str(query.get("channel", [""])[0]).strip().lower()
+        if channel_filter in {"whatsapp", "wpp", "wa"}:
+            provider_filter = ("evolution", "meta")
+        elif channel_filter in {"evolution", "baileys", "evolution-api"}:
+            provider_filter = ("evolution",)
+        elif channel_filter in {"meta", "facebook", "instagram", "meta-api"}:
+            provider_filter = ("meta",)
+        else:
+            provider_filter = None
         event_scope_sql, event_scope_params = self.crm_event_channel_scope_clause("e")
+        extra_where = ""
+        query_params = list(event_scope_params)
+        if mine_flag:
+            extra_where += " AND cv.assigned_user_id=?"
+            query_params.append(self.authenticated_user["id"])
+        if provider_filter:
+            placeholders = ",".join(["?"] * len(provider_filter))
+            extra_where += f" AND COALESCE(LOWER(ch.provider),LOWER(ch2.provider)) IN ({placeholders})"
+            query_params.extend(provider_filter)
         with connect() as db:
             self.crm_reconcile_campaign_links(db, event_scope_sql, event_scope_params)
             rows = db.execute(
@@ -6111,11 +6130,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                           SUM(CASE WHEN event_type LIKE '%fail%' OR lower(COALESCE(outcome,''))='failed' THEN 1 ELSE 0 END) AS failures,
                           MAX(COALESCE(occurred_at,received_at)) AS last_event_at
                    FROM crm_n8n_patient_events e
+                   LEFT JOIN crm_conversations cv ON cv.id = e.conversation_id
+                   LEFT JOIN crm_channels ch ON ch.id = cv.channel_id
+                   LEFT JOIN crm_channels ch2 ON (LOWER(TRIM(ch2.instance_name))=LOWER(TRIM(e.channel_name))
+                                                OR LOWER(TRIM(ch2.display_name))=LOWER(TRIM(e.channel_name)))
                    WHERE {event_scope_sql}
+                     {extra_where}
                      AND datetime(COALESCE(occurred_at,received_at)) >= datetime('now','localtime', ?)
                    GROUP BY COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'AutomaÃ§Ã£o sem campanha')
-                   ORDER BY last_event_at DESC""".format(event_scope_sql=event_scope_sql),
-                (*event_scope_params, f"-{days} days"),
+                   ORDER BY last_event_at DESC""".format(event_scope_sql=event_scope_sql, extra_where=extra_where),
+                (*query_params, f"-{days} days"),
             ).fetchall()
         campaigns = []
         for row in rows:
@@ -6143,7 +6167,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             days = max(1, min(180, int(query.get("days", ["30"])[0] or 30)))
         except (TypeError, ValueError):
             days = 30
+        mine_flag = str(query.get("mine", ["0"])[0]).strip().lower() in {"1", "true", "yes", "on"}
+        channel_filter = str(query.get("channel", [""])[0]).strip().lower()
+        if channel_filter in {"whatsapp", "wpp", "wa"}:
+            provider_filter = ("evolution", "meta")
+        elif channel_filter in {"evolution", "baileys", "evolution-api"}:
+            provider_filter = ("evolution",)
+        elif channel_filter in {"meta", "facebook", "instagram", "meta-api"}:
+            provider_filter = ("meta",)
+        else:
+            provider_filter = None
         event_scope_sql, event_scope_params = self.crm_event_channel_scope_clause("e")
+        extra_where = ""
+        query_params = list(event_scope_params)
+        if mine_flag:
+            extra_where += " AND cv.assigned_user_id=?"
+            query_params.append(self.authenticated_user["id"])
+        if provider_filter:
+            placeholders = ",".join(["?"] * len(provider_filter))
+            extra_where += f" AND COALESCE(LOWER(ch.provider),LOWER(ch2.provider)) IN ({placeholders})"
+            query_params.extend(provider_filter)
         with connect() as db:
             rows = db.execute(
                 """SELECT e.id,e.event_key,e.patient_name,e.phone,e.conversation_id,
@@ -6156,15 +6199,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                      WHERE ctt.conversation_id=cv.id),'') AS tag_names
                      FROM crm_n8n_patient_events e
                      LEFT JOIN crm_conversations cv ON cv.id=e.conversation_id
+                     LEFT JOIN crm_channels ch ON ch.id = cv.channel_id
+                     LEFT JOIN crm_channels ch2 ON (LOWER(TRIM(ch2.instance_name))=LOWER(TRIM(e.channel_name))
+                                                  OR LOWER(TRIM(ch2.display_name))=LOWER(TRIM(e.channel_name)))
                      LEFT JOIN crm_contacts ct ON ct.id=COALESCE(e.contact_id,cv.contact_id)
                      LEFT JOIN users u ON u.id=cv.assigned_user_id
                     WHERE {event_scope_sql}
                       AND COALESCE(NULLIF(e.campaign_id,''),NULLIF(e.flow_name,''),'AutomaÃ§Ã£o sem campanha')=?
                       AND e.event_type IN ('patient.replied','message.received')
+                      {extra_where}
                       AND datetime(COALESCE(e.occurred_at,e.received_at)) >= datetime('now','localtime', ?)
                     ORDER BY datetime(COALESCE(e.occurred_at,e.received_at)) DESC,e.id DESC
-                    LIMIT 1000""".format(event_scope_sql=event_scope_sql),
-                (*event_scope_params, campaign_key, f"-{days} days"),
+                    LIMIT 1000""".format(event_scope_sql=event_scope_sql, extra_where=extra_where),
+                (*query_params, campaign_key, f"-{days} days"),
             ).fetchall()
         items = []
         seen = set()
@@ -7686,10 +7733,24 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             except IntegrityError:
                 pass
             if run_id:
-                if event_type in {"workflow.finished", "campaign.finished"}:
+                normalized_event_type = event_type.lower()
+                if (
+                    normalized_event_type in {
+                        "workflow.finished", "campaign.finished", "run.completed", "workflow.completed",
+                        "campaign.completed", "run.complete", "workflow.complete", "campaign.complete"
+                    }
+                    or (
+                        normalized_event_type.endswith(".finished")
+                        and normalized_event_type.startswith(("workflow.", "campaign.", "run."))
+                        and normalized_event_type not in {"workflow.failed", "campaign.failed", "run.failed"}
+                    )
+                ):
                     run_status = "success"
                     finished_sql = "datetime('now','localtime')"
-                elif event_type in {"workflow.failed", "campaign.failed"}:
+                elif normalized_event_type in {
+                    "workflow.failed", "campaign.failed", "run.failed",
+                    "workflow.error", "campaign.error", "run.error", "run.crashed", "workflow.crashed", "campaign.crashed"
+                }:
                     run_status = "failed"
                     finished_sql = "datetime('now','localtime')"
                 else:
@@ -7718,7 +7779,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                        AND event_type IN ('patient.replied','message.received')),
                         failed_items=(SELECT COUNT(DISTINCT COALESCE(NULLIF(phone,''),event_key))
                                       FROM crm_n8n_patient_events WHERE run_id=?
-                                      AND event_type IN ('message.failed','item.failed','workflow.failed','campaign.failed')),
+                                      AND (event_type='message.failed' OR event_type='item.failed'
+                                           OR event_type='workflow.failed' OR event_type='campaign.failed'
+                                           OR event_type='run.failed' OR event_type='run.error'
+                                           OR event_type='workflow.error' OR event_type='campaign.error'
+                                           OR event_type='workflow.crashed' OR event_type='campaign.crashed')),
                         appointment_items=(SELECT COUNT(DISTINCT COALESCE(NULLIF(phone,''),event_key))
                                            FROM crm_n8n_patient_events WHERE run_id=?
                                            AND event_type='appointment.confirmed'),
@@ -7747,7 +7812,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   pipeline_stage='Novo',assigned_user_id=NULL,assigned_at=NULL,
                                   queue_entered_at=COALESCE(queue_entered_at,datetime('now','localtime')),
                                   updated_at=datetime('now','localtime') WHERE id=?""",(reason,conversation_id))
-                elif event_type in {"appointment.confirmed","conversation.closed","campaign.finished"}:
+                elif event_type in {
+                    "appointment.confirmed","conversation.closed","campaign.finished","run.completed","run.complete",
+                    "workflow.finished","workflow.completed","campaign.completed","workflow.complete","campaign.complete"
+                }:
                     db.execute("""UPDATE crm_conversations SET automation_state='completed',automation_flow=COALESCE(?,automation_flow),
                                   updated_at=datetime('now','localtime') WHERE id=?""",(flow_name,conversation_id))
                 elif event_type in {"patient.replied", "message.received"}:

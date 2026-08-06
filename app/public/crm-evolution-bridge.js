@@ -1,7 +1,7 @@
-(() => {
-  // O aplicativo-base reconstrói partes da tela ao trocar de aba. Sem esta
+﻿(() => {
+  // O aplicativo-base reconstrÃ³i partes da tela ao trocar de aba. Sem esta
   // trava, o mesmo bridge era executado novamente e sobrescrevia o resultado
-  // já recebido do n8n pelo estado inicial de carregamento.
+  // jÃ¡ recebido do n8n pelo estado inicial de carregamento.
   if (window.__ieaCrmEvolutionBridgeInstalled) return;
   window.__ieaCrmEvolutionBridgeInstalled = true;
   let loading = false;
@@ -22,7 +22,7 @@
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[character]);
   const findButton = label => [...document.querySelectorAll("button")].find(button => text(button) === label);
   const findModal = () => {
-    const title = [...document.querySelectorAll("h2")].find(element => text(element) === "Conectar número WhatsApp");
+    const title = [...document.querySelectorAll("h2")].find(element => text(element) === "Conectar nÃºmero WhatsApp");
     return title?.parentElement || null;
   };
 
@@ -36,15 +36,15 @@
   function n8nOperationsLoadingMarkup() {
     return `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:17px">
-        <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">CENTRAL DE AUTOMAÇÕES</small><strong style="font-size:19px">n8n · Fluxos e execuções</strong><p style="margin:5px 0 0;color:var(--text2);font-size:12px">Atualizando os dados oficiais da instância conectada…</p></div>
+        <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">CENTRAL DE AUTOMAÃ‡Ã•ES</small><strong style="font-size:19px">n8n Â· Fluxos e execuÃ§Ãµes</strong><p style="margin:5px 0 0;color:var(--text2);font-size:12px">Atualizando os dados oficiais da instÃ¢ncia conectadaâ€¦</p></div>
         <button type="button" data-n8n-configure style="padding:9px 13px;border:1px solid #ea4b71;border-radius:9px;background:rgba(234,75,113,.09);color:#c3355a;font-weight:800;cursor:pointer">Configurar</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:18px">
-        <button type="button" data-n8n-patient-tracking style="padding:15px;border:1px solid #b7d7c4;border-radius:12px;background:#f1fbf5;color:#164f31;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Rastreamento de pacientes</strong><small style="display:block;margin-top:5px;line-height:1.45">Envios, respostas, IA, agendamentos, transferências e falhas.</small></button>
-        <button type="button" data-n8n-conversation-integration style="padding:15px;border:1px solid #c8d7e7;border-radius:12px;background:#f3f7fb;color:#193b5a;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Integração com conversas</strong><small style="display:block;margin-top:5px;line-height:1.45">Configuração do vínculo entre workflow, paciente, Evolution e conversa.</small></button>
-        <button type="button" data-n8n-security-center style="padding:15px;border:1px solid #ead19f;border-radius:12px;background:#fffaf0;color:#6d4e16;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Segurança e reversão</strong><small style="display:block;margin-top:5px;line-height:1.45">Backups, versões anteriores e restauração protegida.</small></button>
+        <button type="button" data-n8n-patient-tracking style="padding:15px;border:1px solid #b7d7c4;border-radius:12px;background:#f1fbf5;color:#164f31;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Rastreamento de pacientes</strong><small style="display:block;margin-top:5px;line-height:1.45">Envios, respostas, IA, agendamentos, transferÃªncias e falhas.</small></button>
+        <button type="button" data-n8n-conversation-integration style="padding:15px;border:1px solid #c8d7e7;border-radius:12px;background:#f3f7fb;color:#193b5a;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">IntegraÃ§Ã£o com conversas</strong><small style="display:block;margin-top:5px;line-height:1.45">ConfiguraÃ§Ã£o do vÃ­nculo entre workflow, paciente, Evolution e conversa.</small></button>
+        <button type="button" data-n8n-security-center style="padding:15px;border:1px solid #ead19f;border-radius:12px;background:#fffaf0;color:#6d4e16;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">SeguranÃ§a e reversÃ£o</strong><small style="display:block;margin-top:5px;line-height:1.45">Backups, versÃµes anteriores e restauraÃ§Ã£o protegida.</small></button>
       </div>
-      <div style="padding:14px 16px;border:1px solid var(--line);border-radius:11px;color:var(--text2);font-size:13px">Consultando workflows e execuções do n8n…</div>`;
+      <div style="padding:14px 16px;border:1px solid var(--line);border-radius:11px;color:var(--text2);font-size:13px">Consultando workflows e execuÃ§Ãµes do n8nâ€¦</div>`;
   }
 
   async function enhanceConversationOrigin() {
@@ -97,8 +97,8 @@
       return badge;
     };
 
-    // Etiqueta em cada cartão da lista. Procuramos o menor contêiner que
-    // contém nome + status, evitando depender das classes minificadas.
+    // Etiqueta em cada cartÃ£o da lista. Procuramos o menor contÃªiner que
+    // contÃ©m nome + status, evitando depender das classes minificadas.
     conversationOriginItems.forEach(item => {
       const labels = [...document.querySelectorAll("span,strong,p,div")].filter(element =>
         !element.children.length && normalized(element.textContent) === normalized(item.name)
@@ -109,11 +109,11 @@
           const box = card.getBoundingClientRect();
           const cardText = normalized(card.textContent);
           if (box.width > 140 && box.width < 520 && box.height > 45 && box.height < 190 &&
-              /(média|alta|baixa|aguardando atendimento|humano assumiu)/.test(cardText)) break;
+              /(mÃ©dia|alta|baixa|aguardando atendimento|humano assumiu)/.test(cardText)) break;
         }
         if (!card || card.querySelector("[data-crm-origin-badge]")) return;
         const anchors = [...card.querySelectorAll("span")];
-        const anchor = anchors.find(element => /^(média|alta|baixa|aguardando atendimento)$/i.test(text(element)));
+        const anchor = anchors.find(element => /^(mÃ©dia|alta|baixa|aguardando atendimento)$/i.test(text(element)));
         if (anchor) anchor.insertAdjacentElement("afterend", makeBadge(item));
         else label.insertAdjacentElement("afterend", makeBadge(item));
       });
@@ -129,10 +129,10 @@
     const title = header.querySelector("h1,h2,h3,strong");
     if (!title || header.querySelector("[data-crm-origin-badge]")) return;
     const priority = [...header.querySelectorAll("span,button")].find(element =>
-      /^(média|alta|baixa)$/i.test(text(element))
+      /^(mÃ©dia|alta|baixa)$/i.test(text(element))
     );
-    // No cabeçalho a origem deve ficar imediatamente antes da prioridade,
-    // tornando a campanha visível sem abrir o painel lateral.
+    // No cabeÃ§alho a origem deve ficar imediatamente antes da prioridade,
+    // tornando a campanha visÃ­vel sem abrir o painel lateral.
     if (priority) priority.insertAdjacentElement("beforebegin", makeBadge(item, "before"));
     else title.insertAdjacentElement("afterend", makeBadge(item));
   }
@@ -180,19 +180,27 @@
   }
 
   async function openCampaignReplies(campaign, days) {
+    const stateMine = !!screenState.get("campaignMine");
+    const stateChannel = (screenState.get("campaignChannel") || "all");
     const overlay = document.createElement("div");
     overlay.dataset.campaignRepliesModal = "1";
     overlay.style.cssText = "position:fixed;inset:0;z-index:10050;background:rgba(8,20,32,.58);display:flex;align-items:center;justify-content:center;padding:24px";
-    overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Pacientes que responderam" style="width:min(920px,96vw);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.35);overflow:hidden"><header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 22px;border-bottom:1px solid var(--line)"><div><small style="color:#7c3aed;font-weight:900;letter-spacing:.08em">RESPOSTAS DA CAMPANHA</small><h2 style="margin:5px 0 0;font-size:20px">${escapeHtml(campaign.name)}</h2><p style="margin:5px 0 0;color:var(--text2);font-size:13px">Carregando os pacientes e conferindo o vínculo com o Inbox…</p></div><button type="button" data-close style="width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer">×</button></header><div data-body style="padding:20px 22px;overflow:auto"><div style="padding:28px;text-align:center;color:var(--text2)">Carregando…</div></div></section>`;
+    overlay.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Pacientes que responderam" style="width:min(920px,96vw);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.35);overflow:hidden"><header style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 22px;border-bottom:1px solid var(--line)"><div><small style="color:#7c3aed;font-weight:900;letter-spacing:.08em">RESPOSTAS DA CAMPANHA</small><h2 style="margin:5px 0 0;font-size:20px">${escapeHtml(campaign.name)}</h2><p style="margin:5px 0 0;color:var(--text2);font-size:13px">Carregando os pacientes e conferindo o vÃ­nculo com o Inboxâ€¦</p></div><button type="button" data-close style="width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--text);font-size:22px;cursor:pointer">Ã—</button></header><div data-body style="padding:20px 22px;overflow:auto"><div style="padding:28px;text-align:center;color:var(--text2)">Carregandoâ€¦</div></div></section>`;
     document.body.appendChild(overlay);
     overlay.querySelector("[data-close]").onclick = () => overlay.remove();
     overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
     const body = overlay.querySelector("[data-body]");
     try {
-      const data = await n8nApi(`/api/crm/campaign-responses?days=${encodeURIComponent(days)}&campaign=${encodeURIComponent(campaign.campaign_key || campaign.name)}`);
+      const repliesQuery = new URLSearchParams({
+        days,
+        campaign: campaign.campaign_key || campaign.name,
+        mine: stateMine ? "1" : "0",
+        channel: stateChannel,
+      }).toString();
+      const data = await n8nApi(`/api/crm/campaign-responses?${repliesQuery}`);
       const items = data.items || [];
-      overlay.querySelector("header p").textContent = `${items.length} paciente(s) identificado(s). A situação informa onde cada conversa está agora.`;
-      body.innerHTML = items.length ? `<div style="display:grid;gap:10px">${items.map((item,index) => `<article style="display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(130px,.8fr) minmax(150px,.8fr) auto;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)"><div><strong style="display:block">${escapeHtml(item.name)}</strong><small style="display:block;margin-top:3px;color:var(--text2)">${escapeHtml(item.phone || "Telefone não informado")}</small><span style="display:inline-flex;margin-top:7px;padding:3px 7px;border-radius:999px;background:#f1eaff;color:#6d36a6;font-size:10px;font-weight:850">${escapeHtml(item.campaign_tag)}</span></div><small style="color:var(--text2)">${campaignDate(item.replied_at)}</small><span style="justify-self:start;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;${campaignReplyStatusStyle(item.inbox_status)}">${escapeHtml(item.inbox_status)}</span>${item.conversation_id ? `<button type="button" data-locate="${index}" style="border:1px solid #25d366;border-radius:9px;background:rgba(37,211,102,.1);color:#138348;font-weight:850;padding:8px 10px;cursor:pointer">Localizar no Inbox</button>` : `<small style="max-width:145px;color:#b4232f">O n8n contou a resposta, mas não encontrou a conversa.</small>`}</article>`).join("")}</div>` : `<div style="padding:38px;text-align:center;color:var(--text2)"><strong style="display:block;color:var(--text);margin-bottom:6px">Nenhum paciente encontrado</strong>Não há respostas únicas para esta campanha no período selecionado.</div>`;
+      overlay.querySelector("header p").textContent = `${items.length} paciente(s) identificado(s). A situaÃ§Ã£o informa onde cada conversa estÃ¡ agora.`;
+      body.innerHTML = items.length ? `<div style="display:grid;gap:10px">${items.map((item,index) => `<article style="display:grid;grid-template-columns:minmax(180px,1.4fr) minmax(130px,.8fr) minmax(150px,.8fr) auto;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)"><div><strong style="display:block">${escapeHtml(item.name)}</strong><small style="display:block;margin-top:3px;color:var(--text2)">${escapeHtml(item.phone || "Telefone nÃ£o informado")}</small><span style="display:inline-flex;margin-top:7px;padding:3px 7px;border-radius:999px;background:#f1eaff;color:#6d36a6;font-size:10px;font-weight:850">${escapeHtml(item.campaign_tag)}</span></div><small style="color:var(--text2)">${campaignDate(item.replied_at)}</small><span style="justify-self:start;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;${campaignReplyStatusStyle(item.inbox_status)}">${escapeHtml(item.inbox_status)}</span>${item.conversation_id ? `<button type="button" data-locate="${index}" style="border:1px solid #25d366;border-radius:9px;background:rgba(37,211,102,.1);color:#138348;font-weight:850;padding:8px 10px;cursor:pointer">Localizar no Inbox</button>` : `<small style="max-width:145px;color:#b4232f">O n8n contou a resposta, mas nÃ£o encontrou a conversa.</small>`}</article>`).join("")}</div>` : `<div style="padding:38px;text-align:center;color:var(--text2)"><strong style="display:block;color:var(--text);margin-bottom:6px">Nenhum paciente encontrado</strong>NÃ£o hÃ¡ respostas Ãºnicas para esta campanha no perÃ­odo selecionado.</div>`;
       body.querySelectorAll("[data-locate]").forEach(button => {
         button.onclick = () => locateCampaignPatient(overlay, items[Number(button.dataset.locate)]);
       });
@@ -212,20 +220,29 @@
     }
     if (!screen || screen.dataset.crmCampaignsRendered === "1") return;
     screen.dataset.crmCampaignsRendered = "1";
-    screen.innerHTML = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:22px"><div><h1 style="margin:0;font-size:24px;font-weight:800;color:var(--text)">Campanhas</h1><p style="margin:6px 0 0;color:var(--text2);font-size:14px">Acompanhamento real dos disparos, respostas e transferências recebidos pelo CRM.</p></div><div style="display:flex;gap:9px"><select data-campaign-days style="padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font:inherit"><option value="1">Hoje</option><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option></select><button type="button" data-campaign-refresh style="padding:10px 15px;border:0;border-radius:9px;background:#25d366;color:#fff;font-weight:850;cursor:pointer">Atualizar</button></div></div><div data-campaign-content style="color:var(--text2);padding:24px;text-align:center">Carregando eventos reais das campanhas…</div>`;
+    screen.innerHTML = `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:22px"><div><h1 style="margin:0;font-size:24px;font-weight:800;color:var(--text)">Campanhas</h1><p style="margin:6px 0 0;color:var(--text2);font-size:14px">Acompanhamento real dos disparos, respostas e transferÃªncias recebidos pelo CRM.</p></div><div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap"><select data-campaign-days style="padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font:inherit"><option value="1">Hoje</option><option value="7">Ãšltimos 7 dias</option><option value="30" selected>Ãšltimos 30 dias</option><option value="90">Ãšltimos 90 dias</option></select><label style="display:flex;align-items:center;gap:8px;color:var(--text2);font-size:12px;border:1px solid var(--line);padding:8px 10px;border-radius:9px;background:var(--panel2)"><input type="checkbox" data-campaign-mine /> Apenas meus leads</label><select data-campaign-channel style="padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font:inherit"><option value="all">Todos os canais</option><option value="whatsapp">WhatsApp</option><option value="evolution">Evolution</option><option value="meta">Meta</option></select><button type="button" data-campaign-refresh style="padding:10px 15px;border:0;border-radius:9px;background:#25d366;color:#fff;font-weight:850;cursor:pointer">Atualizar</button></div></div><div data-campaign-content style="color:var(--text2);padding:24px;text-align:center">Carregando eventos reais das campanhasâ€¦</div>`;
     const content = screen.querySelector("[data-campaign-content]");
     const load = async () => {
       const days = screen.querySelector("[data-campaign-days]").value;
-      content.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2)">Atualizando campanhas…</div>';
+      const mine = !!screen.querySelector("[data-campaign-mine]").checked;
+      const channel = screen.querySelector("[data-campaign-channel]").value;
+      content.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2)">Atualizando campanhasâ€¦</div>';
       try {
         // A tela de Campanhas pode ser aberta enquanto o bundle principal ainda
-        // está estabilizando a navegação. XHR evita a Promise de fetch pendente
-        // observada nessa transição e sempre devolve erro acionável em 15s.
-        const data = await n8nApi(`/api/crm/campaigns?days=${encodeURIComponent(days)}`);
+        // estÃ¡ estabilizando a navegaÃ§Ã£o. XHR evita a Promise de fetch pendente
+        // observada nessa transiÃ§Ã£o e sempre devolve erro acionÃ¡vel em 15s.
+        screenState.set("campaignMine", mine);
+        screenState.set("campaignChannel", channel);
+        const query = new URLSearchParams({
+          days,
+          mine: mine ? "1" : "0",
+          channel,
+        }).toString();
+        const data = await n8nApi(`/api/crm/campaigns?${query}`);
         const items = data.items || [];
         const totals = items.reduce((sum, item) => ({patients:sum.patients+Number(item.patients||0),sent:sum.sent+Number(item.sent||0),replies:sum.replies+Number(item.replies||0),handoffs:sum.handoffs+Number(item.handoffs||0),appointments:sum.appointments+Number(item.appointments||0),appointments_ai:sum.appointments_ai+Number(item.appointments_ai||0),appointments_human:sum.appointments_human+Number(item.appointments_human||0),appointments_unclassified:sum.appointments_unclassified+Number(item.appointments_unclassified||0)}), {patients:0,sent:0,replies:0,handoffs:0,appointments:0,appointments_ai:0,appointments_human:0,appointments_unclassified:0});
         const appointmentRate = totals.patients ? ((totals.appointments / totals.patients) * 100).toFixed(1) + '%' : '0%';
-        content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:12px;margin-bottom:18px">${campaignMetric('Pacientes impactados',totals.patients)}${campaignMetric('Mensagens enviadas',totals.sent,'#159447')}${campaignMetric('Respostas',totals.replies,'#1976d2')}${campaignMetric('Agendamentos',totals.appointments,'#159447')}${campaignMetric('Agendados pela IA',totals.appointments_ai,'#7c3aed')}${campaignMetric('Agendados por humano',totals.appointments_human,'#b26a00')}</div>${totals.appointments_unclassified ? `<p style="margin:-7px 0 15px;color:var(--text3);font-size:12px">${totals.appointments_unclassified} agendamento(s) antigo(s) sem origem informada.</p>` : ''}<div style="border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)"><div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;padding:11px 14px;background:var(--panel2);font-size:11px;font-weight:850;color:var(--text3)"><span>CAMPANHA</span><span>ENVIOS</span><span>RESPOSTAS</span><span>PARA HUMANO</span><span>AGEND.</span><span>IA</span><span>HUMANO</span><span>CONV.</span><span>FALHAS</span><span>ÚLTIMO EVENTO</span></div>${items.map((item,index)=>`<div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;align-items:center;padding:13px 14px;border-top:1px solid var(--line);font-size:13px"><strong>${escapeHtml(item.name)}</strong><span>${item.sent||0}</span>${Number(item.replies||0) ? `<button type="button" data-campaign-replies="${index}" title="Ver pacientes que responderam" style="justify-self:start;border:0;background:#e8f2ff;color:#1976d2;font-weight:900;padding:5px 9px;border-radius:999px;cursor:pointer;text-decoration:underline">${item.replies}</button>` : '<span style="color:var(--text3)">0</span>'}<span style="color:#b26a00;font-weight:800">${item.handoffs||0}</span><span style="color:#159447;font-weight:800">${item.appointments||0}</span><span style="color:#7c3aed;font-weight:800">${item.appointments_ai||0}</span><span style="color:#b26a00;font-weight:800">${item.appointments_human||0}</span><span style="color:#159447;font-weight:800">${Number(item.appointment_rate||0).toFixed(1)}%</span><span style="color:${Number(item.failures||0)?'#dc3545':'var(--text2)'}">${item.failures||0}</span><small style="color:var(--text3)">${campaignDate(item.last_event_at)}</small></div>`).join('') || '<div style="padding:32px;text-align:center;color:var(--text3)">Ainda não recebemos eventos de campanha neste período. Os números aparecerão aqui automaticamente quando um workflow enviar, receber resposta, transferir para humano ou confirmar agendamento.</div>'}</div>`;
+        content.innerHTML = `<div style="display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:12px;margin-bottom:18px">${campaignMetric('Pacientes impactados',totals.patients)}${campaignMetric('Mensagens enviadas',totals.sent,'#159447')}${campaignMetric('Respostas',totals.replies,'#1976d2')}${campaignMetric('Agendamentos',totals.appointments,'#159447')}${campaignMetric('Agendados pela IA',totals.appointments_ai,'#7c3aed')}${campaignMetric('Agendados por humano',totals.appointments_human,'#b26a00')}</div>${totals.appointments_unclassified ? `<p style="margin:-7px 0 15px;color:var(--text3);font-size:12px">${totals.appointments_unclassified} agendamento(s) antigo(s) sem origem informada.</p>` : ''}<div style="border:1px solid var(--line);border-radius:12px;overflow:auto;background:var(--panel)"><div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;padding:11px 14px;background:var(--panel2);font-size:11px;font-weight:850;color:var(--text3)"><span>CAMPANHA</span><span>ENVIOS</span><span>RESPOSTAS</span><span>PARA HUMANO</span><span>AGEND.</span><span>IA</span><span>HUMANO</span><span>CONV.</span><span>FALHAS</span><span>ÃšLTIMO EVENTO</span></div>${items.map((item,index)=>`<div style="min-width:1120px;display:grid;grid-template-columns:1.35fr repeat(8,minmax(78px,.62fr)) minmax(145px,.9fr);gap:10px;align-items:center;padding:13px 14px;border-top:1px solid var(--line);font-size:13px"><strong>${escapeHtml(item.name)}</strong><span>${item.sent||0}</span>${Number(item.replies||0) ? `<button type="button" data-campaign-replies="${index}" title="Ver pacientes que responderam" style="justify-self:start;border:0;background:#e8f2ff;color:#1976d2;font-weight:900;padding:5px 9px;border-radius:999px;cursor:pointer;text-decoration:underline">${item.replies}</button>` : '<span style="color:var(--text3)">0</span>'}<span style="color:#b26a00;font-weight:800">${item.handoffs||0}</span><span style="color:#159447;font-weight:800">${item.appointments||0}</span><span style="color:#7c3aed;font-weight:800">${item.appointments_ai||0}</span><span style="color:#b26a00;font-weight:800">${item.appointments_human||0}</span><span style="color:#159447;font-weight:800">${Number(item.appointment_rate||0).toFixed(1)}%</span><span style="color:${Number(item.failures||0)?'#dc3545':'var(--text2)'}">${item.failures||0}</span><small style="color:var(--text3)">${campaignDate(item.last_event_at)}</small></div>`).join('') || '<div style="padding:32px;text-align:center;color:var(--text3)">Ainda nÃ£o recebemos eventos de campanha neste perÃ­odo. Os nÃºmeros aparecerÃ£o aqui automaticamente quando um workflow enviar, receber resposta, transferir para humano ou confirmar agendamento.</div>'}</div>`;
         content.querySelectorAll("[data-campaign-replies]").forEach(button => {
           button.onclick = () => openCampaignReplies(items[Number(button.dataset.campaignReplies)], days);
         });
@@ -233,7 +250,13 @@
         content.innerHTML = `<div style="padding:24px;text-align:center;color:#b4232f">${escapeHtml(error.message)}</div>`;
       }
     };
+    const mineInput = screen.querySelector("[data-campaign-mine]");
+    const channelInput = screen.querySelector("[data-campaign-channel]");
+    mineInput.checked = !!screenState.get("campaignMine");
+    channelInput.value = screenState.get("campaignChannel") || "all";
     screen.querySelector("[data-campaign-refresh]").onclick = load;
+    mineInput.onchange = load;
+    channelInput.onchange = load;
     screen.querySelector("[data-campaign-days]").onchange = load;
     await load();
   }
@@ -246,25 +269,25 @@
       data = raw ? JSON.parse(raw) : {};
     } catch (_) {
       data = {error: response.ok
-        ? "O servidor retornou uma resposta inválida. Atualize a página e tente novamente."
-        : `Falha de comunicação com o servidor (${response.status}).`};
+        ? "O servidor retornou uma resposta invÃ¡lida. Atualize a pÃ¡gina e tente novamente."
+        : `Falha de comunicaÃ§Ã£o com o servidor (${response.status}).`};
     }
-    if (!response.ok) throw new Error(data.error || "Não foi possível acessar a Evolution API.");
+    if (!response.ok) throw new Error(data.error || "NÃ£o foi possÃ­vel acessar a Evolution API.");
     if (data.error) throw new Error(data.error);
     return data;
   }
 
-  // A consulta dos workflows não pode ficar presa junto com as rotinas de
-  // sincronização do WhatsApp. Esta chamada tem prazo próprio e sempre deixa
-  // um erro acionável na tela caso o n8n fique indisponível.
-  // Usa o mesmo cliente de API do restante do CRM. Ele já está validado para
-  // sessão, JSON e navegação entre abas; manter um segundo cliente aqui fazia
-  // o painel ficar visualmente em "consultando" mesmo após o servidor responder.
+  // A consulta dos workflows nÃ£o pode ficar presa junto com as rotinas de
+  // sincronizaÃ§Ã£o do WhatsApp. Esta chamada tem prazo prÃ³prio e sempre deixa
+  // um erro acionÃ¡vel na tela caso o n8n fique indisponÃ­vel.
+  // Usa o mesmo cliente de API do restante do CRM. Ele jÃ¡ estÃ¡ validado para
+  // sessÃ£o, JSON e navegaÃ§Ã£o entre abas; manter um segundo cliente aqui fazia
+  // o painel ficar visualmente em "consultando" mesmo apÃ³s o servidor responder.
   function n8nApi(url, options = {}) {
     // Alguns navegadores mantinham a Promise do fetch pendente depois que a
-    // aplicação trocava o documento do bundle. XHR mantém a chamada no mesmo
-    // contexto da página, possui timeout explícito e evita a tela eternamente
-    // parada em “Consultando workflows”.
+    // aplicaÃ§Ã£o trocava o documento do bundle. XHR mantÃ©m a chamada no mesmo
+    // contexto da pÃ¡gina, possui timeout explÃ­cito e evita a tela eternamente
+    // parada em â€œConsultando workflowsâ€.
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
       const separator = url.includes("?") ? "&" : "?";
@@ -279,22 +302,22 @@
         completed = true;
         let payload = {};
         try { payload = request.responseText ? JSON.parse(request.responseText) : {}; }
-        catch (_) { return reject(new Error("O servidor retornou uma resposta inválida do n8n.")); }
+        catch (_) { return reject(new Error("O servidor retornou uma resposta invÃ¡lida do n8n.")); }
         if (request.status < 200 || request.status >= 300 || payload.error) {
-          return reject(new Error(payload.error || `Não foi possível consultar o n8n (${request.status}).`));
+          return reject(new Error(payload.error || `NÃ£o foi possÃ­vel consultar o n8n (${request.status}).`));
         }
         resolve(payload);
       };
-      // Alguns WebViews disparam readystatechange, mas não onload, depois de
+      // Alguns WebViews disparam readystatechange, mas nÃ£o onload, depois de
       // uma troca de aba do bundle. Mantemos os dois eventos protegidos.
       request.onreadystatechange = complete;
       request.onload = complete;
-      request.onerror = () => reject(new Error("Não foi possível comunicar com o n8n pelo CRM."));
+      request.onerror = () => reject(new Error("NÃ£o foi possÃ­vel comunicar com o n8n pelo CRM."));
       request.ontimeout = () => reject(new Error("A consulta ao n8n demorou mais de 15 segundos. Tente atualizar novamente."));
       try {
         request.send(options.body || null);
       } catch (_) {
-        reject(new Error("Não foi possível iniciar a consulta ao n8n."));
+        reject(new Error("NÃ£o foi possÃ­vel iniciar a consulta ao n8n."));
       }
     });
   }
@@ -365,8 +388,8 @@
       button.title = allowed
         ? ""
         : canManageAutomation === false
-          ? "Seu acesso não possui a permissão Gerenciar automações."
-          : "Verificando sua permissão...";
+          ? "Seu acesso nÃ£o possui a permissÃ£o Gerenciar automaÃ§Ãµes."
+          : "Verificando sua permissÃ£o...";
     });
   }
 
@@ -389,15 +412,15 @@
     const errors = Array.isArray(status.errors) ? status.errors : [];
     const progress = status.instances_total ? Math.round((status.instances_done / status.instances_total) * 100) : 0;
     const waitingForTotal = status.running && !status.instances_total;
-    const phaseLabel = status.phase || (waitingForTotal ? "Preparando os canais e contatos..." : "Sincronizando histórico real...");
+    const phaseLabel = status.phase || (waitingForTotal ? "Preparando os canais e contatos..." : "Sincronizando histÃ³rico real...");
     box.style.display = "block";
     box.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px">
-      <strong>${status.running ? escapeHtml(phaseLabel) : "Última sincronização"}</strong>
+      <strong>${status.running ? escapeHtml(phaseLabel) : "Ãšltima sincronizaÃ§Ã£o"}</strong>
       <span style="font-size:12px;color:var(--text3)">${status.instances_done || 0}/${status.instances_total || 0} canais</span>
     </div>
     <div style="height:7px;background:var(--line);border-radius:10px;overflow:hidden;position:relative"><i style="display:block;width:${waitingForTotal ? 34 : progress}%;height:100%;background:#25d366;transition:width .25s;${waitingForTotal ? "position:absolute;animation:evolutionSyncIndeterminate 1.25s ease-in-out infinite" : ""}"></i></div>
     <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;font-size:12px;color:var(--text2)">
-      <span>Contatos: <b>todos</b></span><span>Conversas: <b>20/07/2026 até hoje</b></span>
+      <span>Contatos: <b>todos</b></span><span>Conversas: <b>20/07/2026 atÃ© hoje</b></span>
       <span><b>${status.contacts || 0}</b> contatos novos</span><span><b>${status.conversations || 0}</b> conversas novas</span><span><b>${status.messages || 0}</b> mensagens importadas</span>
       ${status.older_messages_removed ? `<span><b>${status.older_messages_removed}</b> mensagens anteriores a 2026 removidas do CRM</span>` : ""}
       ${errors.length ? `<span style="color:#c62828"><b>${errors.length}</b> canal(is) com falha</span>` : ""}
@@ -420,7 +443,7 @@
   async function startHistorySync(button) {
     button.disabled = true;
     button.textContent = "Iniciando...";
-    renderSyncStatus({running:true, instances_total:0, instances_done:0, contacts:0, conversations:0, messages:0, phase:"Iniciando sincronização segura...", errors:[]});
+    renderSyncStatus({running:true, instances_total:0, instances_done:0, contacts:0, conversations:0, messages:0, phase:"Iniciando sincronizaÃ§Ã£o segura...", errors:[]});
     try {
       const status = await api("/api/crm/evolution/sync", {method: "POST", body: "{}"});
       renderSyncStatus(status);
@@ -430,7 +453,7 @@
       renderSyncStatus({running:false, errors:[{error:error.message}]});
     } finally {
       button.disabled = false;
-      button.textContent = "Sincronizar histórico";
+      button.textContent = "Sincronizar histÃ³rico";
     }
   }
 
@@ -440,9 +463,9 @@
     overlay.id = "evolutionSettingsOverlay";
     overlay.style.cssText = "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:grid;place-items:center;padding:20px";
     overlay.innerHTML = `<form style="width:520px;max-width:94vw;background:var(--panel);color:var(--text);border-radius:16px;padding:26px;box-shadow:0 24px 70px rgba(0,0,0,.35)">
-      <p style="margin:0 0 5px;color:#b58b43;font-size:11px;font-weight:800;letter-spacing:.12em">CONEXÃO PROTEGIDA</p>
+      <p style="margin:0 0 5px;color:#b58b43;font-size:11px;font-weight:800;letter-spacing:.12em">CONEXÃƒO PROTEGIDA</p>
       <h2 style="margin:0 0 8px">Evolution API</h2>
-      <p style="margin:0 0 22px;color:var(--text2);font-size:13px">Use a URL da API e a chave global do mesmo ambiente onde estão seus números. A chave permanece somente no servidor.</p>
+      <p style="margin:0 0 22px;color:var(--text2);font-size:13px">Use a URL da API e a chave global do mesmo ambiente onde estÃ£o seus nÃºmeros. A chave permanece somente no servidor.</p>
       <label style="display:block;font-size:11px;font-weight:800;color:var(--text3);margin-bottom:7px">URL BASE DA EVOLUTION API</label>
       <input name="url" type="url" placeholder="https://api.seudominio.com" required style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--input);color:var(--text);font:inherit;margin-bottom:16px">
       <label style="display:block;font-size:11px;font-weight:800;color:var(--text3);margin-bottom:7px">CHAVE GLOBAL DA API</label>
@@ -458,15 +481,15 @@
     try {
       const config = await api("/api/crm/evolution/config");
       form.elements.url.value = config.api_base_url || "";
-      if (config.token_configured) form.elements.key.placeholder = "Chave salva com segurança — deixe vazio para manter";
+      if (config.token_configured) form.elements.key.placeholder = "Chave salva com seguranÃ§a â€” deixe vazio para manter";
     } catch (error) { result.textContent = error.message; result.style.color = "#c62828"; }
     form.onsubmit = async event => {
       event.preventDefault();
       const submit = form.querySelector('[type="submit"]');
-      submit.disabled = true; result.style.color = "var(--text2)"; result.textContent = "Testando conexão com a Evolution…";
+      submit.disabled = true; result.style.color = "var(--text2)"; result.textContent = "Testando conexÃ£o com a Evolutionâ€¦";
       try {
         const response = await api("/api/crm/evolution/config", {method: "POST", body: JSON.stringify({api_base_url: form.elements.url.value.trim(), api_key: form.elements.key.value.trim()})});
-        result.style.color = "#15a34a"; result.textContent = `Conexão salva. ${response.instances_found} canal(is) localizado(s).`;
+        result.style.color = "#15a34a"; result.textContent = `ConexÃ£o salva. ${response.instances_found} canal(is) localizado(s).`;
         await renderChannels();
         setTimeout(() => overlay.remove(), 1400);
       } catch (error) { result.style.color = "#c62828"; result.textContent = error.message; }
@@ -475,7 +498,7 @@
   }
 
   function n8nDate(value) {
-    if (!value) return "—";
+    if (!value) return "â€”";
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return new Intl.DateTimeFormat("pt-BR", {
@@ -490,24 +513,24 @@
 
   function n8nWorkflowCard(item) {
     const settings = item.settings || {};
-    const triggers = (item.trigger_types || []).join(", ") || "Automático";
+    const triggers = (item.trigger_types || []).join(", ") || "AutomÃ¡tico";
     const integrations = (item.integrations || []).join(", ") || "Nenhuma identificada";
     const failed = Number(item.failure_count || 0);
     return `<article style="padding:13px 14px;border-bottom:1px solid var(--line)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <button type="button" data-n8n-detail="${escapeHtml(item.id)}" style="min-width:0;flex:1;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer">
           <strong style="display:block;font-size:13px">${escapeHtml(item.name)}</strong>
-          <small style="display:block;color:var(--text3);margin-top:3px">ID ${escapeHtml(item.id)} · ${escapeHtml(item.classification || "automatic")} · ${escapeHtml(triggers)}</small>
+          <small style="display:block;color:var(--text3);margin-top:3px">ID ${escapeHtml(item.id)} Â· ${escapeHtml(item.classification || "automatic")} Â· ${escapeHtml(triggers)}</small>
         </button>
         <button type="button" data-n8n-workflow="${escapeHtml(item.id)}" data-active="${item.active ? "1" : "0"}" style="flex:0 0 auto;padding:6px 10px;border:0;border-radius:16px;background:${item.active ? "#dff5e8" : "#eef1f3"};color:${item.active ? "#147a43" : "#667781"};font-size:11px;font-weight:850;cursor:pointer">${item.active ? "Ativo" : "Pausado"}</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-top:10px;font-size:11px">
-        <span><b>Frequência</b><br>${escapeHtml(item.frequency || "Sob demanda")}</span>
-        <span><b>Última execução</b><br>${n8nDate(item.last_execution_at)}</span>
-        <span><b>Resultados recentes</b><br><i style="color:#159447;font-style:normal">${Number(item.success_count || 0)} sucesso(s)</i> · <i style="color:${failed ? "#dc3545" : "var(--text3)"};font-style:normal">${failed} falha(s)</i></span>
-        <span><b>Execução CRM</b><br>${settings.manual_enabled ? `Liberada · limite ${Number(settings.max_items || 25)}` : "Bloqueada"}</span>
+        <span><b>FrequÃªncia</b><br>${escapeHtml(item.frequency || "Sob demanda")}</span>
+        <span><b>Ãšltima execuÃ§Ã£o</b><br>${n8nDate(item.last_execution_at)}</span>
+        <span><b>Resultados recentes</b><br><i style="color:#159447;font-style:normal">${Number(item.success_count || 0)} sucesso(s)</i> Â· <i style="color:${failed ? "#dc3545" : "var(--text3)"};font-style:normal">${failed} falha(s)</i></span>
+        <span><b>ExecuÃ§Ã£o CRM</b><br>${settings.manual_enabled ? `Liberada Â· limite ${Number(settings.max_items || 25)}` : "Bloqueada"}</span>
       </div>
-      <small style="display:block;color:var(--text3);margin-top:9px">Integrações: ${escapeHtml(integrations)} · clique para auditar e configurar</small>
+      <small style="display:block;color:var(--text3);margin-top:9px">IntegraÃ§Ãµes: ${escapeHtml(integrations)} Â· clique para auditar e configurar</small>
     </article>`;
   }
 
@@ -516,17 +539,17 @@
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(8,19,29,.62);display:grid;place-items:center;z-index:10000;padding:20px";
     overlay.innerHTML = `<form style="width:min(560px,96vw);background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 80px rgba(0,0,0,.35);overflow:hidden">
       <header style="padding:24px 26px 18px;border-bottom:1px solid var(--line)">
-        <small style="display:block;color:#d08a2f;font-weight:900;letter-spacing:.12em;margin-bottom:7px">AUTOMAÇÕES E IA</small>
-        <h2 style="margin:0 0 7px;font-size:24px">Conectar instância n8n</h2>
+        <small style="display:block;color:#d08a2f;font-weight:900;letter-spacing:.12em;margin-bottom:7px">AUTOMAÃ‡Ã•ES E IA</small>
+        <h2 style="margin:0 0 7px;font-size:24px">Conectar instÃ¢ncia n8n</h2>
         <p style="margin:0;color:var(--text2);font-size:13px;line-height:1.55">A chave fica protegida no servidor e nunca volta para o navegador depois de salva.</p>
       </header>
       <div style="padding:22px 26px">
-        <label style="display:block;font-size:11px;font-weight:900;color:var(--text3);margin-bottom:7px">URL DA INSTÂNCIA</label>
+        <label style="display:block;font-size:11px;font-weight:900;color:var(--text3);margin-bottom:7px">URL DA INSTÃ‚NCIA</label>
         <input name="url" type="url" placeholder="https://seu-n8n.exemplo.com" required style="width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:var(--input);color:var(--text);font:inherit;margin-bottom:17px">
-        <p style="margin:-9px 0 17px;color:var(--text3);font-size:11px">Pode colar o endereço completo do n8n. O CRM usará somente o domínio correto da API.</p>
+        <p style="margin:-9px 0 17px;color:var(--text3);font-size:11px">Pode colar o endereÃ§o completo do n8n. O CRM usarÃ¡ somente o domÃ­nio correto da API.</p>
         <label style="display:block;font-size:11px;font-weight:900;color:var(--text3);margin-bottom:7px">CHAVE DA API DO N8N</label>
         <input name="key" type="password" autocomplete="new-password" placeholder="Cole a chave criada em Settings > n8n API" style="width:100%;padding:13px;border:1px solid var(--line);border-radius:10px;background:var(--input);color:var(--text);font:inherit">
-        <p style="margin:8px 0 0;color:var(--text3);font-size:11px">Recomendação: nome “CRM IEA” e expiração “Never”.</p>
+        <p style="margin:8px 0 0;color:var(--text3);font-size:11px">RecomendaÃ§Ã£o: nome â€œCRM IEAâ€ e expiraÃ§Ã£o â€œNeverâ€.</p>
         <p data-result style="min-height:20px;margin:13px 0 0;font-size:12px;color:var(--text2)"></p>
       </div>
       <footer style="display:flex;justify-content:flex-end;gap:10px;padding:17px 26px;border-top:1px solid var(--line)">
@@ -542,7 +565,7 @@
     try {
       const config = await api("/api/crm/n8n/config");
       form.elements.url.value = config.api_base_url || "";
-      if (config.token_configured) form.elements.key.placeholder = "Chave já protegida — deixe vazio para manter";
+      if (config.token_configured) form.elements.key.placeholder = "Chave jÃ¡ protegida â€” deixe vazio para manter";
     } catch (error) {
       result.textContent = error.message;
       result.style.color = "#c62828";
@@ -552,7 +575,7 @@
       const submit = form.querySelector('[type="submit"]');
       submit.disabled = true;
       result.style.color = "var(--text2)";
-      result.textContent = "Validando acesso e consultando os fluxos…";
+      result.textContent = "Validando acesso e consultando os fluxosâ€¦";
       try {
         const normalizedUrl = new URL(form.elements.url.value.trim()).origin;
         const response = await api("/api/crm/n8n/config", {
@@ -596,10 +619,10 @@
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(8,19,29,.68);display:grid;place-items:center;z-index:10020;padding:20px";
     overlay.innerHTML = `<section style="width:min(920px,97vw);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 28px 90px rgba(0,0,0,.38)">
       <header style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;border-bottom:1px solid var(--line)">
-        <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">N8N · AUTOMAÇÕES</small><h2 style="margin:0;font-size:23px">${escapeHtml(title)}</h2><p style="margin:6px 0 0;color:var(--text2);font-size:12px">${escapeHtml(subtitle || "")}</p></div>
-        <button type="button" data-close style="width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font-size:20px;cursor:pointer">×</button>
+        <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">N8N Â· AUTOMAÃ‡Ã•ES</small><h2 style="margin:0;font-size:23px">${escapeHtml(title)}</h2><p style="margin:6px 0 0;color:var(--text2);font-size:12px">${escapeHtml(subtitle || "")}</p></div>
+        <button type="button" data-close style="width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font-size:20px;cursor:pointer">Ã—</button>
       </header>
-      <div data-body style="padding:22px 24px"><p style="color:var(--text2)">Carregando dados oficiais do n8n…</p></div>
+      <div data-body style="padding:22px 24px"><p style="color:var(--text2)">Carregando dados oficiais do n8nâ€¦</p></div>
     </section>`;
     document.body.appendChild(overlay);
     overlay.querySelector("[data-close]").onclick = () => overlay.remove();
@@ -626,8 +649,8 @@
       ];
       body.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin-bottom:17px">${cards.map(([label,value]) => `<div style="border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:11px"><small style="color:var(--text3);font-weight:800">${label}</small><strong style="display:block;font-size:21px;margin-top:4px">${value}</strong></div>`).join("")}</div>
-        <div style="display:grid;grid-template-columns:1fr 190px;gap:9px;margin-bottom:10px"><input data-track-search placeholder="Pesquisar paciente, telefone, campanha ou workflow" style="padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--text)"><select data-track-filter style="padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"><option value="">Todos os eventos</option><option value="sent">Enviados</option><option value="deliver">Entregues</option><option value="read">Lidos</option><option value="repl">Respostas</option><option value="fail">Falhas</option><option value="appointment">Agendamentos</option><option value="handoff">Transferências</option></select></div>
-        <div style="overflow:auto;border:1px solid var(--line);border-radius:11px;max-height:570px"><table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel2);text-align:left"><th style="padding:10px">Paciente</th><th style="padding:10px">Telefone</th><th style="padding:10px">Workflow/campanha</th><th style="padding:10px">Canal</th><th style="padding:10px">Evento</th><th style="padding:10px">Resultado</th><th style="padding:10px">Mensagem Evolution</th><th style="padding:10px">Horário</th></tr></thead><tbody>${items.map(item => `<tr data-track-row data-search="${escapeHtml(`${item.patient_name || ""} ${item.phone || ""} ${item.workflow_name || ""} ${item.campaign_id || ""} ${item.channel_name || ""} ${item.event_type || ""} ${item.outcome || ""}`.toLowerCase())}" data-event="${escapeHtml(String(item.event_type || "").toLowerCase())}" style="border-top:1px solid var(--line)"><td style="padding:10px;font-weight:800">${escapeHtml(item.patient_name || "Não identificado")}</td><td style="padding:10px">${escapeHtml(item.phone || "—")}</td><td style="padding:10px">${escapeHtml(item.workflow_name || item.workflow_id || "—")}<small style="display:block;color:var(--text3)">${escapeHtml(item.campaign_id || "")}</small></td><td style="padding:10px">${escapeHtml(item.channel_name || "—")}</td><td style="padding:10px">${escapeHtml(item.event_type || "—")}</td><td style="padding:10px;color:${String(item.event_type || "").includes("fail") ? "#b4232f" : "inherit"}">${escapeHtml(item.outcome || "—")}</td><td style="padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(item.external_message_id || "")}">${escapeHtml(item.external_message_id || "—")}</td><td style="padding:10px;white-space:nowrap">${n8nDate(item.occurred_at || item.received_at)}</td></tr>`).join("") || '<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text3)"><b>Nenhum paciente rastreado ainda.</b><br>Abra “Integração com conversas” para instrumentar o workflow e começar a receber os eventos.</td></tr>'}</tbody></table></div>`;
+        <div style="display:grid;grid-template-columns:1fr 190px;gap:9px;margin-bottom:10px"><input data-track-search placeholder="Pesquisar paciente, telefone, campanha ou workflow" style="padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--text)"><select data-track-filter style="padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"><option value="">Todos os eventos</option><option value="sent">Enviados</option><option value="deliver">Entregues</option><option value="read">Lidos</option><option value="repl">Respostas</option><option value="fail">Falhas</option><option value="appointment">Agendamentos</option><option value="handoff">TransferÃªncias</option></select></div>
+        <div style="overflow:auto;border:1px solid var(--line);border-radius:11px;max-height:570px"><table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--panel2);text-align:left"><th style="padding:10px">Paciente</th><th style="padding:10px">Telefone</th><th style="padding:10px">Workflow/campanha</th><th style="padding:10px">Canal</th><th style="padding:10px">Evento</th><th style="padding:10px">Resultado</th><th style="padding:10px">Mensagem Evolution</th><th style="padding:10px">HorÃ¡rio</th></tr></thead><tbody>${items.map(item => `<tr data-track-row data-search="${escapeHtml(`${item.patient_name || ""} ${item.phone || ""} ${item.workflow_name || ""} ${item.campaign_id || ""} ${item.channel_name || ""} ${item.event_type || ""} ${item.outcome || ""}`.toLowerCase())}" data-event="${escapeHtml(String(item.event_type || "").toLowerCase())}" style="border-top:1px solid var(--line)"><td style="padding:10px;font-weight:800">${escapeHtml(item.patient_name || "NÃ£o identificado")}</td><td style="padding:10px">${escapeHtml(item.phone || "â€”")}</td><td style="padding:10px">${escapeHtml(item.workflow_name || item.workflow_id || "â€”")}<small style="display:block;color:var(--text3)">${escapeHtml(item.campaign_id || "")}</small></td><td style="padding:10px">${escapeHtml(item.channel_name || "â€”")}</td><td style="padding:10px">${escapeHtml(item.event_type || "â€”")}</td><td style="padding:10px;color:${String(item.event_type || "").includes("fail") ? "#b4232f" : "inherit"}">${escapeHtml(item.outcome || "â€”")}</td><td style="padding:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(item.external_message_id || "")}">${escapeHtml(item.external_message_id || "â€”")}</td><td style="padding:10px;white-space:nowrap">${n8nDate(item.occurred_at || item.received_at)}</td></tr>`).join("") || '<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--text3)"><b>Nenhum paciente rastreado ainda.</b><br>Abra â€œIntegraÃ§Ã£o com conversasâ€ para instrumentar o workflow e comeÃ§ar a receber os eventos.</td></tr>'}</tbody></table></div>`;
       const filterRows = () => {
         const search = String(body.querySelector("[data-track-search]")?.value || "").trim().toLowerCase();
         const event = String(body.querySelector("[data-track-filter]")?.value || "");
@@ -643,7 +666,7 @@
   }
 
   function openN8nConversationIntegration() {
-    const overlay = n8nModalShell("Integração com conversas", "Como fazer cada envio, resposta e decisão da IA aparecer no paciente e na conversa correta.");
+    const overlay = n8nModalShell("IntegraÃ§Ã£o com conversas", "Como fazer cada envio, resposta e decisÃ£o da IA aparecer no paciente e na conversa correta.");
     const body = overlay.querySelector("[data-body]");
     const endpoint = `${location.origin}/api/integrations/crm/automation-event`;
     const example = `{
@@ -660,13 +683,13 @@
   "outcome": "sent"
 }`;
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px"><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>1. Workflow envia</b><small style="display:block;color:var(--text3);margin-top:5px">Registra paciente, telefone, campanha, canal e ID da Evolution.</small></div><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>2. CRM relaciona</b><small style="display:block;color:var(--text3);margin-top:5px">Instância + telefone localizam automaticamente a conversa correta.</small></div><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>3. Conversa identifica</b><small style="display:block;color:var(--text3);margin-top:5px">Aparecem origem, IA, transferência e resultado final.</small></div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px"><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>1. Workflow envia</b><small style="display:block;color:var(--text3);margin-top:5px">Registra paciente, telefone, campanha, canal e ID da Evolution.</small></div><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>2. CRM relaciona</b><small style="display:block;color:var(--text3);margin-top:5px">InstÃ¢ncia + telefone localizam automaticamente a conversa correta.</small></div><div style="border:1px solid var(--line);border-radius:11px;padding:13px"><b>3. Conversa identifica</b><small style="display:block;color:var(--text3);margin-top:5px">Aparecem origem, IA, transferÃªncia e resultado final.</small></div></div>
       <label style="display:block;font-size:11px;font-weight:900;color:var(--text3)">ENDPOINT DO CRM</label><div style="display:flex;gap:8px;margin:6px 0 16px"><input data-endpoint readonly value="${escapeHtml(endpoint)}" style="flex:1;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--text)"><button data-copy-endpoint style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800">Copiar</button></div>
-      <div style="border:1px solid #ecd29b;background:#fffaf0;border-radius:11px;padding:13px;margin-bottom:16px;color:#6e501b"><b>Autorização</b><br><small>Execuções iniciadas pelo CRM recebem um token efêmero automaticamente. Fluxos automáticos precisam usar a chave exclusiva no cabeçalho <code>X-CRM-N8N-Token</code>; ela nunca deve ser colocada no navegador.</small></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:16px"><div><b>Chaves dos workflows automáticos</b><small data-callback-key-summary style="display:block;color:var(--text3);margin-top:4px">Consultando chaves protegidas…</small></div><button type="button" data-generate-callback-key style="padding:9px 13px;border:0;border-radius:9px;background:#0d2d4a;color:white;font-weight:850;cursor:pointer">Gerar chave exclusiva</button></div>
+      <div style="border:1px solid #ecd29b;background:#fffaf0;border-radius:11px;padding:13px;margin-bottom:16px;color:#6e501b"><b>AutorizaÃ§Ã£o</b><br><small>ExecuÃ§Ãµes iniciadas pelo CRM recebem um token efÃªmero automaticamente. Fluxos automÃ¡ticos precisam usar a chave exclusiva no cabeÃ§alho <code>X-CRM-N8N-Token</code>; ela nunca deve ser colocada no navegador.</small></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:11px;padding:12px 14px;margin-bottom:16px"><div><b>Chaves dos workflows automÃ¡ticos</b><small data-callback-key-summary style="display:block;color:var(--text3);margin-top:4px">Consultando chaves protegidasâ€¦</small></div><button type="button" data-generate-callback-key style="padding:9px 13px;border:0;border-radius:9px;background:#0d2d4a;color:white;font-weight:850;cursor:pointer">Gerar chave exclusiva</button></div>
       <div data-callback-key-result></div>
-      <strong style="display:block;margin-bottom:8px">Corpo mínimo do evento</strong><pre style="white-space:pre-wrap;overflow:auto;background:#0d2235;color:#e8f0f7;border-radius:11px;padding:15px;font-size:12px;line-height:1.55">${escapeHtml(example)}</pre>
-      <div style="margin-top:15px"><b>Eventos reconhecidos</b><p style="color:var(--text2);font-size:12px;line-height:1.7;margin:6px 0">message.sent · message.delivered · message.read · message.failed · patient.replied · ai.result · human.handoff · appointment.confirmed · run.completed</p></div>`;
+      <strong style="display:block;margin-bottom:8px">Corpo mÃ­nimo do evento</strong><pre style="white-space:pre-wrap;overflow:auto;background:#0d2235;color:#e8f0f7;border-radius:11px;padding:15px;font-size:12px;line-height:1.55">${escapeHtml(example)}</pre>
+      <div style="margin-top:15px"><b>Eventos reconhecidos</b><p style="color:var(--text2);font-size:12px;line-height:1.7;margin:6px 0">message.sent Â· message.delivered Â· message.read Â· message.failed Â· patient.replied Â· ai.result Â· human.handoff Â· appointment.confirmed Â· run.completed</p></div>`;
     body.querySelector("[data-copy-endpoint]").onclick = async event => {
       try {
         await navigator.clipboard.writeText(endpoint);
@@ -682,19 +705,19 @@
       keySummary.textContent = `${active} chave(s) ativa(s). O valor secreto nunca volta para o navegador.`;
     }).catch(error => { keySummary.textContent = error.message; });
     body.querySelector("[data-generate-callback-key]").onclick = async event => {
-      const label = prompt("Nome desta chave no n8n:", "CRM IEA · eventos automáticos");
+      const label = prompt("Nome desta chave no n8n:", "CRM IEA Â· eventos automÃ¡ticos");
       if (!label) return;
       const button = event.currentTarget;
       button.disabled = true;
       try {
         const created = await api("/api/crm/n8n/callback-keys", {method:"POST",body:JSON.stringify({label})});
-        keyResult.innerHTML = `<div style="border:1px solid #b9dec9;background:#f1fbf5;border-radius:11px;padding:13px;margin-bottom:16px"><b>Copie agora — esta chave será exibida uma única vez</b><div style="display:flex;gap:8px;margin-top:8px"><input data-new-callback-key readonly value="${escapeHtml(created.token)}" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:9px;background:white;color:#17324d"><button type="button" data-copy-new-key style="padding:9px 12px;border:0;border-radius:9px;background:#159447;color:white;font-weight:850">Copiar chave</button></div><small style="display:block;color:#176b3b;margin-top:6px">No n8n, salve como credencial e envie no cabeçalho X-CRM-N8N-Token.</small></div>`;
+        keyResult.innerHTML = `<div style="border:1px solid #b9dec9;background:#f1fbf5;border-radius:11px;padding:13px;margin-bottom:16px"><b>Copie agora â€” esta chave serÃ¡ exibida uma Ãºnica vez</b><div style="display:flex;gap:8px;margin-top:8px"><input data-new-callback-key readonly value="${escapeHtml(created.token)}" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:9px;background:white;color:#17324d"><button type="button" data-copy-new-key style="padding:9px 12px;border:0;border-radius:9px;background:#159447;color:white;font-weight:850">Copiar chave</button></div><small style="display:block;color:#176b3b;margin-top:6px">No n8n, salve como credencial e envie no cabeÃ§alho X-CRM-N8N-Token.</small></div>`;
         keyResult.querySelector("[data-copy-new-key]").onclick = async copyEvent => {
           const token = keyResult.querySelector("[data-new-callback-key]").value;
           try { await navigator.clipboard.writeText(token); copyEvent.currentTarget.textContent = "Copiada"; }
           catch (_) { keyResult.querySelector("[data-new-callback-key]").select(); }
         };
-        keySummary.textContent = "Nova chave ativa criada com segurança.";
+        keySummary.textContent = "Nova chave ativa criada com seguranÃ§a.";
       } catch (error) {
         alert(error.message);
       } finally {
@@ -704,24 +727,24 @@
   }
 
   async function openN8nSecurityCenter() {
-    const overlay = n8nModalShell("Segurança e reversão", "Cópias preservadas antes de ativar, pausar ou restaurar um workflow.");
+    const overlay = n8nModalShell("SeguranÃ§a e reversÃ£o", "CÃ³pias preservadas antes de ativar, pausar ou restaurar um workflow.");
     const body = overlay.querySelector("[data-body]");
     try {
       const data = await api("/api/crm/n8n/versions");
       const items = data.items || [];
-      body.innerHTML = `<div style="border:1px solid #b9dec9;background:#f1fbf5;border-radius:11px;padding:13px;margin-bottom:16px;color:#176b3b"><b>Proteção ativa</b><br><small>Antes de qualquer alteração feita pelo CRM, a versão atual é preservada. Ao restaurar, uma nova cópia de segurança também é criada antes da reversão.</small></div><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${items.map(item => `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px;border-top:1px solid var(--line)"><span><b>${escapeHtml(item.workflow_name)}</b><small style="display:block;color:var(--text3);margin-top:3px">Backup #${item.id} · antes de ${escapeHtml(item.action)} · ${n8nDate(item.created_at)} · ${escapeHtml(item.created_by_name || "Sistema")}</small></span><button type="button" data-restore-version="${item.id}" data-restore-workflow="${escapeHtml(item.workflow_id)}" style="padding:8px 12px;border:1px solid #c3355a;border-radius:9px;background:var(--panel);color:#c3355a;font-weight:850;cursor:pointer">Restaurar esta versão</button></div>`).join("") || '<p style="padding:24px;text-align:center;color:var(--text3)">Ainda não há versões preservadas. A primeira será criada antes da próxima ativação ou pausa.</p>'}</div>`;
+      body.innerHTML = `<div style="border:1px solid #b9dec9;background:#f1fbf5;border-radius:11px;padding:13px;margin-bottom:16px;color:#176b3b"><b>ProteÃ§Ã£o ativa</b><br><small>Antes de qualquer alteraÃ§Ã£o feita pelo CRM, a versÃ£o atual Ã© preservada. Ao restaurar, uma nova cÃ³pia de seguranÃ§a tambÃ©m Ã© criada antes da reversÃ£o.</small></div><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${items.map(item => `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px;border-top:1px solid var(--line)"><span><b>${escapeHtml(item.workflow_name)}</b><small style="display:block;color:var(--text3);margin-top:3px">Backup #${item.id} Â· antes de ${escapeHtml(item.action)} Â· ${n8nDate(item.created_at)} Â· ${escapeHtml(item.created_by_name || "Sistema")}</small></span><button type="button" data-restore-version="${item.id}" data-restore-workflow="${escapeHtml(item.workflow_id)}" style="padding:8px 12px;border:1px solid #c3355a;border-radius:9px;background:var(--panel);color:#c3355a;font-weight:850;cursor:pointer">Restaurar esta versÃ£o</button></div>`).join("") || '<p style="padding:24px;text-align:center;color:var(--text3)">Ainda nÃ£o hÃ¡ versÃµes preservadas. A primeira serÃ¡ criada antes da prÃ³xima ativaÃ§Ã£o ou pausa.</p>'}</div>`;
       body.querySelectorAll("[data-restore-version]").forEach(button => button.onclick = async () => {
-        if (!confirm("Restaurar esta versão do workflow?\n\nA versão atual será copiada antes da reversão. O fluxo não será executado automaticamente.")) return;
+        if (!confirm("Restaurar esta versÃ£o do workflow?\n\nA versÃ£o atual serÃ¡ copiada antes da reversÃ£o. O fluxo nÃ£o serÃ¡ executado automaticamente.")) return;
         button.disabled = true;
-        button.textContent = "Restaurando…";
+        button.textContent = "Restaurandoâ€¦";
         try {
           await api(`/api/crm/n8n/workflows/${encodeURIComponent(button.dataset.restoreWorkflow)}/versions/${button.dataset.restoreVersion}/restore`, {method:"POST",body:"{}"});
-          alert("Versão restaurada. Uma cópia da versão anterior também foi preservada.");
+          alert("VersÃ£o restaurada. Uma cÃ³pia da versÃ£o anterior tambÃ©m foi preservada.");
           overlay.remove();
           renderN8nOperations(true);
         } catch (error) {
           button.disabled = false;
-          button.textContent = "Restaurar esta versão";
+          button.textContent = "Restaurar esta versÃ£o";
           alert(error.message);
         }
       });
@@ -731,7 +754,7 @@
   }
 
   async function openN8nRunDetails(runId) {
-    const overlay = n8nModalShell(`Execução #${runId}`, "Pacientes, mensagens e resultados registrados pelo workflow.");
+    const overlay = n8nModalShell(`ExecuÃ§Ã£o #${runId}`, "Pacientes, mensagens e resultados registrados pelo workflow.");
     const body = overlay.querySelector("[data-body]");
     try {
       const data = await api(`/api/crm/n8n/runs/${encodeURIComponent(runId)}`);
@@ -752,14 +775,14 @@
         ["Aguardando resposta", waiting],
       ];
       body.innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:15px"><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px;font-weight:850">${escapeHtml(run.status || "—")}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">${escapeHtml(run.mode || "—")}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">${n8nDate(run.started_at)}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">Executado por ${escapeHtml(run.requested_by_name || "n8n")}</span><span title="Chave que impede o mesmo disparo de ser executado duas vezes" style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">Idempotência: ${escapeHtml(run.run_key || "—")}</span></div>
-        <div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:5px"><span>Progresso da execução</span><b>${processed}/${total || "—"} · ${progress}%</b></div><div style="height:9px;border-radius:9px;background:var(--panel2);overflow:hidden"><i style="display:block;width:${progress}%;height:100%;background:${Number(run.failed_items || 0) ? "#f0a22e" : "#25b96f"}"></i></div></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:15px"><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px;font-weight:850">${escapeHtml(run.status || "â€”")}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">${escapeHtml(run.mode || "â€”")}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">${n8nDate(run.started_at)}</span><span style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">Executado por ${escapeHtml(run.requested_by_name || "n8n")}</span><span title="Chave que impede o mesmo disparo de ser executado duas vezes" style="padding:6px 11px;border-radius:18px;background:var(--panel2);font-size:12px">IdempotÃªncia: ${escapeHtml(run.run_key || "â€”")}</span></div>
+        <div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:5px"><span>Progresso da execuÃ§Ã£o</span><b>${processed}/${total || "â€”"} Â· ${progress}%</b></div><div style="height:9px;border-radius:9px;background:var(--panel2);overflow:hidden"><i style="display:block;width:${progress}%;height:100%;background:${Number(run.failed_items || 0) ? "#f0a22e" : "#25b96f"}"></i></div></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-bottom:18px">${cards.map(([label,value]) => `<div style="border:1px solid var(--line);background:var(--panel2);border-radius:11px;padding:12px"><small style="color:var(--text3);font-weight:800">${label}</small><strong style="display:block;font-size:22px;margin-top:4px">${value}</strong></div>`).join("")}</div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:9px"><strong>Eventos por paciente</strong><span style="font-size:12px;color:var(--text3)">${events.length} registro(s)</span></div>
-        <div style="display:grid;grid-template-columns:1fr 190px;gap:9px;margin-bottom:9px"><input data-event-search placeholder="Pesquisar paciente, telefone ou resultado" style="padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--text)"><select data-event-filter style="padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"><option value="">Todos os eventos</option><option value="message.sent">Enviados</option><option value="message.failed">Falhas</option><option value="patient.replied">Respostas</option><option value="appointment.confirmed">Agendamentos</option><option value="human">Transferências</option></select></div>
+        <div style="display:grid;grid-template-columns:1fr 190px;gap:9px;margin-bottom:9px"><input data-event-search placeholder="Pesquisar paciente, telefone ou resultado" style="padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--input);color:var(--text)"><select data-event-filter style="padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"><option value="">Todos os eventos</option><option value="message.sent">Enviados</option><option value="message.failed">Falhas</option><option value="patient.replied">Respostas</option><option value="appointment.confirmed">Agendamentos</option><option value="human">TransferÃªncias</option></select></div>
         <div style="overflow:auto;border:1px solid var(--line);border-radius:11px;max-height:440px">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px"><thead><tr style="background:var(--panel2);text-align:left"><th style="padding:10px">Paciente</th><th style="padding:10px">Telefone</th><th style="padding:10px">Campanha</th><th style="padding:10px">Canal</th><th style="padding:10px">Evento</th><th style="padding:10px">Resultado</th><th style="padding:10px">ID da mensagem</th><th style="padding:10px">Horário</th></tr></thead>
-          <tbody>${events.map(item => `<tr data-event-row data-search="${escapeHtml(`${item.patient_name || ""} ${item.phone || ""} ${item.campaign_id || ""} ${item.channel_name || ""} ${item.event_type || ""} ${item.outcome || ""}`.toLowerCase())}" data-event="${escapeHtml(item.event_type || "")}" style="border-top:1px solid var(--line)"><td style="padding:10px;font-weight:750">${escapeHtml(item.patient_name || "Não identificado")}</td><td style="padding:10px">${escapeHtml(item.phone || "—")}</td><td style="padding:10px">${escapeHtml(item.campaign_id || "—")}</td><td style="padding:10px">${escapeHtml(item.channel_name || "—")}</td><td style="padding:10px">${escapeHtml(item.event_type || "—")}</td><td style="padding:10px;color:${String(item.event_type || "").includes("failed") ? "#dc3545" : "inherit"}">${escapeHtml(item.outcome || "—")}</td><td style="padding:10px;max-width:170px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(item.external_message_id || "")}">${escapeHtml(item.external_message_id || "—")}</td><td style="padding:10px;white-space:nowrap">${n8nDate(item.occurred_at || item.received_at)}</td></tr>`).join("") || '<tr><td colspan="8" style="padding:22px;text-align:center;color:var(--text3)">Este workflow ainda não enviou eventos padronizados ao CRM.</td></tr>'}</tbody></table>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:980px"><thead><tr style="background:var(--panel2);text-align:left"><th style="padding:10px">Paciente</th><th style="padding:10px">Telefone</th><th style="padding:10px">Campanha</th><th style="padding:10px">Canal</th><th style="padding:10px">Evento</th><th style="padding:10px">Resultado</th><th style="padding:10px">ID da mensagem</th><th style="padding:10px">HorÃ¡rio</th></tr></thead>
+          <tbody>${events.map(item => `<tr data-event-row data-search="${escapeHtml(`${item.patient_name || ""} ${item.phone || ""} ${item.campaign_id || ""} ${item.channel_name || ""} ${item.event_type || ""} ${item.outcome || ""}`.toLowerCase())}" data-event="${escapeHtml(item.event_type || "")}" style="border-top:1px solid var(--line)"><td style="padding:10px;font-weight:750">${escapeHtml(item.patient_name || "NÃ£o identificado")}</td><td style="padding:10px">${escapeHtml(item.phone || "â€”")}</td><td style="padding:10px">${escapeHtml(item.campaign_id || "â€”")}</td><td style="padding:10px">${escapeHtml(item.channel_name || "â€”")}</td><td style="padding:10px">${escapeHtml(item.event_type || "â€”")}</td><td style="padding:10px;color:${String(item.event_type || "").includes("failed") ? "#dc3545" : "inherit"}">${escapeHtml(item.outcome || "â€”")}</td><td style="padding:10px;max-width:170px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(item.external_message_id || "")}">${escapeHtml(item.external_message_id || "â€”")}</td><td style="padding:10px;white-space:nowrap">${n8nDate(item.occurred_at || item.received_at)}</td></tr>`).join("") || '<tr><td colspan="8" style="padding:22px;text-align:center;color:var(--text3)">Este workflow ainda nÃ£o enviou eventos padronizados ao CRM.</td></tr>'}</tbody></table>
         </div>`;
       const applyEventFilters = () => {
         const query = String(body.querySelector("[data-event-search]")?.value || "").trim().toLowerCase();
@@ -777,7 +800,7 @@
         const signature = `${run.status}:${run.processed_items}:${run.sent_items}:${run.replied_items}:${run.failed_items}:${events.length}`;
         const live = document.createElement("p");
         live.style.cssText = "margin:12px 0 0;color:var(--text3);font-size:11px;text-align:right";
-        live.textContent = "Acompanhamento ao vivo · atualiza automaticamente";
+        live.textContent = "Acompanhamento ao vivo Â· atualiza automaticamente";
         body.appendChild(live);
         setTimeout(async () => {
           if (!document.body.contains(overlay)) return;
@@ -790,7 +813,7 @@
               overlay.remove();
               openN8nRunDetails(runId);
             } else {
-              live.textContent = "Acompanhamento ao vivo · aguardando o próximo evento";
+              live.textContent = "Acompanhamento ao vivo Â· aguardando o prÃ³ximo evento";
             }
           } catch (_) {}
         }, 5000);
@@ -801,7 +824,7 @@
   }
 
   async function openN8nWorkflowDetails(workflowId) {
-    const overlay = n8nModalShell("Detalhes do workflow", "Configuração segura, execuções e rastreamento operacional.");
+    const overlay = n8nModalShell("Detalhes do workflow", "ConfiguraÃ§Ã£o segura, execuÃ§Ãµes e rastreamento operacional.");
     const body = overlay.querySelector("[data-body]");
     try {
       const data = await api(`/api/crm/n8n/workflows/${encodeURIComponent(workflowId)}`);
@@ -816,37 +839,37 @@
       const nodeTypes = (data.nodes || []).map(item => String(item.type || "").split(".").pop()).filter(Boolean);
       const integrations = [...new Set(nodeTypes)].slice(0, 12);
       body.innerHTML = `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:17px"><div><h3 style="margin:0 0 5px;font-size:18px">${escapeHtml(data.name)}</h3><small style="color:var(--text3)">ID ${escapeHtml(data.id)} · ${data.nodes_total || 0} nós · ${data.active ? "Ativo" : "Pausado"}</small></div><span style="padding:6px 11px;border-radius:18px;background:${data.active ? "#dff5e8" : "#eef1f3"};color:${data.active ? "#147a43" : "#667781"};font-size:11px;font-weight:900">${escapeHtml(classification.kind || "automatic")}</span></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:17px"><div><h3 style="margin:0 0 5px;font-size:18px">${escapeHtml(data.name)}</h3><small style="color:var(--text3)">ID ${escapeHtml(data.id)} Â· ${data.nodes_total || 0} nÃ³s Â· ${data.active ? "Ativo" : "Pausado"}</small></div><span style="padding:6px 11px;border-radius:18px;background:${data.active ? "#dff5e8" : "#eef1f3"};color:${data.active ? "#147a43" : "#667781"};font-size:11px;font-weight:900">${escapeHtml(classification.kind || "automatic")}</span></div>
         <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:17px">
-          <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">GATILHO</small><strong style="display:block;margin-top:4px">${classification.has_schedule_trigger ? "Horário" : classification.has_webhook_trigger ? "Webhook/mensagem" : classification.has_manual_trigger ? "Manual" : "Automático"}</strong></div>
-          <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">ÚLTIMA EXECUÇÃO</small><strong style="display:block;margin-top:4px">${n8nDate(executions[0]?.started_at)}</strong></div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">GATILHO</small><strong style="display:block;margin-top:4px">${classification.has_schedule_trigger ? "HorÃ¡rio" : classification.has_webhook_trigger ? "Webhook/mensagem" : classification.has_manual_trigger ? "Manual" : "AutomÃ¡tico"}</strong></div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">ÃšLTIMA EXECUÃ‡ÃƒO</small><strong style="display:block;margin-top:4px">${n8nDate(executions[0]?.started_at)}</strong></div>
           <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">SUCESSOS RECENTES</small><strong style="display:block;margin-top:4px;color:#159447">${successExecutions}</strong></div>
           <div style="border:1px solid var(--line);border-radius:10px;padding:11px"><small style="color:var(--text3);font-weight:800">FALHAS RECENTES</small><strong style="display:block;margin-top:4px;color:${failedExecutions ? "#dc3545" : "var(--text)"}">${failedExecutions}</strong></div>
         </div>
-        <div style="border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:17px"><small style="color:var(--text3);font-weight:800">CANAIS E INTEGRAÇÕES IDENTIFICADAS</small><p style="margin:6px 0 0;font-size:12px">${escapeHtml(integrations.join(", ") || "Nenhuma integração identificada")}</p></div>
-        ${failedNodes.length ? `<div style="border:1px solid #f3b6bc;background:rgba(220,53,69,.07);border-radius:11px;padding:12px 14px;margin-bottom:17px"><strong style="display:block;color:#b4232f;margin-bottom:6px">Nós que falharam na última execução com erro</strong>${failedNodes.map(item => `<div style="font-size:12px;margin-top:5px"><b>${escapeHtml(item.name)}</b> · ${escapeHtml(item.message)} <span style="color:var(--text3)">#${escapeHtml(item.execution_id)}</span></div>`).join("")}</div>` : ""}
+        <div style="border:1px solid var(--line);border-radius:10px;padding:11px;margin-bottom:17px"><small style="color:var(--text3);font-weight:800">CANAIS E INTEGRAÃ‡Ã•ES IDENTIFICADAS</small><p style="margin:6px 0 0;font-size:12px">${escapeHtml(integrations.join(", ") || "Nenhuma integraÃ§Ã£o identificada")}</p></div>
+        ${failedNodes.length ? `<div style="border:1px solid #f3b6bc;background:rgba(220,53,69,.07);border-radius:11px;padding:12px 14px;margin-bottom:17px"><strong style="display:block;color:#b4232f;margin-bottom:6px">NÃ³s que falharam na Ãºltima execuÃ§Ã£o com erro</strong>${failedNodes.map(item => `<div style="font-size:12px;margin-top:5px"><b>${escapeHtml(item.name)}</b> Â· ${escapeHtml(item.message)} <span style="color:var(--text3)">#${escapeHtml(item.execution_id)}</span></div>`).join("")}</div>` : ""}
         <form data-settings style="border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:15px;margin-bottom:18px">
-          <strong style="display:block;margin-bottom:12px">Controle de execução pelo CRM</strong>
+          <strong style="display:block;margin-bottom:12px">Controle de execuÃ§Ã£o pelo CRM</strong>
           <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
             <label style="font-size:11px;font-weight:850;color:var(--text3)">TIPO DO FLUXO<select name="kind" style="display:block;width:100%;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)">${["automatic","scheduled","response","manual","hybrid","critical"].map(value => `<option value="${value}" ${String(settings.workflow_kind || classification.kind) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
-            <label style="font-size:11px;font-weight:850;color:var(--text3)">LIMITE MÁXIMO<input name="max" type="number" min="1" max="5000" value="${Number(settings.max_items || 25)}" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
+            <label style="font-size:11px;font-weight:850;color:var(--text3)">LIMITE MÃXIMO<input name="max" type="number" min="1" max="5000" value="${Number(settings.max_items || 25)}" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
             <label style="font-size:11px;font-weight:850;color:var(--text3)">ORIGEM DA LISTA<input name="source" value="${escapeHtml(settings.source_label || "")}" placeholder="Ex.: pacientes sem agendamento" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
-            <label style="font-size:11px;font-weight:850;color:var(--text3)">CANAL UTILIZADO<input name="channel" value="${escapeHtml(settings.channel_label || "")}" placeholder="Ex.: Zero Cárie / Orto" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
+            <label style="font-size:11px;font-weight:850;color:var(--text3)">CANAL UTILIZADO<input name="channel" value="${escapeHtml(settings.channel_label || "")}" placeholder="Ex.: Zero CÃ¡rie / Orto" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
             <label style="grid-column:1/-1;font-size:11px;font-weight:850;color:var(--text3)">WEBHOOK SEGURO PARA EXECUTAR<input name="path" value="${escapeHtml(settings.webhook_path || "")}" placeholder="crm-executar-nome-do-fluxo" style="display:block;width:100%;box-sizing:border-box;margin-top:6px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text)"></label>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:16px;margin:13px 0"><label><input name="manual" type="checkbox" ${settings.manual_enabled ? "checked" : ""}> Permitir execução pelo CRM</label><label><input name="test" type="checkbox" ${settings.test_mode !== 0 ? "checked" : ""}> Iniciar em modo teste</label><label><input name="confirm" type="checkbox" ${settings.requires_confirmation !== 0 ? "checked" : ""}> Exigir confirmação</label></div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin:13px 0"><label><input name="manual" type="checkbox" ${settings.manual_enabled ? "checked" : ""}> Permitir execuÃ§Ã£o pelo CRM</label><label><input name="test" type="checkbox" ${settings.test_mode !== 0 ? "checked" : ""}> Iniciar em modo teste</label><label><input name="confirm" type="checkbox" ${settings.requires_confirmation !== 0 ? "checked" : ""}> Exigir confirmaÃ§Ã£o</label></div>
           <div style="display:flex;justify-content:flex-end;gap:9px"><span data-result style="margin-right:auto;color:var(--text2);font-size:12px"></span><button type="submit" style="padding:9px 14px;border:0;border-radius:9px;background:#0d2d4a;color:white;font-weight:850;cursor:pointer">Salvar controle</button>${settings.manual_enabled ? '<button type="button" data-run-mode="test" style="padding:9px 14px;border:1px solid #ea4b71;border-radius:9px;background:var(--panel);color:#c3355a;font-weight:850;cursor:pointer">Executar teste</button><button type="button" data-run-mode="production" style="padding:9px 14px;border:0;border-radius:9px;background:#ea4b71;color:white;font-weight:850;cursor:pointer">Executar agora</button>' : ""}</div>
         </form>
         <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px">
-          <div><strong style="display:block;margin-bottom:9px">Gatilhos e webhooks</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${(data.webhooks || []).map(item => `<div style="padding:11px;border-top:1px solid var(--line)"><strong style="font-size:12px">${escapeHtml(item.name)}</strong><small style="display:block;color:var(--text3);margin-top:3px">${escapeHtml(item.method || "GET")} · ${escapeHtml(item.path || "sem caminho")}</small></div>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhum webhook neste fluxo.</p>'}</div></div>
-          <div><strong style="display:block;margin-bottom:9px">Execuções iniciadas pelo CRM</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${runs.map(run => `<button type="button" data-run-detail="${run.id}" style="display:flex;width:100%;justify-content:space-between;gap:10px;padding:11px;border:0;border-top:1px solid var(--line);background:var(--panel);color:var(--text);text-align:left;cursor:pointer"><span><strong style="display:block;font-size:12px">#${run.id} · ${escapeHtml(run.status)}</strong><small style="color:var(--text3)">${n8nDate(run.started_at)}</small></span><span style="font-size:12px">${run.sent_items || 0} enviados · ${run.replied_items || 0} respostas</span></button>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhuma execução iniciada pelo CRM.</p>'}</div></div>
+          <div><strong style="display:block;margin-bottom:9px">Gatilhos e webhooks</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${(data.webhooks || []).map(item => `<div style="padding:11px;border-top:1px solid var(--line)"><strong style="font-size:12px">${escapeHtml(item.name)}</strong><small style="display:block;color:var(--text3);margin-top:3px">${escapeHtml(item.method || "GET")} Â· ${escapeHtml(item.path || "sem caminho")}</small></div>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhum webhook neste fluxo.</p>'}</div></div>
+          <div><strong style="display:block;margin-bottom:9px">ExecuÃ§Ãµes iniciadas pelo CRM</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${runs.map(run => `<button type="button" data-run-detail="${run.id}" style="display:flex;width:100%;justify-content:space-between;gap:10px;padding:11px;border:0;border-top:1px solid var(--line);background:var(--panel);color:var(--text);text-align:left;cursor:pointer"><span><strong style="display:block;font-size:12px">#${run.id} Â· ${escapeHtml(run.status)}</strong><small style="color:var(--text3)">${n8nDate(run.started_at)}</small></span><span style="font-size:12px">${run.sent_items || 0} enviados Â· ${run.replied_items || 0} respostas</span></button>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhuma execuÃ§Ã£o iniciada pelo CRM.</p>'}</div></div>
         </div>
-        <div style="margin-top:17px"><strong style="display:block;margin-bottom:9px">Segurança e versões preservadas</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${versions.map(version => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);font-size:12px"><span>Backup #${version.id} antes de <b>${escapeHtml(version.action)}</b><small style="display:block;color:var(--text3);margin-top:3px">${escapeHtml(version.created_by_name || "Sistema")} · ${n8nDate(version.created_at)}</small></span><button type="button" data-inline-restore="${version.id}" style="padding:7px 10px;border:1px solid #c3355a;border-radius:8px;background:var(--panel);color:#c3355a;font-weight:850">Restaurar</button></div>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhuma mudança feita pelo CRM. O primeiro backup será criado antes de ativar ou pausar.</p>'}</div></div>`;
+        <div style="margin-top:17px"><strong style="display:block;margin-bottom:9px">SeguranÃ§a e versÃµes preservadas</strong><div style="border:1px solid var(--line);border-radius:11px;overflow:hidden">${versions.map(version => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);font-size:12px"><span>Backup #${version.id} antes de <b>${escapeHtml(version.action)}</b><small style="display:block;color:var(--text3);margin-top:3px">${escapeHtml(version.created_by_name || "Sistema")} Â· ${n8nDate(version.created_at)}</small></span><button type="button" data-inline-restore="${version.id}" style="padding:7px 10px;border:1px solid #c3355a;border-radius:8px;background:var(--panel);color:#c3355a;font-weight:850">Restaurar</button></div>`).join("") || '<p style="padding:14px;color:var(--text3)">Nenhuma mudanÃ§a feita pelo CRM. O primeiro backup serÃ¡ criado antes de ativar ou pausar.</p>'}</div></div>`;
       const form = body.querySelector("[data-settings]");
       const result = form.querySelector("[data-result]");
       form.onsubmit = async event => {
         event.preventDefault();
-        result.textContent = "Salvando…";
+        result.textContent = "Salvandoâ€¦";
         try {
           await api(`/api/crm/n8n/workflows/${encodeURIComponent(workflowId)}/settings`, {
             method: "POST",
@@ -873,9 +896,9 @@
       body.querySelectorAll("[data-run-mode]").forEach(runButton => runButton.addEventListener("click", async buttonEvent => {
         const button = buttonEvent.currentTarget;
         const production = button.dataset.runMode === "production";
-        if (!confirm(`Executar “${data.name}” em modo ${production ? "PRODUÇÃO" : "TESTE"}?\n\nEstimativa máxima: ${form.elements.max.value} contato(s)\nOrigem: ${form.elements.source.value || "não informada"}\nCanal: ${form.elements.channel.value || "não informado"}\n\nUma chave de idempotência impedirá disparo duplicado.`)) return;
+        if (!confirm(`Executar â€œ${data.name}â€ em modo ${production ? "PRODUÃ‡ÃƒO" : "TESTE"}?\n\nEstimativa mÃ¡xima: ${form.elements.max.value} contato(s)\nOrigem: ${form.elements.source.value || "nÃ£o informada"}\nCanal: ${form.elements.channel.value || "nÃ£o informado"}\n\nUma chave de idempotÃªncia impedirÃ¡ disparo duplicado.`)) return;
         button.disabled = true;
-        button.textContent = "Iniciando…";
+        button.textContent = "Iniciandoâ€¦";
         try {
           const response = await api(`/api/crm/n8n/workflows/${encodeURIComponent(workflowId)}/run`, {
             method: "POST",
@@ -891,9 +914,9 @@
       }));
       body.querySelectorAll("[data-run-detail]").forEach(button => button.onclick = () => openN8nRunDetails(button.dataset.runDetail));
       body.querySelectorAll("[data-inline-restore]").forEach(button => button.onclick = async () => {
-        if (!confirm("Restaurar este backup?\n\nA versão atual será preservada antes da reversão.")) return;
+        if (!confirm("Restaurar este backup?\n\nA versÃ£o atual serÃ¡ preservada antes da reversÃ£o.")) return;
         button.disabled = true;
-        button.textContent = "Restaurando…";
+        button.textContent = "Restaurandoâ€¦";
         try {
           await api(`/api/crm/n8n/workflows/${encodeURIComponent(workflowId)}/versions/${button.dataset.inlineRestore}/restore`, {method:"POST",body:"{}"});
           overlay.remove();
@@ -928,8 +951,8 @@
     n8nOperationsState = "loading";
     n8nOperationsRequest = (async () => {
       try {
-        // Uma única consulta ao overview valida a configuração e carrega os
-        // fluxos. Usa o cliente principal do CRM, o mesmo já utilizado por
+        // Uma Ãºnica consulta ao overview valida a configuraÃ§Ã£o e carrega os
+        // fluxos. Usa o cliente principal do CRM, o mesmo jÃ¡ utilizado por
         // Inbox, Fila e Campanhas. Isso evita a rotina isolada de XHR que
         // podia ser interrompida pelo bundle ao trocar de aba.
         const data = await n8nApi(`/api/crm/n8n/overview?limit=50${force ? "&refresh=1" : ""}`);
@@ -939,7 +962,7 @@
         n8nOperationsState = "loaded";
         setN8nOperationsMarkup(`
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:17px">
-          <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">CENTRAL DE AUTOMAÇÕES</small><strong style="font-size:19px">n8n · Fluxos e execuções</strong><p style="margin:5px 0 0;color:var(--text2);font-size:12px">Dados oficiais da instância conectada, em horário de Cuiabá.</p></div>
+          <div><small style="display:block;color:#ea4b71;font-weight:900;letter-spacing:.1em;margin-bottom:5px">CENTRAL DE AUTOMAÃ‡Ã•ES</small><strong style="font-size:19px">n8n Â· Fluxos e execuÃ§Ãµes</strong><p style="margin:5px 0 0;color:var(--text2);font-size:12px">Dados oficiais da instÃ¢ncia conectada, em horÃ¡rio de CuiabÃ¡.</p></div>
           <div style="display:flex;gap:8px"><button type="button" data-n8n-refresh style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer">Atualizar</button><button type="button" data-n8n-configure style="padding:9px 13px;border:1px solid #ea4b71;border-radius:9px;background:rgba(234,75,113,.09);color:#c3355a;font-weight:800;cursor:pointer">Configurar</button></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:10px;margin-bottom:18px">
@@ -951,36 +974,36 @@
             ["Executando", summary.running || 0, "#b26a00"],
           ].map(([label, value, color]) => `<div style="background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:13px"><small style="display:block;color:var(--text3);font-weight:800">${label}</small><strong style="display:block;margin-top:4px;font-size:23px;color:${color}">${value}</strong></div>`).join("")}
         </div>
-        ${failures.length ? `<div style="border:1px solid #f3b6bc;background:rgba(220,53,69,.07);border-radius:11px;padding:12px 14px;margin-bottom:16px"><strong style="color:#b4232f">Atenção: ${failures.length} falha(s) entre as execuções recentes.</strong><small style="display:block;color:var(--text2);margin-top:4px">${failures.slice(0,3).map(item => `${escapeHtml(item.workflow_name)} · ${n8nDate(item.started_at)}`).join("<br>")}</small></div>` : ""}
+        ${failures.length ? `<div style="border:1px solid #f3b6bc;background:rgba(220,53,69,.07);border-radius:11px;padding:12px 14px;margin-bottom:16px"><strong style="color:#b4232f">AtenÃ§Ã£o: ${failures.length} falha(s) entre as execuÃ§Ãµes recentes.</strong><small style="display:block;color:var(--text2);margin-top:4px">${failures.slice(0,3).map(item => `${escapeHtml(item.workflow_name)} Â· ${n8nDate(item.started_at)}`).join("<br>")}</small></div>` : ""}
         <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-bottom:18px">
-          <button type="button" data-n8n-patient-tracking style="padding:15px;border:1px solid #b7d7c4;border-radius:12px;background:#f1fbf5;color:#164f31;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Rastreamento de pacientes</strong><small style="display:block;margin-top:5px;line-height:1.45">Envios, entregas, respostas, IA, agendamentos, transferências e falhas.</small></button>
-          <button type="button" data-n8n-conversation-integration style="padding:15px;border:1px solid #c8d7e7;border-radius:12px;background:#f3f7fb;color:#193b5a;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Integração com conversas</strong><small style="display:block;margin-top:5px;line-height:1.45">Aprenda a configurar o evento que liga workflow, paciente, Evolution e conversa.</small></button>
-          <button type="button" data-n8n-security-center style="padding:15px;border:1px solid #ead19f;border-radius:12px;background:#fffaf0;color:#6d4e16;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Segurança e reversão</strong><small style="display:block;margin-top:5px;line-height:1.45">Backups, responsável, data e botão real para restaurar uma versão.</small></button>
+          <button type="button" data-n8n-patient-tracking style="padding:15px;border:1px solid #b7d7c4;border-radius:12px;background:#f1fbf5;color:#164f31;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">Rastreamento de pacientes</strong><small style="display:block;margin-top:5px;line-height:1.45">Envios, entregas, respostas, IA, agendamentos, transferÃªncias e falhas.</small></button>
+          <button type="button" data-n8n-conversation-integration style="padding:15px;border:1px solid #c8d7e7;border-radius:12px;background:#f3f7fb;color:#193b5a;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">IntegraÃ§Ã£o com conversas</strong><small style="display:block;margin-top:5px;line-height:1.45">Aprenda a configurar o evento que liga workflow, paciente, Evolution e conversa.</small></button>
+          <button type="button" data-n8n-security-center style="padding:15px;border:1px solid #ead19f;border-radius:12px;background:#fffaf0;color:#6d4e16;text-align:left;cursor:pointer"><strong style="display:block;font-size:14px">SeguranÃ§a e reversÃ£o</strong><small style="display:block;margin-top:5px;line-height:1.45">Backups, responsÃ¡vel, data e botÃ£o real para restaurar uma versÃ£o.</small></button>
         </div>
         <div style="display:grid;grid-template-columns:minmax(360px,1.15fr) minmax(360px,.85fr);gap:16px">
           <div><strong style="display:block;margin-bottom:9px">Auditoria dos workflows</strong><div style="max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:11px">${(data.workflows || []).map(n8nWorkflowCard).join("") || '<p style="padding:14px;color:var(--text2)">Nenhum fluxo encontrado.</p>'}</div></div>
-          <div><strong style="display:block;margin-bottom:9px">Execuções recentes</strong><div style="max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:11px">${recent.map(item => { const failed = ["error", "failed", "crashed"].includes(item.status); return `<div style="padding:11px 12px;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:12px">${escapeHtml(item.workflow_name)}</strong><span style="color:${failed ? "#dc3545" : item.status === "success" ? "#159447" : "#b26a00"};font-size:11px;font-weight:850">${failed ? "Falhou" : item.status === "success" ? "Sucesso" : escapeHtml(item.status)}</span></div><small style="display:block;color:var(--text3);margin-top:4px">${n8nDate(item.started_at)} · #${escapeHtml(item.id)}</small></div>`; }).join("") || '<p style="padding:14px;color:var(--text2)">Nenhuma execução encontrada.</p>'}</div></div>
+          <div><strong style="display:block;margin-bottom:9px">ExecuÃ§Ãµes recentes</strong><div style="max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:11px">${recent.map(item => { const failed = ["error", "failed", "crashed"].includes(item.status); return `<div style="padding:11px 12px;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:8px"><strong style="font-size:12px">${escapeHtml(item.workflow_name)}</strong><span style="color:${failed ? "#dc3545" : item.status === "success" ? "#159447" : "#b26a00"};font-size:11px;font-weight:850">${failed ? "Falhou" : item.status === "success" ? "Sucesso" : escapeHtml(item.status)}</span></div><small style="display:block;color:var(--text3);margin-top:4px">${n8nDate(item.started_at)} Â· #${escapeHtml(item.id)}</small></div>`; }).join("") || '<p style="padding:14px;color:var(--text2)">Nenhuma execuÃ§Ã£o encontrada.</p>'}</div></div>
           </div>`);
       } catch (error) {
         n8nOperationsState = "error";
-        setN8nOperationsMarkup(`<div style="display:flex;align-items:center;justify-content:space-between;gap:18px"><div><strong style="display:block;color:#b4232f">Não foi possível consultar o n8n</strong><small style="color:var(--text2)">${escapeHtml(error.message)}</small></div><div style="display:flex;gap:8px"><button type="button" data-n8n-refresh style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer">Tentar novamente</button><button type="button" data-n8n-configure style="padding:9px 13px;border:1px solid #ea4b71;border-radius:9px;background:rgba(234,75,113,.09);color:#c3355a;font-weight:800">Reconfigurar</button></div></div>`);
+        setN8nOperationsMarkup(`<div style="display:flex;align-items:center;justify-content:space-between;gap:18px"><div><strong style="display:block;color:#b4232f">NÃ£o foi possÃ­vel consultar o n8n</strong><small style="color:var(--text2)">${escapeHtml(error.message)}</small></div><div style="display:flex;gap:8px"><button type="button" data-n8n-refresh style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer">Tentar novamente</button><button type="button" data-n8n-configure style="padding:9px 13px;border:1px solid #ea4b71;border-radius:9px;background:rgba(234,75,113,.09);color:#c3355a;font-weight:800">Reconfigurar</button></div></div>`);
       } finally {
         n8nOperationsRequest = null;
       }
     })();
     // Nunca deixa a interface em estado de carregamento indefinido, mesmo se
-    // um navegador interromper uma requisição durante a troca de abas.
+    // um navegador interromper uma requisiÃ§Ã£o durante a troca de abas.
     setTimeout(() => {
       if (n8nOperationsState !== "loading" || n8nOperationsRequest === null) return;
       n8nOperationsState = "error";
       n8nOperationsRequest = null;
-      setN8nOperationsMarkup(`<div style="display:flex;align-items:center;justify-content:space-between;gap:18px"><div><strong style="display:block;color:#b4232f">A consulta dos workflows não foi concluída</strong><small style="color:var(--text2)">O CRM manteve a conexão n8n salva. Clique para tentar novamente sem reconfigurar nenhum fluxo.</small></div><button type="button" data-n8n-refresh style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer">Tentar novamente</button></div>`);
+      setN8nOperationsMarkup(`<div style="display:flex;align-items:center;justify-content:space-between;gap:18px"><div><strong style="display:block;color:#b4232f">A consulta dos workflows nÃ£o foi concluÃ­da</strong><small style="color:var(--text2)">O CRM manteve a conexÃ£o n8n salva. Clique para tentar novamente sem reconfigurar nenhum fluxo.</small></div><button type="button" data-n8n-refresh style="padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:800;cursor:pointer">Tentar novamente</button></div>`);
     }, 16000);
     return n8nOperationsRequest;
   }
 
   function enhanceIntegrationScreen() {
-    const title = [...document.querySelectorAll("h1")].find(element => text(element) === "Integrações & Canais");
+    const title = [...document.querySelectorAll("h1")].find(element => text(element) === "IntegraÃ§Ãµes & Canais");
     const header = title?.parentElement?.parentElement;
     if (!header) return;
     let panel = document.querySelector("#evolutionServerPanel");
@@ -994,7 +1017,7 @@
       panel = document.createElement("section");
       panel.id = "evolutionServerPanel";
       panel.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin:18px 0";
-      panel.innerHTML = '<div><strong style="display:block">Servidor Evolution</strong><small style="color:var(--text3)">Todos os contatos; conversas somente de 20/07/2026 até hoje.</small></div><div style="display:flex;gap:10px"><button type="button" data-evolution-sync="1" style="padding:10px 15px;border:0;border-radius:9px;background:#25d366;color:#fff;font-weight:800;cursor:pointer">Sincronizar histórico</button><button type="button" data-evolution-configure="1" style="padding:10px 15px;border:1px solid #25d366;border-radius:9px;background:rgba(37,211,102,.1);color:#159447;font-weight:800;cursor:pointer">Configurar Evolution</button></div>';
+      panel.innerHTML = '<div><strong style="display:block">Servidor Evolution</strong><small style="color:var(--text3)">Todos os contatos; conversas somente de 20/07/2026 atÃ© hoje.</small></div><div style="display:flex;gap:10px"><button type="button" data-evolution-sync="1" style="padding:10px 15px;border:0;border-radius:9px;background:#25d366;color:#fff;font-weight:800;cursor:pointer">Sincronizar histÃ³rico</button><button type="button" data-evolution-configure="1" style="padding:10px 15px;border:1px solid #25d366;border-radius:9px;background:rgba(37,211,102,.1);color:#159447;font-weight:800;cursor:pointer">Configurar Evolution</button></div>';
       header.insertAdjacentElement("afterend", panel);
       loadAutomationPermission();
       renderChannels(true);
@@ -1040,8 +1063,8 @@
     if (input) { input.value = instanceName; input.readOnly = true; }
     loading = true;
     const frame = modal.children?.[2];
-    if (frame) frame.innerHTML = '<div style="height:100%;display:grid;place-items:center;color:#667781;font-size:13px;font-weight:700">Solicitando QR à Evolution…</div>';
-    setStatus(modal, "Gerando QR Code real…");
+    if (frame) frame.innerHTML = '<div style="height:100%;display:grid;place-items:center;color:#667781;font-size:13px;font-weight:700">Solicitando QR Ã  Evolutionâ€¦</div>';
+    setStatus(modal, "Gerando QR Code realâ€¦");
     try {
       const data = await api("/api/crm/evolution/connect", {
         method: "POST",
@@ -1051,11 +1074,11 @@
         setStatus(modal, "WhatsApp conectado", true);
       } else if (data.qr_code) {
         setQr(modal, data.qr_code);
-        setStatus(modal, "Aguardando leitura…");
+        setStatus(modal, "Aguardando leituraâ€¦");
         if (statusTimer) clearInterval(statusTimer);
         statusTimer = setInterval(() => refreshStatus(data.instance_name, modal), 4000);
       } else {
-        setStatus(modal, "A instância está iniciando. Clique em Gerar novo QR novamente.");
+        setStatus(modal, "A instÃ¢ncia estÃ¡ iniciando. Clique em Gerar novo QR novamente.");
       }
     } catch (error) {
       setStatus(modal, error.message, false, true);

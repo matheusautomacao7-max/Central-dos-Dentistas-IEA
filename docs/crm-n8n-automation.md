@@ -1,10 +1,10 @@
-# Contrato de automação CRM / n8n
+﻿# Contrato de automaÃ§Ã£o CRM / n8n
 
 Endpoint do CRM:
 
 `POST /api/integrations/crm/automation-event?token=SEU_TOKEN_DE_INTEGRACAO`
 
-Corpo mínimo:
+Corpo mÃ­nimo:
 
 ```json
 {
@@ -18,22 +18,33 @@ Corpo mínimo:
 }
 ```
 
-O `event_id` é obrigatório e idempotente: se o n8n reenviar o mesmo evento,
+O `event_id` Ã© obrigatÃ³rio e idempotente: se o n8n reenviar o mesmo evento,
 o CRM registra apenas uma vez.
 
 ## Eventos aceitos
 
-- `campaign.started`: inicia o acompanhamento automático.
-- `ai.started`: informa que a conversa está sob responsabilidade da IA.
-- `message.ai.sent`: registra uma interação da IA e soma uma tentativa.
-- `ai.handoff.requested`: pausa a automação e coloca o contato na fila humana.
-- `human.required`: equivalente a uma solicitação de atendimento humano.
+- `campaign.started`: inicia o acompanhamento automÃ¡tico.
+- `ai.started`: informa que a conversa estÃ¡ sob responsabilidade da IA.
+- `message.ai.sent`: registra uma interaÃ§Ã£o da IA e soma uma tentativa.
+- `ai.handoff.requested`: pausa a automaÃ§Ã£o e coloca o contato na fila humana.
+- `human.required`: equivalente a uma solicitaÃ§Ã£o de atendimento humano.
 - `opportunity.detected`: envia oportunidade comercial para a fila humana.
-- `appointment.confirmed`: conclui o acompanhamento automático.
+- `appointment.confirmed`: conclui o acompanhamento automÃ¡tico.
 - `conversation.closed`: conclui a conversa.
 - `campaign.finished`: encerra a campanha.
+- `campaign.completed`: alias de campanha concluÃƒÂ­da (para integraÃƒÂ§ÃƒÂµes que enviam esse nome).
+- `workflow.finished`: alias de fluxo concluÃƒÂ­do.
+- `workflow.completed`: alias de fluxo concluÃƒÂ­do.
+- `run.completed` ou `run.complete`: alias de execuÃƒÂ§ÃƒÂ£o concluÃƒÂ­da.
+- `run.failed` / `campaign.failed` / `workflow.failed`: indica falha de execuÃƒÂ§ÃƒÂ£o.
+- `run.error` / `workflow.error` / `campaign.error`: indica falha em cenÃƒÂ¡rio de erro.
 
-Para os eventos de transferência, envie também `reason`, por exemplo:
+- Filtros adicionais em consultas internas (uso nos painéis):
+  - `channel`: `whatsapp` (Evolution + Meta), `evolution`, `meta`.
+  - `mine`: `1` para restringir à usuário logado.
+
+
+Para os eventos de transferÃªncia, envie tambÃ©m `reason`, por exemplo:
 
 ```json
 {
@@ -42,10 +53,10 @@ Para os eventos de transferência, envie também `reason`, por exemplo:
   "instance": "Zero Carie",
   "phone": "65999999999",
   "flow_name": "Retorno Zero Carie",
-  "reason": "Paciente pediu condição especial de pagamento"
+  "reason": "Paciente pediu condiÃ§Ã£o especial de pagamento"
 }
 ```
 
-Quando uma atendente assume ou responde pelo CRM, o estado da automação passa
-para `paused`. Assim o fluxo não deve continuar respondendo até receber uma
-nova autorização explícita da operação.
+Quando uma atendente assume ou responde pelo CRM, o estado da automaÃ§Ã£o passa
+para `paused`. Assim o fluxo nÃ£o deve continuar respondendo atÃ© receber uma
+nova autorizaÃ§Ã£o explÃ­cita da operaÃ§Ã£o.
