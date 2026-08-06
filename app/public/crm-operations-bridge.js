@@ -3,15 +3,20 @@
 
   const FEATURES = [
     ["inbox", "Inbox"], ["queue", "Filas"], ["funnel", "Funil"],
-    ["management", "Gestão"], ["contacts", "Pacientes"], ["control", "Controle"],
-    ["campaigns", "Campanhas"], ["integrations", "Integrações"],
-    ["settings", "Configuração"]
+    ["management", "GestÃ£o"], ["contacts", "Pacientes"], ["control", "Controle"],
+    ["campaigns", "Campanhas"], ["integrations", "IntegraÃ§Ãµes"],
+    ["settings", "ConfiguraÃ§Ã£o"]
   ];
   let activeScreen = null;
   let permissionState = null;
   let permissionRequest = null;
   let permissionTimer = null;
+  let channelCacheForModal = null;
+  let channelCacheForModalAt = 0;
+  const CHANNEL_CACHE_TTL_MS = 30000;
   const originalNavDisplays = new WeakMap();
+  let permissionNavCache = [];
+  let permissionNavComputed = false;
 
   const esc = value => String(value == null ? "" : value)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -81,16 +86,16 @@
   }
 
   async function openControl() {
-    const body = screen("Controle de pacientes", "Atendimentos finalizados, métricas e exportação em uma tela nativa do CRM.");
+    const body = screen("Controle de pacientes", "Atendimentos finalizados, mÃ©tricas e exportaÃ§Ã£o em uma tela nativa do CRM.");
     const url = new URL(window.location.href);
     url.searchParams.set("screen", "patient-control");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     body.innerHTML = `<div class="iea-panel"><div class="iea-filters">
       <input class="iea-field" data-search placeholder="Buscar paciente ou telefone">
-      <select class="iea-field" data-period><option value="30d">Últimos 30 dias</option><option value="today">Hoje</option><option value="7d">Últimos 7 dias</option></select>
+      <select class="iea-field" data-period><option value="30d">Ãšltimos 30 dias</option><option value="today">Hoje</option><option value="7d">Ãšltimos 7 dias</option></select>
       <select class="iea-field" data-category><option value="">Todas as categorias</option></select>
       <select class="iea-field" data-outcome><option value="">Todos os resultados</option></select>
-    </div><div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="iea-btn iea-btn-dark" data-export>Exportar informaÃ§Ãµes</button></div></div><div data-results><div class="iea-panel">Carregando atendimentos...</div></div>`;
+    </div><div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="iea-btn iea-btn-dark" data-export>Exportar informaÃƒÂ§ÃƒÂµes</button></div></div><div data-results><div class="iea-panel">Carregando atendimentos...</div></div>`;
     const load = async () => {
       const params = new URLSearchParams({ per_page: "50", period: body.querySelector("[data-period]").value });
       const search = body.querySelector("[data-search]").value.trim();
@@ -103,8 +108,8 @@
         const data = await request(`/api/crm/patient-control?${params}`);
         const summary = data.summary || {};
         // /api/crm/patient-control devolve um ledger paginado em `rows`.
-        // A tela antiga procurava `items`, então exibia zero linhas mesmo
-        // depois de a finalização ter sido persistida corretamente.
+        // A tela antiga procurava `items`, entÃ£o exibia zero linhas mesmo
+        // depois de a finalizaÃ§Ã£o ter sido persistida corretamente.
         const items = data.rows || data.items || [];
         const filterData = data.filters || {};
         fillOptions(body.querySelector("[data-category]"), filterData.categories || [], category);
@@ -112,10 +117,10 @@
         const rowById = new Map(items.map(row => [String(row.id), row]));
         body.querySelector("[data-results]").innerHTML = `<div class="iea-grid" style="margin-bottom:18px">
           ${stat("Atendimentos", summary.total)}${stat("Agendamentos", summary.scheduled)}
-          ${stat("Com participação da IA", summary.ai_involved)}${stat("Finalizados por humano", summary.human_finalized)}
+          ${stat("Com participaÃ§Ã£o da IA", summary.ai_involved)}${stat("Finalizados por humano", summary.human_finalized)}
         </div><div class="iea-panel" style="overflow:auto"><table class="iea-table"><thead><tr><th>Paciente</th><th>Finalizado em</th><th>Atendente</th><th>Categoria</th><th>Resultado</th><th>Agendamento</th><th>Canal</th><th>Profissional</th><th></th></tr></thead><tbody>
           ${items.length ? items.map(row => {
-            const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" · ") || row.scheduled_at || "-";
+            const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" Â· ") || row.scheduled_at || "-";
             return `<tr><td><b>${esc(row.contact_name || row.patient_name || row.name)}</b><br><small>${esc(row.phone)}</small></td><td>${esc(row.resolved_at || row.finished_at)}</td><td>${esc(row.resolved_by_name || row.agent_name || row.attendant_name)}</td><td>${esc(row.category)}</td><td>${esc(row.outcome || row.result)}</td><td>${esc(scheduled)}</td><td>${esc(row.channel_name || row.channel)}</td><td>${esc(row.responsible_professional || row.professional_name || "-")}</td><td class="iea-action-cell"><button class="iea-btn iea-btn-sm" data-detail="${Number(row.id)}">Detalhar</button></td></tr>`;
           }).join("") : `<tr><td colspan="9" style="text-align:center;padding:35px;color:#718295">Nenhum atendimento corresponde aos filtros.</td></tr>`}
         </tbody></table></div>`;
@@ -151,18 +156,18 @@
     let metadata = row.metadata_json;
     try { metadata = typeof metadata === "string" ? JSON.parse(metadata) : (metadata || {}); } catch (_) { metadata = { "Dados adicionais": metadata }; }
     const extra = Object.entries(metadata || {}).filter(([key]) => !["contact_name", "channel_name"].includes(key));
-    const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" Â· ") || "-";
+    const scheduled = [row.scheduled_date, row.scheduled_time].filter(Boolean).join(" Ã‚Â· ") || "-";
     const overlay = document.createElement("div");
     overlay.className = "iea-modal-bg";
-    overlay.innerHTML = `<article class="iea-modal"><div style="display:flex;justify-content:space-between;gap:18px;align-items:start"><div><h2>Detalhes do atendimento</h2><p style="margin:5px 0 0;color:#718295">${esc(row.contact_name || row.patient_name || row.name)}${row.attendance_number ? ` Â· #${esc(row.attendance_number)}` : ""}</p></div><button class="iea-btn iea-btn-sm" data-close>Fechar</button></div><div class="iea-detail-grid">
+    overlay.innerHTML = `<article class="iea-modal"><div style="display:flex;justify-content:space-between;gap:18px;align-items:start"><div><h2>Detalhes do atendimento</h2><p style="margin:5px 0 0;color:#718295">${esc(row.contact_name || row.patient_name || row.name)}${row.attendance_number ? ` Ã‚Â· #${esc(row.attendance_number)}` : ""}</p></div><button class="iea-btn iea-btn-sm" data-close>Fechar</button></div><div class="iea-detail-grid">
       ${detail("Finalizado em", row.resolved_at)}${detail("Atendente", row.resolved_by_name)}
       ${detail("Categoria", row.category)}${detail("Resultado", row.outcome || row.result)}
-      ${detail("Tipo de paciente", row.patient_type)}${detail("Recuperação", row.is_recovery ? "Sim" : "Não")}
+      ${detail("Tipo de paciente", row.patient_type)}${detail("RecuperaÃ§Ã£o", row.is_recovery ? "Sim" : "NÃ£o")}
       ${detail("Interesse", row.interest)}${detail("Origem", row.origin)}
-      ${detail("Profissional responsável", row.responsible_professional)}${detail("Canal", row.channel_name || row.channel)}
+      ${detail("Profissional responsÃ¡vel", row.responsible_professional)}${detail("Canal", row.channel_name || row.channel)}
       ${detail("Agendamento", scheduled)}${detail("Tipo de agendamento", row.schedule_type)}
-      ${detail("Próximo contato", row.next_contact_at)}${detail("Tentativas", row.attempts)}
-      ${detail("Finalizado por", row.final_actor)}${detail("Participação da IA", row.ai_involved ? "Sim" : "Não")}
+      ${detail("PrÃ³ximo contato", row.next_contact_at)}${detail("Tentativas", row.attempts)}
+      ${detail("Finalizado por", row.final_actor)}${detail("ParticipaÃ§Ã£o da IA", row.ai_involved ? "Sim" : "NÃ£o")}
       ${detail("Motivo de perda", row.loss_reason, true)}${detail("Observa\\u00e7\\u00f5es registradas", row.notes, true)}
       ${extra.map(([key, value]) => detail(key, typeof value === "object" ? JSON.stringify(value) : value, true)).join("")}
     </div></article>`;
@@ -212,7 +217,7 @@
       const columns = [["Novo", "Novos"], ["Em atendimento", "Em atendimento"], ["Aguardando cliente", "Aguardando cliente"], ["Resolvido", "Resolvidos"]];
       body.querySelector("[data-funnel-results]").innerHTML = `<div class="iea-funnel-columns">${columns.map(([stage, title]) => {
         const list = items.filter(item => item.stage === stage);
-        return `<section class="iea-funnel-column"><header class="iea-funnel-title"><span>${esc(title)}</span><span class="iea-funnel-count">${list.length}</span></header><div class="iea-funnel-cards">${list.length ? list.map(item => `<article class="iea-funnel-card"><h3>${esc(item.name)}</h3><p>${esc(item.channel || "Canal nÃ£o identificado")}</p>${stage === "Resolvido" ? funnelBadge(item.outcome) : `<span class="iea-badge">${esc(item.owner || "Aguardando atendimento")}</span>`}</article>`).join("") : `<p style="margin:17px;text-align:center;color:#718295;font-size:13px">Nenhum atendimento</p>`}</div></section>`;
+        return `<section class="iea-funnel-column"><header class="iea-funnel-title"><span>${esc(title)}</span><span class="iea-funnel-count">${list.length}</span></header><div class="iea-funnel-cards">${list.length ? list.map(item => `<article class="iea-funnel-card"><h3>${esc(item.name)}</h3><p>${esc(item.channel || "Canal nÃƒÂ£o identificado")}</p>${stage === "Resolvido" ? funnelBadge(item.outcome) : `<span class="iea-badge">${esc(item.owner || "Aguardando atendimento")}</span>`}</article>`).join("") : `<p style="margin:17px;text-align:center;color:#718295;font-size:13px">Nenhum atendimento</p>`}</div></section>`;
       }).join("")}</div>`;
     };
     try {
@@ -242,34 +247,59 @@
     const body = screen("Pacientes", "Encontre um contato por nome ou telefone e inicie novos atendimentos.");
     body.innerHTML = `<div class="iea-panel"><div class="iea-contacts-toolbar"><input class="iea-field" data-contact-search placeholder="Buscar por nome ou qualquer parte do telefone"><button class="iea-btn iea-btn-primary" data-new-contact>+ Iniciar contato novo</button></div><div class="iea-contact-list" data-contact-list>Carregando contatos...</div></div>`;
     let contacts = [];
+    let contactIndex = new Map();
+    let searchDebounce = null;
+    let renderVersion = 0;
+    const searchInput = body.querySelector("[data-contact-search]");
+    const contactList = body.querySelector("[data-contact-list]");
+    const scheduleRender = () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(render, 120);
+    };
     const render = () => {
-      const rawQuery = body.querySelector("[data-contact-search]").value.trim();
+      const version = ++renderVersion;
+      const rawQuery = searchInput.value.trim();
       const queryText = normalize(rawQuery);
       const queryPhone = compactPhone(rawQuery);
-      const filtered = contacts.filter(contact => {
-        const textMatch = !queryText || normalize(contact.name).includes(queryText);
-        const phoneMatch = !queryPhone || compactPhone(contact.phone).includes(queryPhone);
-        return textMatch || phoneMatch;
-      });
-      body.querySelector("[data-contact-list]").innerHTML = filtered.length ? filtered.map(contact => `<article class="iea-contact-card"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="iea-contact-avatar">${esc(contactInitials(contact.name))}</span><div><h3>${esc(contact.name)}</h3><p>${esc(contact.phone || "Sem telefone")}</p></div></div><button class="iea-btn iea-btn-sm" data-start-contact="${esc(contact.id)}">Iniciar conversa</button></article>`).join("") : `<p style="text-align:center;color:#718295;padding:36px 10px">Nenhum contato encontrado.</p>`;
-      body.querySelectorAll("[data-start-contact]").forEach(button => {
-        button.onclick = () => openConversationModal(contacts.find(contact => String(contact.id) === button.dataset.startContact));
+      requestAnimationFrame(() => {
+        if (version !== renderVersion) return;
+        const filtered = contacts.filter(contact => (!queryText || contact.searchName.includes(queryText)) || (!queryPhone || contact.searchPhone.includes(queryPhone)));
+        contactList.innerHTML = filtered.length ? filtered.map(contact => `<article class="iea-contact-card"><div style="display:flex;align-items:center;gap:12px;min-width:0"><span class="iea-contact-avatar">${esc(contact.initials)}</span><div><h3>${esc(contact.name)}</h3><p>${esc(contact.phone || "Sem telefone")}</p></div></div><button class="iea-btn iea-btn-sm" data-start-contact="${esc(contact.id)}">Iniciar conversa</button></article>`).join("") : `<p style="text-align:center;color:#718295;padding:36px 10px">Nenhum contato encontrado.</p>`;
       });
     };
-    body.querySelector("[data-contact-search]").oninput = render;
+    contactList.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-start-contact]");
+      if (!button) return;
+      const contact = contactIndex.get(button.dataset.startContact);
+      if (contact) openConversationModal(contact);
+    });
+    searchInput.oninput = scheduleRender;
+    searchInput.onchange = scheduleRender;
     body.querySelector("[data-new-contact]").onclick = () => openConversationModal();
     try {
       const data = await request("/api/crm/contacts");
-      contacts = data.items || [];
+      contacts = (data.items || []).map(contact => {
+        const name = String(contact.name || "Sem nome");
+        const phone = String(contact.phone || "");
+        return {
+          ...contact,
+          name,
+          phone,
+          initials: contactInitials(name),
+          searchName: normalize(name),
+          searchPhone: compactPhone(phone)
+        };
+      });
+      contactIndex = new Map(contacts.map(contact => [String(contact.id), contact]));
       render();
     } catch (error) {
-      body.querySelector("[data-contact-list]").innerHTML = `<p style="color:#bd2436">${esc(error.message)}</p>`;
+      contactList.innerHTML = `<p style="color:#bd2436">${esc(error.message)}</p>`;
     }
   }
 
   async function openSettings() {
-    const body = screen("Configuração e permissões", "Controle quais módulos e canais cada pessoa pode visualizar no CRM.");
-    body.innerHTML = `<div class="iea-panel">Carregando usuários e permissões...</div>`;
+    const body = screen("ConfiguraÃ§Ã£o e permissÃµes", "Controle quais mÃ³dulos e canais cada pessoa pode visualizar no CRM.");
+    body.innerHTML = `<div class="iea-panel">Carregando usuÃ¡rios e permissÃµes...</div>`;
     try {
       const data = await request("/api/admin/crm-channel-access");
       body.innerHTML = `<div class="iea-grid">${(data.users || []).map(user => userCard(user, data.channels || [])).join("")}</div>`;
@@ -291,12 +321,12 @@
         if (!scope || !features.length) return;
         features.forEach(input => {
           input.onchange = () => {
-            // Desmarcar qualquer tela ativa a restrição automaticamente.
+            // Desmarcar qualquer tela ativa a restriÃ§Ã£o automaticamente.
             if (features.some(item => !item.checked)) scope.checked = true;
           };
         });
         scope.onchange = () => {
-          // "Todas as telas" deve ser uma ação explícita e previsível.
+          // "Todas as telas" deve ser uma aÃ§Ã£o explÃ­cita e previsÃ­vel.
           if (!scope.checked) features.forEach(input => { input.checked = true; });
         };
       });
@@ -304,7 +334,7 @@
         button.onclick = () => saveUser(button.closest("[data-user]"));
       });
     } catch (error) {
-      body.innerHTML = `<div class="iea-panel"><h3>Acesso restrito</h3><p>${esc(error.message)}</p><p>Somente o administrador do CRM ou o administrador geral pode alterar essas permissões.</p></div>`;
+      body.innerHTML = `<div class="iea-panel"><h3>Acesso restrito</h3><p>${esc(error.message)}</p><p>Somente o administrador do CRM ou o administrador geral pode alterar essas permissÃµes.</p></div>`;
     }
   }
 
@@ -319,15 +349,15 @@
     const selectedChannels = new Set(csv(user.channel_ids));
     const level = user.crm_access_level === "admin" ? "Administrador do CRM" : "Atendente do CRM";
     if (user.crm_access_level === "admin") {
-      return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} · ${esc(level)}</small><div class="iea-panel" style="margin-top:14px"><strong>Acesso total ao CRM</strong><p style="margin-bottom:0">Pode configurar metas e permissões. Este grau é alterado no cadastro do profissional.</p></div></article>`;
+      return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} Â· ${esc(level)}</small><div class="iea-panel" style="margin-top:14px"><strong>Acesso total ao CRM</strong><p style="margin-bottom:0">Pode configurar metas e permissÃµes. Este grau Ã© alterado no cadastro do profissional.</p></div></article>`;
     }
-    return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} · ${esc(level)}</small>
+    return `<article class="iea-user" data-user="${Number(user.id)}"><h3>${esc(user.name)}</h3><small>${esc(user.email)} Â· ${esc(level)}</small>
       <label style="display:flex;gap:8px;margin:14px 0 8px;font-size:13px"><input type="checkbox" data-channel-scope ${user.crm_channel_scope_enabled ? "checked" : ""}> Restringir aos canais selecionados</label>
       <div class="iea-checks">${channels.map(channel => `<label><input type="checkbox" data-channel="${Number(channel.id)}" ${selectedChannels.has(String(channel.id)) ? "checked" : ""}> ${esc(channel.name || channel.instance_name || `Canal ${channel.id}`)}</label>`).join("")}</div>
       <label style="display:flex;gap:8px;margin:16px 0 8px;font-size:13px"><input type="checkbox" data-feature-scope ${featureScopeEnabled ? "checked" : ""}> Restringir telas do CRM</label>
       <div class="iea-checks">${FEATURES.map(([key, label]) => `<label><input type="checkbox" data-feature="${key}" ${features.includes(key) || !featureScopeEnabled ? "checked" : ""}> ${label}</label>`).join("")}</div>
-      <label style="display:flex;gap:8px;margin:14px 0;font-size:13px"><input type="checkbox" data-automation ${user.can_manage_automation ? "checked" : ""}> Gerenciar automações</label>
-      <button class="iea-btn iea-btn-dark" data-save-user>Salvar permissões</button><span data-status style="margin-left:8px;font-size:12px"></span></article>`;
+      <label style="display:flex;gap:8px;margin:14px 0;font-size:13px"><input type="checkbox" data-automation ${user.can_manage_automation ? "checked" : ""}> Gerenciar automaÃ§Ãµes</label>
+      <button class="iea-btn iea-btn-dark" data-save-user>Salvar permissÃµes</button><span data-status style="margin-left:8px;font-size:12px"></span></article>`;
   }
 
   async function saveUser(card) {
@@ -366,7 +396,7 @@
     overlay.innerHTML = `<div class="iea-modal"><h2>${esc(title)}</h2><p style="color:#718295">${esc(description)}</p><form class="iea-form">
       <label>Nome do contato<input class="iea-field" name="name" required placeholder="Nome do paciente" value="${esc(savedContact?.name || "")}"></label>
       <label>Telefone com DDD<input class="iea-field" name="phone" required inputmode="tel" placeholder="(65) 99999-9999" value="${esc(savedContact?.phone || "")}"></label>
-      <label>Canal<select class="iea-field" name="channel_id" required><option value="">Selecione o número de saída</option></select></label>
+      <label>Canal<select class="iea-field" name="channel_id" required><option value="">Selecione o nÃºmero de saÃ­da</option></select></label>
       <label>Primeira mensagem <span style="font-weight:400">(opcional)</span><textarea class="iea-field" name="text" rows="4" placeholder="Digite a mensagem ou deixe em branco para apenas abrir o atendimento"></textarea></label>
       <div style="display:flex;justify-content:flex-end;gap:9px"><button type="button" class="iea-btn" data-cancel>Cancelar</button><button class="iea-btn iea-btn-primary">${savedContact ? "Iniciar conversa" : "Criar e iniciar atendimento"}</button></div>
       <div data-error style="color:#bd2436;font-size:13px"></div>
@@ -374,25 +404,34 @@
     document.body.appendChild(overlay);
     overlay.querySelector("[data-cancel]").onclick = () => overlay.remove();
     overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+    const select = overlay.querySelector("[name=channel_id]");
+    const errorNode = overlay.querySelector("[data-error]");
+    const submitButton = overlay.querySelector("button[type=submit], button.iea-btn-primary");
     try {
-      const channels = await request("/api/crm/channels");
-      const select = overlay.querySelector("[name=channel_id]");
-      (channels.items || []).filter(item => item.active !== false && item.sync_enabled !== false).forEach(channel => {
-        select.add(new Option(channel.display_name || channel.instance_name, channel.id));
-      });
+      const now = Date.now();
+      const channels = (channelCacheForModal && (now - channelCacheForModalAt) < CHANNEL_CACHE_TTL_MS) ? channelCacheForModal : await request("/api/crm/channels");
+      if (channels !== channelCacheForModal) {
+        channelCacheForModal = channels;
+        channelCacheForModalAt = now;
+      }
+      select.innerHTML = `<option value="">Selecione o nÃºmero de saÃ­da</option>${(channels.items || [])
+        .filter(item => item.active !== false && item.sync_enabled !== false)
+        .map(channel => `<option value="${esc(channel.id)}">${esc(channel.display_name || channel.instance_name || `Canal ${channel.id}`)}</option>`).join("")}`;
     } catch (error) {
-      overlay.querySelector("[data-error]").textContent = error.message;
+      errorNode.textContent = error.message;
+      submitButton.disabled = true;
     }
     overlay.querySelector("form").onsubmit = async event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const phone = String(form.get("phone") || "").replace(/\D/g, "");
       if (phone.length < 10 || phone.length > 13) {
-        overlay.querySelector("[data-error]").textContent = "Informe DDD + número válido.";
+        errorNode.textContent = "Informe DDD + nÃºmero vÃ¡lido.";
         return;
       }
       try {
         const text = String(form.get("text") || "").trim();
+        submitButton.disabled = true;
         await request("/api/crm/conversations", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: form.get("name"), phone, channel_id: Number(form.get("channel_id")), text, open_only: !text })
@@ -400,7 +439,8 @@
         overlay.remove();
         window.dispatchEvent(new CustomEvent("iea:crm-conversation-created"));
       } catch (error) {
-        overlay.querySelector("[data-error]").textContent = error.message;
+        errorNode.textContent = error.message;
+        submitButton.disabled = false;
       }
     };
   }
@@ -410,8 +450,8 @@
   }
 
   function setNavFeatureVisible(nav, visible) {
-    // Os itens nativos usam display:flex para manter o ícone acima do rótulo.
-    // Ao liberar uma tela, restaure o layout original em vez de apagá-lo.
+    // Os itens nativos usam display:flex para manter o Ã­cone acima do rÃ³tulo.
+    // Ao liberar uma tela, restaure o layout original em vez de apagÃ¡-lo.
     if (!originalNavDisplays.has(nav)) originalNavDisplays.set(nav, nav.style.display);
     nav.style.display = visible ? originalNavDisplays.get(nav) : "none";
   }
@@ -420,17 +460,28 @@
     if (!permissionState) return;
     const restricted = Boolean(permissionState.feature_scope_enabled);
     const allowed = new Set(permissionState.allowed_features || []);
+    const aside = observedPermissionsAside;
+    if (!aside) return;
+    if (!permissionNavComputed || !permissionNavCache.length || !permissionNavCache.every((item) => item.isConnected)) {
+      permissionNavCache = Array.from(aside.querySelectorAll("a,button,[role=button],div"))
+        .filter((item) => item.children.length <= 1)
+        .map((item) => {
+          item.__ieaSidebarLabel = normalize(item.textContent);
+          return item;
+        });
+      permissionNavComputed = true;
+    }
     const aliases = [
       ["inbox", "inbox"], ["fila", "queue"], ["funil", "funnel"],
       ["gestao", "management"], ["paciente", "contacts"], ["controle", "control"],
       ["campanha", "campaigns"], ["integra", "integrations"], ["config", "settings"]
     ];
-    document.querySelectorAll("aside a,aside button,aside [role=button],aside div").forEach(nav => {
-      const label = normalize(nav.textContent);
+    permissionNavCache.forEach((nav) => {
+      const label = nav.__ieaSidebarLabel || normalize(nav.textContent);
       const featureMatches = [...new Set(aliases.filter(([name]) => label.includes(name)).map(([, feature]) => feature))];
-      // Containers da barra lateral contêm o texto de várias opções. Alterar
-      // o display deles ocultaria também telas autorizadas; só trate o nó que
-      // representa uma única funcionalidade.
+      // Containers da barra lateral contÃ©m o texto de vÃ¡rias opÃ§Ãµes. Alterar
+      // o display deles ocultaria tambÃ©m telas autorizadas; sÃ³ trate o nÃ³ que
+      // representa uma Ãºnica funcionalidade.
       if (featureMatches.length === 1) {
         setNavFeatureVisible(nav, !restricted || allowed.has(featureMatches[0]));
       }
@@ -456,7 +507,11 @@
 
   function schedulePermissionRender() {
     clearTimeout(permissionTimer);
-    permissionTimer = setTimeout(renderPermissions, 80);
+    permissionTimer = setTimeout(() => {
+      permissionTimer = null;
+      permissionNavComputed = false;
+      renderPermissions();
+    }, 120);
   }
 
   let observedPermissionsAside = null;
@@ -467,6 +522,8 @@
       return width > 0 && width <= 140;
     });
     if (!aside || aside === observedPermissionsAside) return;
+    permissionNavCache = [];
+    permissionNavComputed = false;
     permissionObserver.disconnect();
     observedPermissionsAside = aside;
     permissionObserver.observe(aside, { childList: true, subtree: true });
@@ -488,7 +545,7 @@
     button.type = "button";
     button.className = "iea-btn iea-btn-dark iea-native-settings-permissions";
     button.dataset.ieaOpenPermissions = "true";
-    button.textContent = "Gerenciar permissões do CRM";
+    button.textContent = "Gerenciar permissÃµes do CRM";
     button.onclick = event => { event.preventDefault(); openSettings(); };
     const subtitle = heading.parentElement && heading.parentElement.querySelector("p");
     (subtitle || heading).insertAdjacentElement("afterend", button);
@@ -503,49 +560,91 @@
     }, 120);
   }
 
-  function isSidebarTarget(target) {
-    const sidebar = target.closest("aside,[class*='sidebar'],[class*='side-bar']");
-    if (!sidebar) return false;
-    const width = sidebar.getBoundingClientRect().width;
-    return width > 0 && width <= 140;
+  let sidebarNavigationHost = null;
+  let sidebarNavigationHandler = null;
+  let sidebarNavigationRebindTimer = null;
+
+  function resolveSidebarHost() {
+    return Array.from(document.querySelectorAll("aside")).find((item) => {
+      const rect = item.getBoundingClientRect();
+      return rect.width > 0 && rect.width <= 160;
+    });
   }
 
-  document.addEventListener("click", event => {
-    // A navegaÃ§Ã£o original usa divs clicÃ¡veis em algumas versÃµes do bundle.
-    // IncluÃ­mos somente filhos diretos da lateral para nÃ£o interceptar o
-    // conteÃºdo principal nem reintroduzir o atraso de eventos genÃ©ricos.
-    const target = event.target.closest("button,a,[role=button],aside > div,[class*='sidebar'] > div,[class*='side-bar'] > div");
-    if (!target) return;
-    if (target.closest("[data-iea-open-permissions]")) {
-      event.preventDefault(); event.stopImmediatePropagation(); openSettings(); return;
+  function bindSidebarNavigation() {
+    const sidebar = resolveSidebarHost();
+    if (!sidebar || sidebar === sidebarNavigationHost) return;
+
+    if (sidebarNavigationHost && sidebarNavigationHandler) {
+      sidebarNavigationHost.removeEventListener("click", sidebarNavigationHandler, true);
     }
-    // Buttons inside our own modal must keep their native form behaviour.
-    // Without this guard, the submit button "Iniciar conversa" is intercepted
-    // below and opens a second modal instead of sending the form.
-    if (target.closest(".iea-modal")) return;
-    const label = normalizedLabel(target.textContent);
-    if (target.closest("[data-iea-patient-control]") ||
-        (isSidebarTarget(target) && (label === "controle" || label.includes("controle de pacientes")))) {
-      event.preventDefault(); event.stopImmediatePropagation(); openControl(); return;
-    }
-    if (isSidebarTarget(target) && (label === "funil" || label.includes("funil operacional"))) {
-      event.preventDefault(); event.stopImmediatePropagation(); openFunnel(); return;
-    }
-    if (isSidebarTarget(target) && (label === "pacientes" || label === "contatos" || label.includes("lista de pacientes"))) {
-      event.preventDefault(); event.stopImmediatePropagation(); openContacts(); return;
-    }
-    if (isSidebarTarget(target) && (label === "config" || label.startsWith("configur"))) {
-      event.preventDefault(); event.stopImmediatePropagation(); openSettings();
-    }
-  }, true);
+
+    sidebarNavigationHandler = event => {
+      const target = event.target.closest("button,a,[role=button],div");
+      if (!target || target.closest(".iea-modal")) return;
+      if (!sidebar.contains(target)) return;
+
+      if (target.closest("[data-iea-open-permissions]")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openSettings();
+        return;
+      }
+
+      const label = normalizedLabel(target.textContent);
+      if (target.closest("[data-iea-patient-control]") || (label === "controle" || label.includes("controle de pacientes"))) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openControl();
+        return;
+      }
+      if (label === "funil" || label.includes("funil operacional")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openFunnel();
+        return;
+      }
+      if (label === "pacientes" || label === "contatos" || label.includes("lista de pacientes")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openContacts();
+        return;
+      }
+      if (label === "config" || label.startsWith("configur")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openSettings();
+      }
+    };
+
+    sidebar.addEventListener("click", sidebarNavigationHandler, true);
+    sidebarNavigationHost = sidebar;
+  }
+
+  const sidebarNavigationHostObserver = new MutationObserver(() => {
+    if (sidebarNavigationRebindTimer) return;
+    sidebarNavigationRebindTimer = setTimeout(() => {
+      sidebarNavigationRebindTimer = null;
+      bindSidebarNavigation();
+    }, 80);
+  });
+  sidebarNavigationHostObserver.observe(document.body, { childList: true, subtree: true });
+  bindSidebarNavigation();
 
   window.IEACrmOperations = { openControl, openFunnel, openContacts, closeScreen, openSettings, openConversationModal };
   css();
   applyPermissions();
-  // Observar toda a Ã¡rvore do CRM fazia a ponte executar em cada render de
-  // conversa/mensagem. A barra Ã© recriada como filho direto do body quando
-  // necessÃ¡rio; esse escopo Ã© suficiente e evita travar a interface.
-  new MutationObserver(observePermissionSidebar).observe(document.body, { childList: true });
+  // Observa somente mudanças de âncoras da sidebar (lado da navegação).
+  const permissionSidebarHostObserver = new MutationObserver((mutations) => {
+    const shouldRebind = mutations.some((mutation) => {
+      if (mutation.type !== "childList") return false;
+      const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+      return nodes.some((node) => node instanceof Element && (node.matches("aside") || node.closest("aside"))) ||
+        mutation.target instanceof Element && mutation.target.matches("aside");
+    });
+    if (shouldRebind) observePermissionSidebar();
+  });
+  permissionSidebarHostObserver.observe(document.body, { childList: true });
   observePermissionSidebar();
   injectSettingsPermissionsButton();
 })();
