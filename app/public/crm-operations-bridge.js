@@ -11,6 +11,8 @@
   let permissionState = null;
   let permissionRequest = null;
   let permissionTimer = null;
+  let permissionStateFetchedAt = 0;
+  const PERMISSIONS_TTL_MS = 15000;
   let channelCacheForModal = null;
   let channelCacheForModalAt = 0;
   const CHANNEL_CACHE_TTL_MS = 30000;
@@ -489,7 +491,9 @@
   }
 
   function applyPermissions(force) {
-    if (permissionState && !force) {
+    const now = Date.now();
+    const stale = now - permissionStateFetchedAt > PERMISSIONS_TTL_MS;
+    if (permissionState && !force && !stale) {
       renderPermissions();
       return Promise.resolve(permissionState);
     }
@@ -497,10 +501,16 @@
     permissionRequest = request("/api/crm/permissions")
       .then(data => {
         permissionState = data;
+        permissionStateFetchedAt = Date.now();
         renderPermissions();
         return data;
       })
-      .catch(() => { permissionState={feature_scope_enabled:true,allowed_features:[]};renderPermissions();return permissionState; })
+      .catch(() => { 
+        permissionState={feature_scope_enabled:true,allowed_features:[]};
+        permissionStateFetchedAt = Date.now();
+        renderPermissions();
+        return permissionState;
+      })
       .finally(() => { permissionRequest = null; });
     return permissionRequest;
   }
@@ -528,6 +538,7 @@
     observedPermissionsAside = aside;
     permissionObserver.observe(aside, { childList: true, subtree: true });
     schedulePermissionRender();
+    applyPermissions(true);
   }
 
   function normalizedLabel(value) {
