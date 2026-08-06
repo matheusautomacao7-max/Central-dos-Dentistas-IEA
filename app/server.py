@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import calendar
 import json
@@ -35,7 +35,7 @@ from db_backend import IntegrityError, configure as configure_database, connect
 try:
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-except ImportError:  # dependência de SEC-011 ainda não instalada neste ambiente
+except ImportError:  # dependÃªncia de SEC-011 ainda nÃ£o instalada neste ambiente
     InvalidTag = ValueError
     AESGCM = None
 
@@ -53,7 +53,7 @@ CRC_ROUTE = "/central-crc"
 CRM_NEXT_ROUTE = "/crm"
 STANDARD_PATIENT_STATUSES = {"Consulta", "Controle", "Tratamento", "Inativo"}
 RELEASE_ID = os.environ.get("APP_RELEASE_ID") or datetime.utcnow().strftime("%Y%m%d%H%M%S")
-MAX_BODY_BYTES = 60 * 1024 * 1024  # 60 MB: acomoda mídia de CRM em base64 (limite decodificado de 40 MB)
+MAX_BODY_BYTES = 60 * 1024 * 1024  # 60 MB: acomoda mÃ­dia de CRM em base64 (limite decodificado de 40 MB)
 TOTP_ENC_PREFIX = "encv1:"
 INTEGRATION_SECRET_PREFIX = "secv1:"
 INTEGRATION_SECRET_AAD = b"iea-integration-secret-v1"
@@ -69,14 +69,15 @@ META_TEST_MODE = os.environ.get("META_TEST_MODE") == "1"
 META_TEST_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_TEST_WEBHOOK_VERIFY_TOKEN", "").strip()
 META_TEST_APP_SECRET = os.environ.get("META_TEST_APP_SECRET", "").strip()
 META_TEST_ACCESS_TOKEN = os.environ.get("META_TEST_ACCESS_TOKEN", "").strip()
+META_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_WEBHOOK_VERIFY_TOKEN", "").strip()
 META_GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v26.0").strip() or "v26.0"
 META_GRAPH_API_URL = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
 CLINIC_UTC_OFFSET_HOURS = int(os.environ.get("CLINIC_UTC_OFFSET_HOURS", "-4"))
 CLINIC_TIMEZONE = timezone(timedelta(hours=CLINIC_UTC_OFFSET_HOURS))
-# O container roda em UTC por padrão. SQLite usa o fuso do processo quando recebe
-# o modificador `localtime`, então padronizamos toda a aplicação no horário de Cuiabá.
+# O container roda em UTC por padrÃ£o. SQLite usa o fuso do processo quando recebe
+# o modificador `localtime`, entÃ£o padronizamos toda a aplicaÃ§Ã£o no horÃ¡rio de CuiabÃ¡.
 os.environ.setdefault("TZ", "GMT+4")
 if hasattr(time, "tzset"):
     time.tzset()
@@ -107,7 +108,7 @@ EVOLUTION_HISTORY_SYNC_STATUS = {
     "messages": 0,
     "older_messages_removed": 0,
     "since": EVOLUTION_HISTORY_CUTOFF[:10],
-    "phase": "Aguardando sincronização",
+    "phase": "Aguardando sincronizaÃ§Ã£o",
     "errors": [],
     "started_at": None,
     "finished_at": None,
@@ -119,7 +120,7 @@ def encrypt_integration_secret(value: str | None) -> str | None:
     if not value or value.startswith(INTEGRATION_SECRET_PREFIX):
         return value
     if not APP_SECRET_KEY or AESGCM is None:
-        raise RuntimeError("APP_SECRET_KEY ausente: não é possível proteger a credencial da integração")
+        raise RuntimeError("APP_SECRET_KEY ausente: nÃ£o Ã© possÃ­vel proteger a credencial da integraÃ§Ã£o")
     nonce = secrets.token_bytes(12)
     ciphertext = AESGCM(APP_SECRET_KEY).encrypt(
         nonce, value.encode("utf-8"), INTEGRATION_SECRET_AAD
@@ -132,7 +133,7 @@ def decrypt_integration_secret(value: str | None) -> str | None:
     if not value or not value.startswith(INTEGRATION_SECRET_PREFIX):
         return value
     if not APP_SECRET_KEY or AESGCM is None:
-        raise RuntimeError("APP_SECRET_KEY ausente: não é possível decifrar a credencial da integração")
+        raise RuntimeError("APP_SECRET_KEY ausente: nÃ£o Ã© possÃ­vel decifrar a credencial da integraÃ§Ã£o")
     try:
         raw = base64.b64decode(value[len(INTEGRATION_SECRET_PREFIX):], validate=True)
         if len(raw) <= 12:
@@ -142,7 +143,7 @@ def decrypt_integration_secret(value: str | None) -> str | None:
         )
         return plaintext.decode("utf-8")
     except (ValueError, UnicodeDecodeError, InvalidTag) as error:
-        raise RuntimeError("Credencial de integração cifrada inválida") from error
+        raise RuntimeError("Credencial de integraÃ§Ã£o cifrada invÃ¡lida") from error
 
 
 def migrate_integration_secrets(db) -> int:
@@ -155,6 +156,9 @@ def migrate_integration_secrets(db) -> int:
         ("api_integration_backups", "api_token"),
         ("crm_n8n_config", "api_token"),
         ("crm_channels", "evolution_api_key"),
+        ("crm_channels", "meta_access_token"),
+        ("crm_channels", "meta_app_secret"),
+        ("crm_channels", "meta_verify_token"),
     )
     key_columns = {
         "integration_configs": "name",
@@ -202,8 +206,8 @@ def migrate_n8n_config_file() -> bool:
         pass
     os.replace(temporary_path, N8N_CONFIG_PATH)
     return True
-# A tela de integrações é aberta e reconstruída várias vezes pelo CRM. Manter a
-# última auditoria válida em memória evita que uma troca de aba deixe a tela
+# A tela de integraÃ§Ãµes Ã© aberta e reconstruÃ­da vÃ¡rias vezes pelo CRM. Manter a
+# Ãºltima auditoria vÃ¡lida em memÃ³ria evita que uma troca de aba deixe a tela
 # dependente de uma nova consulta externa ao n8n.
 N8N_OVERVIEW_CACHE_LOCK = threading.Lock()
 N8N_OVERVIEW_CACHE: dict[str, object] = {
@@ -221,23 +225,23 @@ CRM_WORKSPACE_FEATURES = ("inbox", "queue", "funnel")
 
 CRM_GOAL_METRICS = {
     "first_consultations": "Primeiras consultas",
-    "recoveries": "Recuperação de pacientes",
+    "recoveries": "RecuperaÃ§Ã£o de pacientes",
     "attendances": "Atendimentos",
 }
 CRM_LIA_KNOWLEDGE_CATEGORIES = (
-    "Scripts aprovados", "Perguntas frequentes", "Metas e finalização",
-    "Atendimento e tom de voz", "Campanhas", "Serviços e agendas",
-    "Políticas comerciais", "Escalonamento", "Geral",
+    "Scripts aprovados", "Perguntas frequentes", "Metas e finalizaÃ§Ã£o",
+    "Atendimento e tom de voz", "Campanhas", "ServiÃ§os e agendas",
+    "PolÃ­ticas comerciais", "Escalonamento", "Geral",
 )
 CRM_LIA_MODELS = {
-    "gpt-5.6-luna": {"label": "GPT-5.6 Luna — econômico", "input_per_million": 0.20, "output_per_million": 1.20},
-    "gpt-5.6-terra": {"label": "GPT-5.6 Terra — qualidade superior", "input_per_million": 2.00, "output_per_million": 12.00},
+    "gpt-5.6-luna": {"label": "GPT-5.6 Luna â€” econÃ´mico", "input_per_million": 0.20, "output_per_million": 1.20},
+    "gpt-5.6-terra": {"label": "GPT-5.6 Terra â€” qualidade superior", "input_per_million": 2.00, "output_per_million": 12.00},
 }
 CRM_PROFILE_ACHIEVEMENT_ICONS = {"trophy", "medal", "star", "heart", "target", "sparkles"}
 CRM_PROFILE_ACHIEVEMENT_COLORS = {"#2563EB", "#7C3AED", "#F59E0B", "#16A34A", "#EF4444", "#0891B2"}
 CRM_PATIENT_TYPES = {"Primeira consulta", "Retorno s/ Tratamento"}
 CRM_MONTH_NAMES = (
-    "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "", "Janeiro", "Fevereiro", "MarÃ§o", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 )
 
@@ -245,7 +249,7 @@ CRM_MONTH_NAMES = (
 def crm_goal_month_bounds(month_value: str) -> tuple[date, date]:
     """Return the first and last day for a validated YYYY-MM goal period."""
     if not re.fullmatch(r"\d{4}-\d{2}", month_value or ""):
-        raise ValueError("Mês inválido")
+        raise ValueError("MÃªs invÃ¡lido")
     first = datetime.strptime(month_value + "-01", "%Y-%m-%d").date()
     last = date(first.year, first.month, calendar.monthrange(first.year, first.month)[1])
     return first, last
@@ -297,13 +301,13 @@ def convert_crm_audio_to_ogg(audio_bytes: bytes) -> bytes:
             check=False,
         )
     except FileNotFoundError as error:
-        raise RuntimeError("Conversor de áudio não instalado no servidor.") from error
+        raise RuntimeError("Conversor de Ã¡udio nÃ£o instalado no servidor.") from error
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError("A conversão do áudio excedeu o tempo permitido.") from error
+        raise RuntimeError("A conversÃ£o do Ã¡udio excedeu o tempo permitido.") from error
 
     if result.returncode != 0 or not result.stdout.startswith(b"OggS"):
         detail = result.stderr.decode("utf-8", errors="replace").strip()[-300:]
-        raise RuntimeError(f"Não foi possível preparar o áudio gravado. {detail}".strip())
+        raise RuntimeError(f"NÃ£o foi possÃ­vel preparar o Ã¡udio gravado. {detail}".strip())
     return result.stdout
 
 
@@ -334,7 +338,7 @@ def migrate_crm_timezone(db) -> None:
     if db.execute("SELECT 1 FROM app_migrations WHERE migration_key=?", (timezone_migration,)).fetchone():
         return
     # Os registros anteriores eram persistidos em UTC pelo container, mas a
-    # interface os interpretava como horário local. Corrige uma única vez.
+    # interface os interpretava como horÃ¡rio local. Corrige uma Ãºnica vez.
     for table, columns in {
         "crm_messages": ("message_at", "created_at"),
         "crm_conversations": (
@@ -350,7 +354,7 @@ def migrate_crm_timezone(db) -> None:
 
 
 def ensure_crm_permission_constraints(db) -> None:
-    """Normaliza valores legados e valida integralmente as permissões no PostgreSQL."""
+    """Normaliza valores legados e valida integralmente as permissÃµes no PostgreSQL."""
     if getattr(db, "backend", "") != "postgres":
         return
     db.execute("""UPDATE users SET
@@ -394,7 +398,7 @@ def ensure_crm_permission_constraints(db) -> None:
 
 
 def cleanup_retention_data(db) -> None:
-    """Reduz PII técnica sem apagar o histórico clínico e operacional necessário."""
+    """Reduz PII tÃ©cnica sem apagar o histÃ³rico clÃ­nico e operacional necessÃ¡rio."""
     webhook_cutoff = f"-{WEBHOOK_PAYLOAD_RETENTION_DAYS} days"
     security_cutoff = f"-{SECURITY_EVENT_RETENTION_DAYS} days"
     redacted_payload = '{"retention":"redacted"}'
@@ -471,6 +475,20 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE crm_channels ADD COLUMN sync_from_date TEXT NOT NULL DEFAULT '2026-07-20'")
         if "sla_minutes" not in crm_channel_columns:
             db.execute("ALTER TABLE crm_channels ADD COLUMN sla_minutes INTEGER NOT NULL DEFAULT 60")
+        if "provider" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN provider TEXT NOT NULL DEFAULT 'evolution'")
+        if "meta_phone_number_id" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_phone_number_id TEXT")
+        if "meta_business_account_id" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_business_account_id TEXT")
+        if "meta_access_token" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_access_token TEXT")
+        if "meta_app_secret" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_app_secret TEXT")
+        if "meta_verify_token" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_verify_token TEXT")
+        if "meta_graph_api_version" not in crm_channel_columns:
+            db.execute("ALTER TABLE crm_channels ADD COLUMN meta_graph_api_version TEXT")
         user_columns = {row[1] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "crm_channel_scope_enabled" not in user_columns:
             db.execute("ALTER TABLE users ADD COLUMN crm_channel_scope_enabled INTEGER NOT NULL DEFAULT 0")
@@ -539,9 +557,9 @@ def initialize_database() -> None:
         }.items():
             if column not in crm_n8n_setting_columns:
                 db.execute(f"ALTER TABLE crm_n8n_workflow_settings ADD COLUMN {column} {definition}")
-        # Bancos criados antes do rastreamento de campanhas não possuem o nome
+        # Bancos criados antes do rastreamento de campanhas nÃ£o possuem o nome
         # do fluxo em cada evento. A coluna permite agrupar os dados reais da
-        # campanha sem perder o histórico já armazenado.
+        # campanha sem perder o histÃ³rico jÃ¡ armazenado.
         crm_n8n_event_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_n8n_patient_events)").fetchall()
         }
@@ -618,7 +636,7 @@ def initialize_database() -> None:
                AND COALESCE(crc_status, '') NOT IN ('Aguardando contato', 'Em atendimento', 'Jornada compartilhada')
         """)
         old_air_flow = "Profilaxia c/ Air Flow"
-        child_air_flow = "Profilaxia c/ Air Flow Criança"
+        child_air_flow = "Profilaxia c/ Air Flow CrianÃ§a"
         db.execute(
             """UPDATE patient_followup
                SET next_action = REPLACE(next_action, ?, ?)
@@ -628,7 +646,7 @@ def initialize_database() -> None:
         db.execute("DELETE FROM action_templates WHERE description = ?", (old_air_flow,))
         db.executemany(
             "INSERT OR IGNORE INTO action_templates (description) VALUES (?)",
-            [(child_air_flow,), ("Profilaxia c/ Air Flow Adulto",), ("Reabilitação",)],
+            [(child_air_flow,), ("Profilaxia c/ Air Flow Adulto",), ("ReabilitaÃ§Ã£o",)],
         )
         db.execute("UPDATE patient_followup SET next_action = REPLACE(next_action, 'Never', 'Niver') WHERE INSTR(next_action, 'Never') > 0")
         db.execute("DELETE FROM action_templates WHERE description = 'Never'")
@@ -651,8 +669,8 @@ def initialize_database() -> None:
             JOIN professionals pr ON pr.id=pa.professional_id
             WHERE date(f.resolved_at)=date('now','localtime')
         """)
-        # Integrações são gerenciadas exclusivamente pelo usuário. A inicialização
-        # nunca deve criar, fundir ou apagar cartões e credenciais já cadastrados.
+        # IntegraÃ§Ãµes sÃ£o gerenciadas exclusivamente pelo usuÃ¡rio. A inicializaÃ§Ã£o
+        # nunca deve criar, fundir ou apagar cartÃµes e credenciais jÃ¡ cadastrados.
         api_integration_columns = {row[1] for row in db.execute("PRAGMA table_info(api_integrations)").fetchall()}
         for column, definition in {"subscriber_id": "TEXT", "sync_interval_seconds": "INTEGER NOT NULL DEFAULT 60", "last_sync_at": "TEXT", "last_sync_status": "TEXT", "last_sync_message": "TEXT", "last_sync_count": "INTEGER NOT NULL DEFAULT 0"}.items():
             if column not in api_integration_columns:
@@ -662,7 +680,7 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE api_sync_logs ADD COLUMN phone_result TEXT")
         integration_phone_rows = db.execute("""SELECT DISTINCT p.id, p.phone FROM patients p
                                                 JOIN patient_events event ON event.patient_id=p.id
-                                                WHERE event.event_type='Integração Clinicorp' AND p.phone IS NOT NULL""").fetchall()
+                                                WHERE event.event_type='IntegraÃ§Ã£o Clinicorp' AND p.phone IS NOT NULL""").fetchall()
         for integration_phone in integration_phone_rows:
             normalized_phone = re.sub(r"\D", "", integration_phone["phone"] or "")
             if normalized_phone.startswith("55") and len(normalized_phone) in {12, 13}:
@@ -686,7 +704,7 @@ def initialize_database() -> None:
             "origin_professional_id": "INTEGER",
             "forward_reason": "TEXT",
             "completed_at": "TEXT",
-            "stage_status": "TEXT NOT NULL DEFAULT 'Aguardando início'",
+            "stage_status": "TEXT NOT NULL DEFAULT 'Aguardando inÃ­cio'",
             "stage_note": "TEXT",
             "stage_updated_at": "TEXT",
         }.items():
@@ -770,7 +788,7 @@ def initialize_database() -> None:
         cleanup_retention_data(db)
         migrate_n8n_config_file()
         office_id = db.execute(
-            "INSERT OR IGNORE INTO offices (code, name) VALUES ('CONSULTORIO_3', 'Consultório 3') RETURNING id"
+            "INSERT OR IGNORE INTO offices (code, name) VALUES ('CONSULTORIO_3', 'ConsultÃ³rio 3') RETURNING id"
         ).fetchone()
         if office_id:
             office_id = office_id[0]
@@ -793,7 +811,7 @@ def initialize_database() -> None:
             return
         professional_id = db.execute(
             "INSERT INTO professionals (name, role, is_owner) VALUES (?, ?, ?)",
-            ("Dra. Dulce", "Cirurgiã-dentista", 1),
+            ("Dra. Dulce", "CirurgiÃ£-dentista", 1),
         ).lastrowid
         db.execute("""
             INSERT INTO professional_offices (professional_id, office_id, is_responsible)
@@ -848,18 +866,18 @@ def patient_select() -> str:
                CASE WHEN date(f.resolved_at) = date('now', 'localtime') THEN 1 ELSE 0 END AS is_resolved_today,
                pr.name AS professional,
                (SELECT GROUP_CONCAT(px.name, ', ') FROM procedures px
-                 WHERE px.patient_id = p.id AND px.stage != 'Concluído') AS procedure_summary,
+                 WHERE px.patient_id = p.id AND px.stage != 'ConcluÃ­do') AS procedure_summary,
                (SELECT COUNT(*) FROM procedures px WHERE px.patient_id = p.id) AS procedure_count,
                (SELECT COALESCE(SUM(GREATEST(px.value_cents - px.discount_cents, 0)), 0) FROM procedures px
-                 WHERE px.patient_id = p.id AND px.stage != 'Concluído') AS potential_value_cents,
+                 WHERE px.patient_id = p.id AND px.stage != 'ConcluÃ­do') AS potential_value_cents,
                COALESCE((SELECT cp.health_change FROM patient_clinical_profile cp WHERE cp.patient_id = p.id), 0) AS has_health_change,
                CASE WHEN f.next_appointment IS NOT NULL AND date(f.next_appointment) >= date('now', 'localtime') THEN 1 ELSE 0 END AS is_scheduled,
                CAST(julianday('now', 'localtime') - julianday(CASE WHEN f.next_appointment IS NOT NULL AND date(f.next_appointment) < date('now', 'localtime') THEN f.next_appointment ELSE f.last_visit END) AS INTEGER) AS days_away
-               ,COALESCE((SELECT q.status FROM crc_export_queue q WHERE q.patient_id=p.id ORDER BY q.id DESC LIMIT 1), 'Não enviado') AS export_status
+               ,COALESCE((SELECT q.status FROM crc_export_queue q WHERE q.patient_id=p.id ORDER BY q.id DESC LIMIT 1), 'NÃ£o enviado') AS export_status
                ,COALESCE((SELECT q.message_created FROM crc_export_queue q WHERE q.patient_id=p.id ORDER BY q.id DESC LIMIT 1), '') AS message_created
                ,(SELECT COUNT(*) FROM patient_assignments shared_pa
                   WHERE shared_pa.patient_id=p.id AND shared_pa.is_primary=0 AND shared_pa.journey_status='Ativo') AS journey_professional_count
-               ,COALESCE((SELECT GROUP_CONCAT(shared_pr.name || '|' || COALESCE(shared_pa.stage_status, 'Aguardando início'), '||')
+               ,COALESCE((SELECT GROUP_CONCAT(shared_pr.name || '|' || COALESCE(shared_pa.stage_status, 'Aguardando inÃ­cio'), '||')
                   FROM patient_assignments shared_pa
                   JOIN professionals shared_pr ON shared_pr.id=shared_pa.professional_id
                   WHERE shared_pa.patient_id=p.id AND shared_pa.is_primary=0 AND shared_pa.journey_status='Ativo'), '') AS journey_summary
@@ -929,9 +947,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         frame_ancestors = "'self'" if allow_same_origin_frame else "'none'"
         if allow_bundled_ui:
-            # 'unsafe-eval' continua necessário: o bundle roda Babel standalone
+            # 'unsafe-eval' continua necessÃ¡rio: o bundle roda Babel standalone
             # no navegador para transpilar JSX em tempo real (ver crm-whatsapp.html).
-            # 'unsafe-inline' foi substituído por nonce por requisição — os
+            # 'unsafe-inline' foi substituÃ­do por nonce por requisiÃ§Ã£o â€” os
             # <script> inline do bundle carregam o nonce correspondente (SEC-008).
             script_src = f"'self' 'nonce-{bundled_ui_nonce}' 'unsafe-eval' blob:" if bundled_ui_nonce else "'self' 'unsafe-inline' 'unsafe-eval' blob:"
             self.send_header("Content-Security-Policy", f"default-src 'self' blob: data:; script-src {script_src}; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' blob: data: https://fonts.gstatic.com; img-src 'self' blob: data:; media-src 'self' blob: data:; connect-src 'self'; frame-ancestors {frame_ancestors}; base-uri 'self'; form-action 'self'; upgrade-insecure-requests; block-all-mixed-content")
@@ -1018,10 +1036,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def require_auth(self, roles=None):
         user = self.current_user()
         if not user:
-            self.send_json({"error": "Autenticação necessária"}, HTTPStatus.UNAUTHORIZED)
+            self.send_json({"error": "AutenticaÃ§Ã£o necessÃ¡ria"}, HTTPStatus.UNAUTHORIZED)
             return None
         if roles and user["access_role"] not in roles:
-            self.send_json({"error": "Você não tem permissão para esta ação"}, HTTPStatus.FORBIDDEN)
+            self.send_json({"error": "VocÃª nÃ£o tem permissÃ£o para esta aÃ§Ã£o"}, HTTPStatus.FORBIDDEN)
             return None
         return user
 
@@ -1041,8 +1059,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def totp_code(secret: str, timestamp: int | None = None) -> str:
         # TOTP usa Unix time absoluto. `datetime.utcnow().timestamp()` trata o
-        # datetime ingênuo como horário local e desloca o código quando o
-        # processo está em UTC-4.
+        # datetime ingÃªnuo como horÃ¡rio local e desloca o cÃ³digo quando o
+        # processo estÃ¡ em UTC-4.
         timestamp = int(time.time()) if timestamp is None else int(timestamp)
         key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8))
         digest = hmac.new(key, struct.pack(">Q", timestamp // 30), hashlib.sha1).digest()
@@ -1065,7 +1083,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not secret:
             return secret
         if not APP_SECRET_KEY or AESGCM is None:
-            raise RuntimeError("Criptografia do 2FA indisponível. Configure APP_SECRET_KEY antes de ativar o recurso.")
+            raise RuntimeError("Criptografia do 2FA indisponÃ­vel. Configure APP_SECRET_KEY antes de ativar o recurso.")
         aesgcm = AESGCM(APP_SECRET_KEY)
         nonce = secrets.token_bytes(12)
         ciphertext = aesgcm.encrypt(nonce, secret.encode("utf-8"), None)
@@ -1074,9 +1092,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     @staticmethod
     def decrypt_totp_secret(value: str | None) -> str | None:
         if not value or not value.startswith(TOTP_ENC_PREFIX):
-            return value  # texto claro legado (pré-SEC-011) ou vazio
+            return value  # texto claro legado (prÃ©-SEC-011) ou vazio
         if not APP_SECRET_KEY or AESGCM is None:
-            raise RuntimeError("APP_SECRET_KEY ausente: não é possível decifrar o segredo TOTP armazenado")
+            raise RuntimeError("APP_SECRET_KEY ausente: nÃ£o Ã© possÃ­vel decifrar o segredo TOTP armazenado")
         raw = base64.b64decode(value[len(TOTP_ENC_PREFIX):])
         aesgcm = AESGCM(APP_SECRET_KEY)
         return aesgcm.decrypt(raw[:12], raw[12:], None).decode("utf-8")
@@ -1180,7 +1198,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             row = db.execute("SELECT two_factor_secret FROM users WHERE id=?", (user["id"],)).fetchone()
         if not row or not row["two_factor_secret"]:
-            return self.send_json({"error": "Prepare a autenticação em duas etapas antes de gerar o QR Code."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Prepare a autenticaÃ§Ã£o em duas etapas antes de gerar o QR Code."}, HTTPStatus.CONFLICT)
         qr = qrcode.make(self.otp_uri(user["email"], self.decrypt_totp_secret(row["two_factor_secret"])), image_factory=SvgPathImage, box_size=8, border=3)
         self.send_svg(qr.to_string())
 
@@ -1188,14 +1206,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             row = db.execute("SELECT name, photo_data, photo_mime FROM professionals WHERE id=?", (professional_id,)).fetchone()
         if not row:
-            return self.send_json({"error": "Foto não encontrada"}, HTTPStatus.NOT_FOUND)
-        # A foto institucional da Dra. Dulce usa sempre o arquivo mestre em alta resolução.
+            return self.send_json({"error": "Foto nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
+        # A foto institucional da Dra. Dulce usa sempre o arquivo mestre em alta resoluÃ§Ã£o.
         if "dulc" in str(row["name"] or "").casefold():
             source = PUBLIC / "assets" / "dra-dulce.jpeg"
             if source.exists():
                 return self.send_image(source.read_bytes(), "image/jpeg")
         if not row["photo_data"]:
-            return self.send_json({"error": "Foto não encontrada"}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Foto nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
         self.send_image(base64.b64decode(row["photo_data"]), row["photo_mime"] or "image/jpeg")
 
     def get_crm_contact_profile_photo(self, contact_id: int) -> None:
@@ -1266,7 +1284,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             assigned = db.execute("SELECT 1 FROM patient_assignments WHERE patient_id=? AND professional_id=?", (patient_id, portfolio_id)).fetchone()
         if assigned:
             return True
-        self.send_json({"error": "Este paciente não pertence à sua carteira"}, HTTPStatus.FORBIDDEN)
+        self.send_json({"error": "Este paciente nÃ£o pertence Ã  sua carteira"}, HTTPStatus.FORBIDDEN)
         return False
 
     @staticmethod
@@ -1286,7 +1304,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if lock and int(lock["user_id"]) != int(self.authenticated_user["id"]):
             self.send_json(
                 {
-                    "error": f"Este prontuário está em atendimento por {lock['user_name']}.",
+                    "error": f"Este prontuÃ¡rio estÃ¡ em atendimento por {lock['user_name']}.",
                     "code": "patient_in_use",
                     "locked_by": lock["user_name"],
                     "expires_at": lock["expires_at"],
@@ -1349,7 +1367,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
         if length > MAX_BODY_BYTES:
-            self.send_json({"error": "Corpo da requisição excede o limite permitido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            self.send_json({"error": "Corpo da requisiÃ§Ã£o excede o limite permitido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             raise ConnectionAbortedError("payload too large")
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
@@ -1370,6 +1388,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_health()
         if parsed.path == "/api/integrations/meta/test/webhook":
             return self.verify_meta_test_webhook(parse_qs(parsed.query))
+        if parsed.path == "/api/integrations/meta/webhook":
+            return self.verify_meta_webhook(parse_qs(parsed.query))
         if parsed.path == "/api/release":
             return self.send_json({"release": RELEASE_ID})
         if parsed.path == "/api/auth/status":
@@ -1394,31 +1414,31 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             self.can_admin_portal(self.authenticated_user)
             or (crm_admin_endpoint and self.can_manage_crm(self.authenticated_user))
         ):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         if parsed.path == "/api/admin":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_admin_overview()
         if parsed.path == "/api/admin/crm-channel-access":
             if not self.can_manage_crm(self.authenticated_user):
-                return self.send_json({"error": "Acesso de administrador do CRM necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso de administrador do CRM necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_admin_crm_channel_access()
         if parsed.path == "/api/admin/audit":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_admin_audit(parse_qs(parsed.query))
         if parsed.path == "/api/admin/integrations/clinicorp":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_clinicorp_config()
         if parsed.path == "/api/admin/apis":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_api_integrations()
         api_sync_status_match = re.fullmatch(r"/api/admin/apis/(\d+)/sync-status", parsed.path)
         if api_sync_status_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.get_api_sync_status(int(api_sync_status_match.group(1)))
         if parsed.path == "/api/specialties":
             return self.get_specialties()
@@ -1558,6 +1578,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.receive_evolution_webhook(self.read_json(), parse_qs(parsed.query))
         if parsed.path == "/api/integrations/meta/test/webhook":
             return self.receive_meta_test_webhook()
+        if parsed.path == "/api/integrations/meta/webhook":
+            return self.receive_meta_webhook()
         if parsed.path == "/api/integrations/crm/handoff":
             return self.receive_crm_handoff(self.read_json(), parse_qs(parsed.query))
         if parsed.path == "/api/integrations/crm/automation-event":
@@ -1598,7 +1620,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             self.can_admin_portal(self.authenticated_user)
             or (crm_admin_endpoint and self.can_manage_crm(self.authenticated_user))
         ):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         if parsed.path == "/api/admin/crm-channel-access":
             return self.save_admin_crm_channel_access(self.read_json())
         if parsed.path == "/api/admin/crm-channel-access/test":
@@ -1679,49 +1701,49 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 int(n8n_workflow_restore_match.group(2)),
             )
         if self.authenticated_user["access_role"] == "crc":
-            return self.send_json({"error": "A Central CRC é somente para acompanhamento."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A Central CRC Ã© somente para acompanhamento."}, HTTPStatus.FORBIDDEN)
         if parsed.path == "/api/patients":
             return self.create_patient(self.read_json())
         if parsed.path == "/api/procedure-catalog":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.create_catalog_procedure(self.read_json())
         if parsed.path == "/api/admin/professionals":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.create_admin_professional(self.read_json())
         if parsed.path == "/api/admin/integrations/clinicorp":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.save_clinicorp_config(self.read_json())
         if parsed.path == "/api/admin/apis":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.save_api_integration(self.read_json())
         api_sync_match = re.fullmatch(r"/api/admin/apis/(\d+)/sync", parsed.path)
         if api_sync_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.start_api_phone_sync(int(api_sync_match.group(1)), self.read_json())
         api_retry_failures_match = re.fullmatch(r"/api/admin/apis/(\d+)/retry-failures", parsed.path)
         if api_retry_failures_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.retry_api_sync_failures(int(api_retry_failures_match.group(1)))
         api_revert_match = re.fullmatch(r"/api/admin/apis/(\d+)/revert", parsed.path)
         if api_revert_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.revert_api_integration(int(api_revert_match.group(1)))
         photo_match = re.fullmatch(r"/api/admin/professionals/(\d+)/photo", parsed.path)
         if photo_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.update_professional_photo(int(photo_match.group(1)), self.read_json())
         password_match = re.fullmatch(r"/api/admin/professionals/(\d+)/reset-password", parsed.path)
         if password_match:
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.reset_professional_password(int(password_match.group(1)), self.read_json())
         if parsed.path == "/api/admin/specialties":
             return self.create_admin_specialty(self.read_json())
@@ -1731,35 +1753,35 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.import_admin_patients(self.read_json())
         if parsed.path == "/api/admin/import/appointments/audit":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.appointment_audit(self.read_json())
         if parsed.path == "/api/admin/import/appointments/validate":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.appointment_validate(self.read_json())
         if parsed.path == "/api/admin/import/appointments/confirm":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.appointment_confirm(self.read_json())
         if parsed.path == "/api/admin/import/relationship-directory/audit":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.relationship_directory_audit(self.read_json())
         if parsed.path == "/api/admin/import/relationship-directory/confirm":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.relationship_directory_confirm(self.read_json())
         if parsed.path == "/api/admin/import/scheduled/audit":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.scheduled_appointment_audit(self.read_json())
         if parsed.path == "/api/admin/import/scheduled/validate":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.scheduled_appointment_validate(self.read_json())
         if parsed.path == "/api/admin/import/scheduled/confirm":
             if not self.can_admin_portal(self.authenticated_user):
-                return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
             return self.scheduled_appointment_confirm(self.read_json())
         reset_match = re.fullmatch(r"/api/admin/password-resets/(\d+)/complete", parsed.path)
         if reset_match:
@@ -1782,7 +1804,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         match = re.fullmatch(r"/api/patients/(\d+)/resolve", parsed.path)
         if match:
             return self.resolve_patient(int(match.group(1)), self.read_json())
-        return self.send_json({"error": "Rota não encontrada"}, HTTPStatus.NOT_FOUND)
+        return self.send_json({"error": "Rota nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
@@ -1796,11 +1818,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if edit_lock_match:
             return self.release_patient_edit_lock(int(edit_lock_match.group(1)))
         if self.authenticated_user["access_role"] == "crc":
-            return self.send_json({"error": "A Central CRC é somente para acompanhamento."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A Central CRC Ã© somente para acompanhamento."}, HTTPStatus.FORBIDDEN)
         if parsed.path.startswith("/api/admin/") and not self.can_admin_portal(self.authenticated_user):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         if parsed.path.startswith("/api/procedure-catalog/") and not self.can_admin_portal(self.authenticated_user):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         observation_match = re.fullmatch(r"/api/patients/(\d+)/observations/(\d+)", parsed.path)
         if observation_match:
             return self.delete_visit_observation(int(observation_match.group(1)), int(observation_match.group(2)))
@@ -1821,12 +1843,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.delete_api_integration(int(api_match.group(1)))
         match = re.fullmatch(r"/api/procedure-catalog/(\d+)", parsed.path)
         if not match:
-            return self.send_json({"error": "Rota não encontrada"}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Rota nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
         procedure_id = int(match.group(1))
         with connect() as db:
             exists = db.execute("SELECT id FROM procedure_catalog WHERE id = ?", (procedure_id,)).fetchone()
             if not exists:
-                return self.send_json({"error": "Procedimento não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Procedimento nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             db.execute("DELETE FROM procedure_catalog WHERE id = ?", (procedure_id,))
         self.send_json({"deleted": True, "id": procedure_id})
 
@@ -1834,13 +1856,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             exists = db.execute("SELECT id FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
             if not exists:
-                return self.send_json({"error": "API não encontrada"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "API nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
             db.execute("DELETE FROM api_integrations WHERE id=?", (integration_id,))
         self.send_json({"deleted": True, "id": integration_id})
 
     def delete_patient(self, patient_id: int, payload: dict) -> None:
         if self.authenticated_user["access_role"] not in {"owner", "professional", "asb", "admin"}:
-            return self.send_json({"error": "Seu nível de acesso não permite excluir pacientes."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Seu nÃ­vel de acesso nÃ£o permite excluir pacientes."}, HTTPStatus.FORBIDDEN)
         password = str(payload.get("password") or "")
         if not password:
             return self.send_json({"error": "Confirme sua senha para excluir o paciente."}, HTTPStatus.BAD_REQUEST)
@@ -1863,9 +1885,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not password_valid:
                 self.record_security_event(
                     db, "patient_delete_denied", self.request_ip(),
-                    self.authenticated_user["id"], f"Paciente {patient_id}: senha inválida",
+                    self.authenticated_user["id"], f"Paciente {patient_id}: senha invÃ¡lida",
                 )
-                return self.send_json({"error": "Senha inválida."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "Senha invÃ¡lida."}, HTTPStatus.UNAUTHORIZED)
 
             patient = db.execute("""
                 SELECT p.id, p.name,
@@ -1880,7 +1902,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 WHERE p.id = ?
             """, (patient_id,)).fetchone()
             if not patient:
-                return self.send_json({"error": "Paciente não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
 
             if self.authenticated_user["access_role"] != "admin":
                 portfolio_id = (
@@ -1899,13 +1921,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         self.authenticated_user["id"], f"Paciente {patient_id}: fora da carteira principal",
                     )
                     return self.send_json(
-                        {"error": "Somente a carteira principal deste paciente pode excluí-lo."},
+                        {"error": "Somente a carteira principal deste paciente pode excluÃ­-lo."},
                         HTTPStatus.FORBIDDEN,
                     )
 
             if patient["locked"]:
                 return self.send_json(
-                    {"error": "Paciente verificado está bloqueado. Reabra o acompanhamento antes de excluir."},
+                    {"error": "Paciente verificado estÃ¡ bloqueado. Reabra o acompanhamento antes de excluir."},
                     HTTPStatus.CONFLICT,
                 )
 
@@ -1922,7 +1944,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             )
             self.record_security_event(
                 db, "patient_deleted", self.request_ip(), self.authenticated_user["id"],
-                f"Paciente {patient_id} - {patient['name']} excluído por {self.authenticated_user['name']}",
+                f"Paciente {patient_id} - {patient['name']} excluÃ­do por {self.authenticated_user['name']}",
             )
             db.execute("DELETE FROM daily_resolutions WHERE patient_id = ?", (patient_id,))
             db.execute("DELETE FROM patient_events WHERE patient_id = ?", (patient_id,))
@@ -1966,9 +1988,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if journey_match:
             return self.update_journey_assignment(int(journey_match.group(1)), int(journey_match.group(2)), self.read_json())
         if self.authenticated_user["access_role"] == "crc":
-            return self.send_json({"error": "A CRC pode atualizar apenas procedimentos e contato/referência."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A CRC pode atualizar apenas procedimentos e contato/referÃªncia."}, HTTPStatus.FORBIDDEN)
         if (parsed.path.startswith("/api/admin/") or parsed.path.startswith("/api/procedure-catalog/")) and not self.can_admin_portal(self.authenticated_user):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         if parsed.path == "/api/admin/integrations/clinicorp":
             return self.save_clinicorp_config(self.read_json())
         catalog_match = re.fullmatch(r"/api/procedure-catalog/(\d+)", parsed.path)
@@ -1985,7 +2007,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.update_admin_structure("offices", int(office_match.group(1)), self.read_json())
         match = re.fullmatch(r"/api/patients/(\d+)", parsed.path)
         if not match:
-            return self.send_json({"error": "Rota não encontrada"}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Rota nÃ£o encontrada"}, HTTPStatus.NOT_FOUND)
         return self.update_patient(int(match.group(1)), self.read_json())
 
     def login(self, payload: dict) -> None:
@@ -2002,17 +2024,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "Muitas tentativas. Aguarde 15 minutos antes de tentar novamente."}, HTTPStatus.TOO_MANY_REQUESTS)
             row = db.execute("SELECT * FROM users WHERE lower(email)=? AND active=1", (email,)).fetchone()
             if not row or not row["password_hash"] or not row["password_salt"]:
-                # Computa um digest "descartável" de custo equivalente ao caminho de sucesso,
-                # para não vazar a existência da conta por diferença de latência (timing side-channel).
+                # Computa um digest "descartÃ¡vel" de custo equivalente ao caminho de sucesso,
+                # para nÃ£o vazar a existÃªncia da conta por diferenÃ§a de latÃªncia (timing side-channel).
                 self.password_digest(password, secrets.token_hex(16))
                 db.execute("INSERT INTO login_attempts (email, ip_address) VALUES (?, ?)", (email, ip_address))
-                self.record_security_event(db, "login_failed", ip_address, detail="Credenciais inválidas")
-                return self.send_json({"error": "E-mail ou senha inválidos"}, HTTPStatus.UNAUTHORIZED)
+                self.record_security_event(db, "login_failed", ip_address, detail="Credenciais invÃ¡lidas")
+                return self.send_json({"error": "E-mail ou senha invÃ¡lidos"}, HTTPStatus.UNAUTHORIZED)
             digest = self.password_digest(password, row["password_salt"])
             if not hmac.compare_digest(digest, row["password_hash"]):
                 db.execute("INSERT INTO login_attempts (email, ip_address) VALUES (?, ?)", (email, ip_address))
-                self.record_security_event(db, "login_failed", ip_address, row["id"], "Senha inválida")
-                return self.send_json({"error": "E-mail ou senha inválidos"}, HTTPStatus.UNAUTHORIZED)
+                self.record_security_event(db, "login_failed", ip_address, row["id"], "Senha invÃ¡lida")
+                return self.send_json({"error": "E-mail ou senha invÃ¡lidos"}, HTTPStatus.UNAUTHORIZED)
             db.execute("INSERT INTO login_attempts (email, ip_address, successful) VALUES (?, ?, 1)", (email, ip_address))
             db.execute("DELETE FROM login_attempts WHERE email=? AND ip_address=? AND successful=0", (email, ip_address))
             if row["two_factor_enabled"]:
@@ -2031,13 +2053,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def begin_two_factor_setup(self, user: dict) -> None:
         if user.get("two_factor_enabled"):
-            return self.send_json({"error": "A autenticação em duas etapas já está ativa."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "A autenticaÃ§Ã£o em duas etapas jÃ¡ estÃ¡ ativa."}, HTTPStatus.CONFLICT)
         secret = self.new_totp_secret()
         try:
             encrypted_secret = self.encrypt_totp_secret(secret)
         except RuntimeError:
             return self.send_json(
-                {"error": "A proteção do 2FA ainda não está configurada. Contate o administrador."},
+                {"error": "A proteÃ§Ã£o do 2FA ainda nÃ£o estÃ¡ configurada. Contate o administrador."},
                 HTTPStatus.SERVICE_UNAVAILABLE,
             )
         with connect() as db:
@@ -2049,7 +2071,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             row = db.execute("SELECT two_factor_secret FROM users WHERE id=?", (user["id"],)).fetchone()
             if not row or not self.valid_totp(self.decrypt_totp_secret(row["two_factor_secret"]), code):
-                return self.send_json({"error": "Código inválido. Confira o aplicativo autenticador e tente novamente."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "CÃ³digo invÃ¡lido. Confira o aplicativo autenticador e tente novamente."}, HTTPStatus.UNAUTHORIZED)
             db.execute("UPDATE users SET two_factor_enabled=1, two_factor_enrolled_at=CURRENT_TIMESTAMP WHERE id=?", (user["id"],))
             self.record_security_event(db, "two_factor_enabled", self.request_ip(), user["id"])
         self.send_json({"enabled": True})
@@ -2058,26 +2080,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         challenge = str(payload.get("challenge") or "")
         code = str(payload.get("code") or "").replace(" ", "")
         if not challenge or not re.fullmatch(r"\d{6}", code):
-            return self.send_json({"error": "Informe o código de 6 dígitos."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe o cÃ³digo de 6 dÃ­gitos."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             row = db.execute("""SELECT u.*,c.expires_at AS challenge_expires_at, c.attempts AS challenge_attempts
                               FROM login_challenges c JOIN users u ON u.id=c.user_id
                               WHERE c.token_hash=? AND u.active=1""",
                              (hashlib.sha256(challenge.encode("utf-8")).hexdigest(),)).fetchone()
             if not row:
-                return self.send_json({"error": "Sessão de verificação inválida. Faça login novamente."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "SessÃ£o de verificaÃ§Ã£o invÃ¡lida. FaÃ§a login novamente."}, HTTPStatus.UNAUTHORIZED)
             if row["challenge_expires_at"] <= datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"):
                 db.execute("DELETE FROM login_challenges WHERE user_id=?", (row["id"],))
                 self.record_security_event(db, "two_factor_challenge_expired", self.request_ip(), row["id"])
-                return self.send_json({"error": "A sessão de verificação expirou. Faça login novamente."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "A sessÃ£o de verificaÃ§Ã£o expirou. FaÃ§a login novamente."}, HTTPStatus.UNAUTHORIZED)
             if row["challenge_attempts"] >= 5:
                 db.execute("DELETE FROM login_challenges WHERE user_id=?", (row["id"],))
                 self.record_security_event(db, "two_factor_blocked", self.request_ip(), row["id"])
-                return self.send_json({"error": "Muitas tentativas. Faça login novamente."}, HTTPStatus.TOO_MANY_REQUESTS)
+                return self.send_json({"error": "Muitas tentativas. FaÃ§a login novamente."}, HTTPStatus.TOO_MANY_REQUESTS)
             if not self.valid_totp(self.decrypt_totp_secret(row["two_factor_secret"]), code):
                 db.execute("UPDATE login_challenges SET attempts=attempts+1 WHERE user_id=?", (row["id"],))
                 self.record_security_event(db, "two_factor_failed", self.request_ip(), row["id"])
-                return self.send_json({"error": "Código inválido. Use o código atual exibido no autenticador."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "CÃ³digo invÃ¡lido. Use o cÃ³digo atual exibido no autenticador."}, HTTPStatus.UNAUTHORIZED)
             token = self.issue_session(db, row["id"])
             db.execute("DELETE FROM login_challenges WHERE user_id=?", (row["id"],))
             db.execute("UPDATE users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?", (row["id"],))
@@ -2087,18 +2109,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def setup_owner(self, payload: dict) -> None:
         setup_token = os.environ.get("AUTH_SETUP_TOKEN", "")
         if not setup_token:
-            return self.send_json({"error": "Configuração de ativação ausente. Contate o administrador."}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return self.send_json({"error": "ConfiguraÃ§Ã£o de ativaÃ§Ã£o ausente. Contate o administrador."}, HTTPStatus.SERVICE_UNAVAILABLE)
         if not hmac.compare_digest(str(payload.get("setup_token") or ""), setup_token):
-            return self.send_json({"error": "Código de ativação inválido"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "CÃ³digo de ativaÃ§Ã£o invÃ¡lido"}, HTTPStatus.FORBIDDEN)
         password = str(payload.get("password") or "")
         if len(password) < 10:
             return self.send_json({"error": "A senha precisa ter ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             owner = db.execute("SELECT * FROM users WHERE access_role='owner' AND active=1 ORDER BY id LIMIT 1").fetchone()
             if not owner:
-                return self.send_json({"error": "Nenhuma proprietária foi configurada"}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Nenhuma proprietÃ¡ria foi configurada"}, HTTPStatus.CONFLICT)
             if owner["password_hash"]:
-                return self.send_json({"error": "A conta proprietária já foi ativada"}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "A conta proprietÃ¡ria jÃ¡ foi ativada"}, HTTPStatus.CONFLICT)
             salt = secrets.token_hex(16)
             db.execute("UPDATE users SET password_hash=?, password_salt=?, must_change_password=0 WHERE id=?", (self.password_digest(password, salt), salt, owner["id"]))
         self.send_json({"setup": True, "email": owner["email"]})
@@ -2132,7 +2154,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 )
             else:
                 db.execute("DELETE FROM auth_sessions WHERE user_id=?", (user["id"],))
-            self.record_security_event(db, "password_changed", self.request_ip(), user["id"], "Demais sessões revogadas")
+            self.record_security_event(db, "password_changed", self.request_ip(), user["id"], "Demais sessÃµes revogadas")
         self.send_json({"changed": True})
 
     def request_password_reset(self, payload: dict) -> None:
@@ -2145,18 +2167,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 existing = db.execute("SELECT id FROM password_reset_requests WHERE user_id=? AND status='pending'", (user["id"],)).fetchone()
                 if not existing:
                     db.execute("INSERT INTO password_reset_requests (user_id) VALUES (?)", (user["id"],))
-        self.send_json({"requested": True, "message": "Se o e-mail estiver cadastrado, a solicitação foi enviada para a central."})
+        self.send_json({"requested": True, "message": "Se o e-mail estiver cadastrado, a solicitaÃ§Ã£o foi enviada para a central."})
 
     def complete_password_reset(self, request_id: int, payload: dict) -> None:
         if not self.can_admin_portal(self.authenticated_user):
-            return self.send_json({"error": "Acesso administrativo necessário"}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso administrativo necessÃ¡rio"}, HTTPStatus.FORBIDDEN)
         temporary_password = str(payload.get("temporary_password") or "")
         if len(temporary_password) < 10:
-            return self.send_json({"error": "Defina uma senha temporária com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Defina uma senha temporÃ¡ria com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             request = db.execute("SELECT user_id FROM password_reset_requests WHERE id=? AND status='pending'", (request_id,)).fetchone()
             if not request:
-                return self.send_json({"error": "Solicitação não encontrada ou já atendida"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "SolicitaÃ§Ã£o nÃ£o encontrada ou jÃ¡ atendida"}, HTTPStatus.NOT_FOUND)
             salt = secrets.token_hex(16)
             db.execute("UPDATE users SET password_hash=?, password_salt=?, must_change_password=1 WHERE id=?", (self.password_digest(temporary_password, salt), salt, request["user_id"]))
             db.execute("DELETE FROM auth_sessions WHERE user_id=?", (request["user_id"],))
@@ -2200,11 +2222,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         api_user = str(payload.get("api_user") or "").strip()
         api_token = str(payload.get("api_token") or "").strip()
         if not self.valid_clinicorp_url(api_base_url) or not subscriber_id or not api_user:
-            return self.send_json({"error": "Informe uma URL HTTPS oficial da Clinicorp, ID do assinante e usuário API."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe uma URL HTTPS oficial da Clinicorp, ID do assinante e usuÃ¡rio API."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             existing = db.execute("SELECT api_token FROM integration_configs WHERE name='clinicorp'").fetchone()
             if not api_token and not existing:
-                return self.send_json({"error": "Informe o token API na primeira configuração."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Informe o token API na primeira configuraÃ§Ã£o."}, HTTPStatus.BAD_REQUEST)
             token = encrypt_integration_secret(api_token) if api_token else existing["api_token"]
             db.execute("""INSERT INTO integration_configs (name, api_base_url, subscriber_id, api_user, api_token, updated_at, updated_by)
                          VALUES ('clinicorp', ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
@@ -2236,11 +2258,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             sync_interval_seconds = max(10, min(3600, int(payload.get("sync_interval_seconds") or 60)))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Informe um intervalo de sincronização válido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe um intervalo de sincronizaÃ§Ã£o vÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if not name or not description:
             return self.send_json({"error": "Informe o nome e a finalidade da API."}, HTTPStatus.BAD_REQUEST)
         if name.casefold().startswith("clinicorp") and not self.valid_clinicorp_url(api_base_url):
-            return self.send_json({"error": "A integração Clinicorp aceita somente um endereço HTTPS oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A integraÃ§Ã£o Clinicorp aceita somente um endereÃ§o HTTPS oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             existing = db.execute("SELECT id, api_token FROM api_integrations WHERE lower(name)=lower(?)", (name,)).fetchone()
             if existing:
@@ -2265,9 +2287,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             backup = db.execute("SELECT * FROM api_integration_backups WHERE integration_id=?", (integration_id,)).fetchone()
             current = db.execute("SELECT id FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
             if not current:
-                return self.send_json({"error": "API não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "API nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not backup:
-                return self.send_json({"error": "Ainda não existe uma alteração anterior para reverter."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Ainda nÃ£o existe uma alteraÃ§Ã£o anterior para reverter."}, HTTPStatus.BAD_REQUEST)
             db.execute("""UPDATE api_integrations SET name=?, description=?, api_base_url=?, subscriber_id=?, api_user=?, api_token=?, active=?, sync_interval_seconds=?, updated_at=CURRENT_TIMESTAMP, updated_by=? WHERE id=?""",
                        (backup["name"], backup["description"], backup["api_base_url"], backup["subscriber_id"], backup["api_user"], backup["api_token"], backup["active"], backup["sync_interval_seconds"], self.authenticated_user["id"], integration_id))
             db.execute("DELETE FROM api_integration_backups WHERE integration_id=?", (integration_id,))
@@ -2283,16 +2305,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             integration = db.execute("SELECT * FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
             if not integration:
-                return self.send_json({"error": "API não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "API nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             config = dict(integration)
             if not config["active"]:
                 return self.send_json({"error": "Ative a API antes de sincronizar."}, HTTPStatus.BAD_REQUEST)
             if not config["name"].strip().lower().startswith("clinicorp"):
-                return self.send_json({"error": "A sincronização automática de telefone está disponível somente para a API Clinicorp."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "A sincronizaÃ§Ã£o automÃ¡tica de telefone estÃ¡ disponÃ­vel somente para a API Clinicorp."}, HTTPStatus.BAD_REQUEST)
             if not self.valid_clinicorp_url(config["api_base_url"]):
-                return self.send_json({"error": "A URL salva não pertence ao domínio oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "A URL salva nÃ£o pertence ao domÃ­nio oficial da Clinicorp."}, HTTPStatus.BAD_REQUEST)
             if not config["api_base_url"] or not config["api_user"] or not config["api_token"]:
-                return self.send_json({"error": "Complete URL base, usuário API e token antes de sincronizar."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Complete URL base, usuÃ¡rio API e token antes de sincronizar."}, HTTPStatus.BAD_REQUEST)
             # Clinicorp identifies the account with the subscriber id. In some
             # installations it is the same value as the API user, so that fallback
             # is supported deliberately and remains visible in the configuration.
@@ -2309,22 +2331,22 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with API_SYNC_LOCK:
             running = API_SYNC_THREADS.get(integration_id)
             if running and running.is_alive():
-                return self.send_json({"error": "A sincronização desta API já está em andamento."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "A sincronizaÃ§Ã£o desta API jÃ¡ estÃ¡ em andamento."}, HTTPStatus.CONFLICT)
             with connect() as db:
                 run_id = db.execute("""INSERT INTO api_sync_runs (integration_id, started_at, status, message)
-                                      VALUES (?, datetime('now','localtime'), 'Em andamento', 'Sincronização iniciada.')""", (integration_id,)).lastrowid
+                                      VALUES (?, datetime('now','localtime'), 'Em andamento', 'SincronizaÃ§Ã£o iniciada.')""", (integration_id,)).lastrowid
             worker = threading.Thread(target=self.run_clinicorp_phone_sync, args=(integration_id, test_only, run_id), daemon=True, name=f"clinicorp-sync-{integration_id}")
             API_SYNC_THREADS[integration_id] = worker
             with connect() as db:
                 db.execute("UPDATE api_integrations SET last_sync_status='Em andamento', last_sync_message='Consultando telefones em segundo plano.', last_sync_count=0 WHERE id=?", (integration_id,))
             worker.start()
-        self.send_json({"started": True, "test_only": test_only, "message": "Teste iniciado." if test_only else "Sincronização iniciada em segundo plano."})
+        self.send_json({"started": True, "test_only": test_only, "message": "Teste iniciado." if test_only else "SincronizaÃ§Ã£o iniciada em segundo plano."})
 
     def get_api_sync_status(self, integration_id: int) -> None:
         with connect() as db:
             integration = db.execute("SELECT id, name, last_sync_at, last_sync_status, last_sync_message, last_sync_count FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
             if not integration:
-                return self.send_json({"error": "API não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "API nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             logs = db.execute("""SELECT log.id, log.external_id, log.phone_result, log.status, log.detail, log.created_at, log.updated_at, patient.name AS patient_name
                                FROM api_sync_logs log
                                LEFT JOIN patients patient ON patient.id=log.patient_id
@@ -2353,7 +2375,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             integration = db.execute("SELECT id FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
             if not integration:
-                return self.send_json({"error": "API não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "API nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             result = db.execute("DELETE FROM api_sync_logs WHERE integration_id=? AND status IN ('Falhou','Sem telefone')", (integration_id,))
         self.send_json({"released": result.rowcount, "message": f"{result.rowcount} falha(s) liberada(s) para nova tentativa."})
 
@@ -2374,7 +2396,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     @classmethod
     def clinicorp_patient(cls, config: dict, patient_name: str) -> dict:
         if not cls.valid_clinicorp_url(config.get("api_base_url")):
-            raise RuntimeError("A URL da Clinicorp não pertence ao domínio oficial permitido.")
+            raise RuntimeError("A URL da Clinicorp nÃ£o pertence ao domÃ­nio oficial permitido.")
         parsed_url = urlparse(str(config["api_base_url"]))
         if parsed_url.netloc.endswith("clinicorp.com"):
             base_url = f"{parsed_url.scheme or 'https'}://{parsed_url.netloc}/rest/v1"
@@ -2391,18 +2413,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             body = error.read(600).decode("utf-8", "replace")
             raise RuntimeError(f"Clinicorp respondeu {error.code}: {body}") from error
         except URLError as error:
-            raise RuntimeError(f"Não foi possível conectar à Clinicorp: {error.reason}") from error
+            raise RuntimeError(f"NÃ£o foi possÃ­vel conectar Ã  Clinicorp: {error.reason}") from error
         items = payload if isinstance(payload, list) else [payload]
         exact = [item for item in items if isinstance(item, dict) and cls.clinicorp_name_key(item.get("Name")) == cls.clinicorp_name_key(clean_name)]
         if not exact:
-            raise RuntimeError(f"Clinicorp não encontrou correspondência exata para '{clean_name}'.")
+            raise RuntimeError(f"Clinicorp nÃ£o encontrou correspondÃªncia exata para '{clean_name}'.")
         if len(exact) > 1:
-            raise RuntimeError(f"Clinicorp retornou {len(exact)} pacientes com o nome '{clean_name}'. Preenchimento bloqueado por segurança.")
+            raise RuntimeError(f"Clinicorp retornou {len(exact)} pacientes com o nome '{clean_name}'. Preenchimento bloqueado por seguranÃ§a.")
         return exact[0]
 
     def run_clinicorp_phone_sync(self, integration_id: int, test_only: bool = False, run_id: int | None = None) -> None:
         updated = attempted = without_phone = 0
-        status = "Concluída"
+        status = "ConcluÃ­da"
         message = "Nenhum novo telefone encontrado."
         attempted_patient_ids: set[int] = set()
         try:
@@ -2410,7 +2432,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     config_row = db.execute("SELECT * FROM api_integrations WHERE id=?", (integration_id,)).fetchone()
                     if not config_row or not config_row["active"]:
-                        status, message = "Interrompida", "A API foi desativada durante a sincronização."
+                        status, message = "Interrompida", "A API foi desativada durante a sincronizaÃ§Ã£o."
                         break
                     config = dict(config_row)
                     config["api_token"] = decrypt_integration_secret(config.get("api_token"))
@@ -2423,14 +2445,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                               ORDER BY patient.id LIMIT 3000""", (integration_id,)).fetchall()
                 candidate = next((row for row in candidates if row["id"] not in attempted_patient_ids), None)
                 if not candidate:
-                    message = f"{updated} telefone(s) preenchido(s); não há mais pacientes elegíveis nesta execução."
+                    message = f"{updated} telefone(s) preenchido(s); nÃ£o hÃ¡ mais pacientes elegÃ­veis nesta execuÃ§Ã£o."
                     break
                 row = candidate
                 imported_reference = self.clinicorp_id_from_name(row["name"])
                 attempted_patient_ids.add(row["id"])
                 attempted += 1
                 with connect() as db:
-                    log_id = db.execute("INSERT INTO api_sync_logs (integration_id, patient_id, external_id, status, detail) VALUES (?, ?, ?, 'Consultando', 'Busca exata por nome enviada à Clinicorp.')", (integration_id, row["id"], imported_reference)).lastrowid
+                    log_id = db.execute("INSERT INTO api_sync_logs (integration_id, patient_id, external_id, status, detail) VALUES (?, ?, ?, 'Consultando', 'Busca exata por nome enviada Ã  Clinicorp.')", (integration_id, row["id"], imported_reference)).lastrowid
                 try:
                     clinicorp_patient = self.clinicorp_patient(config, row["name"])
                     phone = re.sub(r"\D", "", str(clinicorp_patient.get("Phone") or ""))
@@ -2440,21 +2462,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 except RuntimeError as error:
                     authentication_error = "respondeu 401" in str(error) or "respondeu 403" in str(error)
                     with connect() as db:
-                        db.execute("UPDATE api_sync_logs SET status=?, detail=?, updated_at=datetime('now','localtime') WHERE id=?", ("Erro de autenticação" if authentication_error else "Falhou", str(error), log_id))
+                        db.execute("UPDATE api_sync_logs SET status=?, detail=?, updated_at=datetime('now','localtime') WHERE id=?", ("Erro de autenticaÃ§Ã£o" if authentication_error else "Falhou", str(error), log_id))
                     without_phone += 1
                     message = str(error)
                     if authentication_error:
                         status = "Falhou"
                         break
                     if test_only:
-                        status = "Teste concluído com erro"
+                        status = "Teste concluÃ­do com erro"
                         break
                     time.sleep(max(10, min(3600, int(config.get("sync_interval_seconds") or 60))))
                     continue
                 with connect() as db:
                     db.execute("UPDATE patients SET external_id=?, phone=CASE WHEN ?<>'' THEN ? ELSE phone END, updated_at=CURRENT_TIMESTAMP WHERE name=? AND (phone IS NULL OR TRIM(phone)='')", (clinicorp_patient_id or imported_reference, phone, phone, row["name"]))
-                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Integração Clinicorp', ?)", (row["id"], "Telefone preenchido automaticamente pela Clinicorp." if phone else "Clinicorp não retornou telefone para este paciente."))
-                    db.execute("UPDATE api_sync_logs SET external_id=?, phone_result=?, status=?, detail=?, updated_at=datetime('now','localtime') WHERE id=?", (clinicorp_patient_id or imported_reference, phone or None, "Atualizado" if phone else "Sem telefone", "Nome validado e telefone preenchido com sucesso." if phone else "Nome validado, mas a Clinicorp não retornou telefone.", log_id))
+                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'IntegraÃ§Ã£o Clinicorp', ?)", (row["id"], "Telefone preenchido automaticamente pela Clinicorp." if phone else "Clinicorp nÃ£o retornou telefone para este paciente."))
+                    db.execute("UPDATE api_sync_logs SET external_id=?, phone_result=?, status=?, detail=?, updated_at=datetime('now','localtime') WHERE id=?", (clinicorp_patient_id or imported_reference, phone or None, "Atualizado" if phone else "Sem telefone", "Nome validado e telefone preenchido com sucesso." if phone else "Nome validado, mas a Clinicorp nÃ£o retornou telefone.", log_id))
                     db.execute("UPDATE api_integrations SET last_sync_count=? WHERE id=?", (updated + (1 if phone else 0), integration_id))
                 if phone:
                     updated += 1
@@ -2486,7 +2508,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     (SELECT COUNT(*) FROM offices WHERE active = 1) AS offices,
                     (SELECT COUNT(*) FROM specialties WHERE active = 1) AS specialties,
                     (SELECT COUNT(*) FROM patients p WHERE NOT EXISTS (SELECT 1 FROM patient_assignments pa WHERE pa.patient_id = p.id)) AS unassigned,
-                    (SELECT COALESCE(SUM(GREATEST(value_cents - discount_cents, 0)), 0) FROM procedures WHERE stage != 'Concluído') AS potential_value_cents
+                    (SELECT COALESCE(SUM(GREATEST(value_cents - discount_cents, 0)), 0) FROM procedures WHERE stage != 'ConcluÃ­do') AS potential_value_cents
             """).fetchone()
             professionals = db.execute("""
                 SELECT pr.id, pr.name, pr.role, pr.is_owner, pr.active, CASE WHEN pr.photo_data IS NOT NULL THEN 1 ELSE 0 END AS has_photo,
@@ -2557,17 +2579,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 str(value).strip().lower() for value in (payload.get("feature_keys") or []) if str(value).strip()
             ))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Usuário ou canais inválidos."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "UsuÃ¡rio ou canais invÃ¡lidos."}, HTTPStatus.BAD_REQUEST)
         if not user_id:
-            return self.send_json({"error": "Selecione o usuário do CRC."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o usuÃ¡rio do CRC."}, HTTPStatus.BAD_REQUEST)
         if set(feature_keys) - set(CRM_FEATURE_KEYS):
-            return self.send_json({"error": "Uma das telas informadas não existe."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Uma das telas informadas nÃ£o existe."}, HTTPStatus.BAD_REQUEST)
 
         scope_enabled = 1 if payload.get("scope_enabled") is True else 0
-        # A seleção de telas é a fonte de verdade. Assim não existe o estado
+        # A seleÃ§Ã£o de telas Ã© a fonte de verdade. Assim nÃ£o existe o estado
         # confuso em que o administrador desmarca uma tela, salva, mas ela
         # continua liberada porque esqueceu de ligar uma segunda checkbox.
-        # Se a lista não contém todas as telas, a restrição é obrigatória.
+        # Se a lista nÃ£o contÃ©m todas as telas, a restriÃ§Ã£o Ã© obrigatÃ³ria.
         feature_scope_enabled = 1 if (
             payload.get("feature_scope_enabled") is True
             or set(feature_keys) != set(CRM_FEATURE_KEYS)
@@ -2580,10 +2602,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "FROM users WHERE id=? AND access_role='crc'", (user_id,)
             ).fetchone()
             if not user:
-                return self.send_json({"error": "Usuário CRC não encontrado."}, HTTPStatus.NOT_FOUND)
-            # A lista marcada é a fonte de verdade também para canais. Sem
-            # isso, desmarcar um número e deixar a opção de escopo desligada
-            # acabava liberando todos os números novamente.
+                return self.send_json({"error": "UsuÃ¡rio CRC nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
+            # A lista marcada Ã© a fonte de verdade tambÃ©m para canais. Sem
+            # isso, desmarcar um nÃºmero e deixar a opÃ§Ã£o de escopo desligada
+            # acabava liberando todos os nÃºmeros novamente.
             available_channel_ids = {
                 int(row["id"]) for row in db.execute("SELECT id FROM crm_channels").fetchall()
             }
@@ -2604,7 +2626,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     f"SELECT id FROM crm_channels WHERE id IN ({placeholders})", channel_ids
                 ).fetchall()}
                 if valid != set(channel_ids):
-                    return self.send_json({"error": "Um dos canais informados não existe."}, HTTPStatus.BAD_REQUEST)
+                    return self.send_json({"error": "Um dos canais informados nÃ£o existe."}, HTTPStatus.BAD_REQUEST)
 
             before_channel_ids = [int(row["channel_id"]) for row in db.execute(
                 "SELECT channel_id FROM crm_user_channels WHERE user_id=? ORDER BY channel_id", (user_id,)
@@ -2657,7 +2679,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             )
             self.record_security_event(
                 db, "crm_permissions_updated", self.request_ip(), self.authenticated_user["id"],
-                f"Permissões de {user['name']} (usuário {user_id}) atualizadas.",
+                f"PermissÃµes de {user['name']} (usuÃ¡rio {user_id}) atualizadas.",
             )
         self.send_json({
             "updated": True, "user_id": user_id, "channel_ids": channel_ids,
@@ -2670,12 +2692,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             user_id = int(payload.get("user_id") or 0)
             channel_id = int(payload.get("channel_id") or 0)
         except (TypeError, ValueError):
-            return self.send_json({"error": "Atendente ou canal invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Atendente ou canal invÃƒÂ¡lido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             user = db.execute("SELECT id,name,email,active FROM users WHERE id=? AND access_role='crc'", (user_id,)).fetchone()
             channel = db.execute("SELECT id,display_name,instance_name,active,sync_enabled FROM crm_channels WHERE id=?", (channel_id,)).fetchone()
             if not user or not channel:
-                return self.send_json({"error": "Atendente ou canal nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Atendente ou canal nÃƒÂ£o encontrado."}, HTTPStatus.NOT_FOUND)
             can_view = self.crm_channel_allowed(db, channel_id, user_id=user_id)
             can_reply = self.crm_channel_allowed(db, channel_id, "reply", user_id=user_id)
             can_manage = self.crm_channel_allowed(db, channel_id, "automation", user_id=user_id)
@@ -2686,30 +2708,30 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "can_reply": can_reply, "can_manage_automation": can_manage,
             "feature_permissions": feature_permissions,
             "transfer_allowed": transfer_allowed,
-            "message": ("TransferÃªncia liberada para esta atendente neste nÃºmero."
-                        if transfer_allowed else "TransferÃªncia bloqueada pela permissÃ£o ou pelo estado do canal."),
+            "message": ("TransferÃƒÂªncia liberada para esta atendente neste nÃƒÂºmero."
+                        if transfer_allowed else "TransferÃƒÂªncia bloqueada pela permissÃƒÂ£o ou pelo estado do canal."),
         })
 
     @staticmethod
     def permission_change_summary(before: dict, after: dict) -> str:
         labels = {
-            "channel_scope_enabled": "Restrição por canal",
-            "feature_scope_enabled": "Personalização de telas",
-            "can_manage_automation": "Supervisão de automações",
-            "operational_agent": "Participação nos atendimentos",
+            "channel_scope_enabled": "RestriÃ§Ã£o por canal",
+            "feature_scope_enabled": "PersonalizaÃ§Ã£o de telas",
+            "can_manage_automation": "SupervisÃ£o de automaÃ§Ãµes",
+            "operational_agent": "ParticipaÃ§Ã£o nos atendimentos",
         }
         changes = []
         for key, label in labels.items():
             if before.get(key) != after.get(key):
-                old = "Sim" if before.get(key) else "Não"
-                new = "Sim" if after.get(key) else "Não"
-                changes.append(f"{label}: {old} → {new}")
+                old = "Sim" if before.get(key) else "NÃ£o"
+                new = "Sim" if after.get(key) else "NÃ£o"
+                changes.append(f"{label}: {old} â†’ {new}")
         for key, label in (("channel_ids", "Canais"), ("feature_keys", "Telas")):
             old_values = before.get(key) or []
             new_values = after.get(key) or []
             if old_values != new_values:
-                changes.append(f"{label}: {len(old_values)} → {len(new_values)}")
-        return " · ".join(changes) or "Configuração salva sem alteração efetiva"
+                changes.append(f"{label}: {len(old_values)} â†’ {len(new_values)}")
+        return " Â· ".join(changes) or "ConfiguraÃ§Ã£o salva sem alteraÃ§Ã£o efetiva"
 
     def get_admin_audit(self, query: dict) -> None:
         try:
@@ -2729,20 +2751,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     JOIN patients p ON p.id = pe.patient_id
                     UNION ALL
                     SELECT 1000000000 + pda.id AS id,
-                           'Paciente excluído' AS event_type,
-                           'Excluído por ' || pda.deleted_by_name ||
+                           'Paciente excluÃ­do' AS event_type,
+                           'ExcluÃ­do por ' || pda.deleted_by_name ||
                            ' (' || pda.deleted_by_role || ')' ||
                            CASE WHEN pda.professional_name IS NOT NULL
-                                THEN ' · Carteira: ' || pda.professional_name ELSE '' END AS description,
+                                THEN ' Â· Carteira: ' || pda.professional_name ELSE '' END AS description,
                            pda.deleted_at AS created_at,
                            pda.patient_name AS patient_name, NULL AS details_before,
                            NULL AS details_after, NULL AS ip_address
                     FROM patient_deletion_audit pda
                     UNION ALL
                     SELECT 2000000000 + cpa.id AS id,
-                           'Permissões do CRM alteradas' AS event_type,
-                           'Alterado por ' || COALESCE(actor.name,'Usuário removido') ||
-                           ' para ' || COALESCE(target.name,'Usuário removido') AS description,
+                           'PermissÃµes do CRM alteradas' AS event_type,
+                           'Alterado por ' || COALESCE(actor.name,'UsuÃ¡rio removido') ||
+                           ' para ' || COALESCE(target.name,'UsuÃ¡rio removido') AS description,
                            cpa.created_at AS created_at,
                            NULL AS patient_name, cpa.before_json AS details_before,
                            cpa.after_json AS details_after, cpa.ip_address AS ip_address
@@ -2761,7 +2783,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     after = json.loads(item.pop("details_after") or "{}")
                     item["change_summary"] = self.permission_change_summary(before, after)
                 except (TypeError, json.JSONDecodeError):
-                    item["change_summary"] = "Detalhes de permissão indisponíveis"
+                    item["change_summary"] = "Detalhes de permissÃ£o indisponÃ­veis"
             else:
                 item.pop("details_before", None)
                 item.pop("details_after", None)
@@ -2850,11 +2872,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         operational_phrases = {"NAO_AGENDAR", "SEM_ATENDIMENTO", "HORARIO_BLOQUEADO"}
         name_tokens = set(normalized.split("_"))
         if name_tokens.intersection(operational_tokens) or any(term in normalized for term in operational_phrases):
-            return ("bloqueado", "marcação operacional/agenda, não é paciente")
-        if not re.search(r"[A-Za-zÀ-ÿ]{2,}", name):
-            return ("bloqueado", "não possui um nome de pessoa válido")
+            return ("bloqueado", "marcaÃ§Ã£o operacional/agenda, nÃ£o Ã© paciente")
+        if not re.search(r"[A-Za-zÃ€-Ã¿]{2,}", name):
+            return ("bloqueado", "nÃ£o possui um nome de pessoa vÃ¡lido")
         if not re.search(r"\(\s*\d+\s*\)\s*$", name):
-            return ("revisao", "não possui código do paciente entre parênteses no final")
+            return ("revisao", "nÃ£o possui cÃ³digo do paciente entre parÃªnteses no final")
         return None
 
     def get_relationship_directory(self, query: dict) -> None:
@@ -2946,10 +2968,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             issue = self.patient_import_name_issue(patient)
             if issue:
                 level, reason = issue
-                errors.append(f"{source}: {patient or 'nome vazio'} · {level}: {reason}.")
+                errors.append(f"{source}: {patient or 'nome vazio'} Â· {level}: {reason}.")
                 continue
             if not patient or not professional or not appointment:
-                errors.append(f"{source}: linha agendada sem Paciente, Profissional ou Data válida.")
+                errors.append(f"{source}: linha agendada sem Paciente, Profissional ou Data vÃ¡lida.")
                 continue
             key = (self.import_key(patient), self.import_key(professional))
             item = {"patient": patient, "professional": professional, "date": appointment, "status": "Agendado", "source": source}
@@ -2983,11 +3005,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         for index, item in enumerate(items):
             professional_id = professionals.get(self.import_key(item["professional"]))
             if not professional_id:
-                errors.append(f"Profissional não encontrado: {item['professional']}")
+                errors.append(f"Profissional nÃ£o encontrado: {item['professional']}")
                 continue
             patient = assignments.get((self.import_key(item["patient"]), professional_id))
             if not patient:
-                errors.append(f"Paciente não encontrado na carteira de {item['professional']}: {item['patient']}")
+                errors.append(f"Paciente nÃ£o encontrado na carteira de {item['professional']}: {item['patient']}")
                 continue
             matches[index] = patient
         return matches, sorted(set(errors))
@@ -3003,7 +3025,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if incoming_date == current_date and current_type != "Agendado":
             return "Confirmar como Agendado"
         if incoming_date == current_date:
-            return "Manter: data já cadastrada"
+            return "Manter: data jÃ¡ cadastrada"
         return "Manter: sistema possui data mais recente"
 
     def scheduled_appointment_validate(self, payload: dict) -> None:
@@ -3031,7 +3053,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             matches, errors = self.scheduled_appointment_matches(db, items)
             if errors:
-                return self.send_json({"error": "Corrija a validação antes de confirmar.", "details": errors}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Corrija a validaÃ§Ã£o antes de confirmar.", "details": errors}, HTTPStatus.CONFLICT)
             for index, item in enumerate(items):
                 patient = matches[index]
                 decision = self.scheduled_appointment_decision(patient, item["date"])
@@ -3043,8 +3065,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     (item["date"] if decision != "Confirmar como Agendado" else patient.get("next_appointment"), patient["id"]),
                 )
                 db.execute(
-                    "INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)",
-                    (patient["id"], f"Próxima consulta atualizada para {item['date']} pela planilha {item['source']} · {self.authenticated_user['name']}"),
+                    "INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', ?)",
+                    (patient["id"], f"PrÃ³xima consulta atualizada para {item['date']} pela planilha {item['source']} Â· {self.authenticated_user['name']}"),
                 )
                 updated += 1
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
@@ -3069,7 +3091,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 headers = {self.import_key(value): index for index, value in enumerate(matrix[0])}
                 required = {"DATA", "PACIENTE", "CATEGORIA", "PROFISSIONAL"}
                 if not required.issubset(headers):
-                    raise ValueError("colunas obrigatórias: Data, Paciente, Categoria e Profissional")
+                    raise ValueError("colunas obrigatÃ³rias: Data, Paciente, Categoria e Profissional")
                 for values in matrix[1:]:
                     def value(column): return values[headers[column]] if headers[column] < len(values) else None
                     appointment = self.import_date(value("DATA"))
@@ -3078,7 +3100,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         issue = self.patient_import_name_issue(patient)
                         if issue:
                             level, reason = issue
-                            errors.append(f"{name}: {patient} · {level}: {reason}.")
+                            errors.append(f"{name}: {patient} Â· {level}: {reason}.")
                             continue
                         raw_status = str(value("STATUS") or "").strip() if "STATUS" in headers else ""
                         rows.append({"date": appointment, "patient": patient, "category": str(value("CATEGORIA") or "").strip(), "status": raw_status, "professional": professional, "source": name})
@@ -3162,7 +3184,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     if is_future_appointment:
                         db.execute("UPDATE patients SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (base_status, patient_id))
                         db.execute("UPDATE patient_followup SET next_appointment=?, next_appointment_type='Programado', custom_status=? WHERE patient_id=?", (item["date"], custom_status, patient_id))
-                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', ?)", (patient_id, f"PrÃ³xima consulta programada pela planilha: {item['source']}"))
                         existing["next_appointment"] = item["date"]
                         scheduled += 1
                         continue
@@ -3171,7 +3193,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         continue
                     db.execute("UPDATE patients SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (base_status, patient_id))
                     db.execute("UPDATE patient_followup SET last_visit=?, custom_status=? WHERE patient_id=?", (item["date"], custom_status, patient_id))
-                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Última consulta atualizada pela planilha: {item['source']}"))
+                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', ?)", (patient_id, f"Ãšltima consulta atualizada pela planilha: {item['source']}"))
                     existing["last_visit"] = item["date"]
                     updated += 1
                 else:
@@ -3179,12 +3201,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO patient_assignments (patient_id, professional_id, is_primary) VALUES (?, ?, 1)", (patient_id, professional_id))
                     if is_future_appointment:
                         db.execute("INSERT INTO patient_followup (patient_id, next_appointment, next_appointment_type, custom_status) VALUES (?, ?, 'Programado', ?)", (patient_id, item["date"], custom_status))
-                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', ?)", (patient_id, f"PrÃ³xima consulta programada pela planilha: {item['source']}"))
                         assignments[key] = {"id": patient_id, "last_visit": None, "next_appointment": item["date"]}
                         scheduled += 1
                     else:
                         db.execute("INSERT INTO patient_followup (patient_id, last_visit, custom_status) VALUES (?, ?, ?)", (patient_id, item["date"], custom_status))
-                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
                         assignments[key] = {"id": patient_id, "last_visit": item["date"], "next_appointment": None}
                     imported += 1
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
@@ -3194,16 +3216,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         image = str(payload.get("image") or "")
         match = re.fullmatch(r"data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)", image)
         if not match:
-            return self.send_json({"error": "Envie uma imagem JPG, PNG ou WEBP válida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Envie uma imagem JPG, PNG ou WEBP vÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         try:
             binary = base64.b64decode(match.group(2), validate=True)
         except ValueError:
-            return self.send_json({"error": "Não foi possível ler a imagem."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "NÃ£o foi possÃ­vel ler a imagem."}, HTTPStatus.BAD_REQUEST)
         if len(binary) > 2 * 1024 * 1024:
-            return self.send_json({"error": "A foto deve ter no máximo 2 MB."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A foto deve ter no mÃ¡ximo 2 MB."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             if not db.execute("SELECT id FROM professionals WHERE id=?", (professional_id,)).fetchone():
-                return self.send_json({"error": "Profissional não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Profissional nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             db.execute("UPDATE professionals SET photo_data=?, photo_mime=? WHERE id=?", (match.group(2), match.group(1), professional_id))
             if audit_event:
                 self.record_security_event(db, audit_event, self.request_ip(), self.authenticated_user["id"], f"Profissional {professional_id}")
@@ -3217,12 +3239,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             user_id = int(payload.get("user_id"))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Selecione um colaborador válido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione um colaborador vÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             collaborator = db.execute("""SELECT professional_id FROM users
                 WHERE id=? AND access_role='crc' AND active=1""", (user_id,)).fetchone()
         if not collaborator or not collaborator["professional_id"]:
-            return self.send_json({"error": "Este colaborador não possui perfil profissional vinculado."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Este colaborador nÃ£o possui perfil profissional vinculado."}, HTTPStatus.CONFLICT)
         self.update_professional_photo(
             int(collaborator["professional_id"]), payload,
             audit_event="crm_collaborator_profile_photo_updated",
@@ -3260,7 +3282,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             placeholders = ",".join("?" for _ in channel_ids)
             valid_count = db.execute(f"SELECT COUNT(*) FROM crm_channels WHERE id IN ({placeholders})", channel_ids).fetchone()[0]
             if valid_count != len(channel_ids):
-                raise ValueError("Um dos canais selecionados não existe")
+                raise ValueError("Um dos canais selecionados nÃ£o existe")
         db.execute("DELETE FROM crm_user_channels WHERE user_id=?", (user_id,))
         can_manage = 1 if payload.get("crm_can_manage_automation") else 0
         db.executemany("""INSERT INTO crm_user_channels(user_id,channel_id,can_reply,can_manage_automation)
@@ -3279,26 +3301,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         service_sector = str(payload.get("service_sector") or ("CRC" if access_role == "crc" else "")).strip()
         temporary_password = str(payload.get("temporary_password") or "")
         if not name or not email:
-            return self.send_json({"error": "Nome e e-mail são obrigatórios"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Nome e e-mail sÃ£o obrigatÃ³rios"}, HTTPStatus.BAD_REQUEST)
         if access_role not in {"owner", "professional", "admin", "crc", "asb"}:
-            return self.send_json({"error": "Nível de acesso inválido"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "NÃ­vel de acesso invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
         if crm_access_level not in {"attendant", "admin"}:
-            return self.send_json({"error": "Grau de acesso do CRM inválido"}, HTTPStatus.BAD_REQUEST)
-        if service_sector not in {"", "CRC", "Recepção"}:
-            return self.send_json({"error": "Setor de atendimento inválido"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Grau de acesso do CRM invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
+        if service_sector not in {"", "CRC", "RecepÃ§Ã£o"}:
+            return self.send_json({"error": "Setor de atendimento invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
         if access_role != "crc":
             service_sector = ""
             crm_access_level = "attendant"
         linked_professional_id = int(payload.get("linked_professional_id") or 0) or None
         if access_role == "asb" and not linked_professional_id:
-            return self.send_json({"error": "Selecione o dentista responsável pela ASB."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o dentista responsÃ¡vel pela ASB."}, HTTPStatus.BAD_REQUEST)
         if len(temporary_password) < 10:
-            return self.send_json({"error": "Defina uma senha temporária com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Defina uma senha temporÃ¡ria com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
         try:
             with connect() as db:
                 email_in_use = db.execute("SELECT name FROM users WHERE lower(email) = ?", (email,)).fetchone()
                 if email_in_use:
-                    return self.send_json({"error": f"O e-mail {email} já está vinculado ao acesso de {email_in_use['name']}. Use outro e-mail ou edite esse acesso existente."}, HTTPStatus.CONFLICT)
+                    return self.send_json({"error": f"O e-mail {email} jÃ¡ estÃ¡ vinculado ao acesso de {email_in_use['name']}. Use outro e-mail ou edite esse acesso existente."}, HTTPStatus.CONFLICT)
                 professional_id = db.execute(
                     "INSERT INTO professionals (name, role, is_owner, active) VALUES (?, ?, 0, 1)",
                     (name, role),
@@ -3321,9 +3343,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 if office_id:
                     db.execute("INSERT INTO professional_offices (professional_id, office_id, is_responsible) VALUES (?, ?, ?)", (professional_id, office_id, 1 if payload.get("office_responsible") else 0))
         except (ValueError, TypeError):
-            return self.send_json({"error": "Especialidade ou consultório inválido"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Especialidade ou consultÃ³rio invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
         except IntegrityError:
-            return self.send_json({"error": "Já existe um acesso com esse e-mail"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "JÃ¡ existe um acesso com esse e-mail"}, HTTPStatus.CONFLICT)
         self.send_json({"created": True, "id": professional_id}, HTTPStatus.CREATED)
 
     def update_admin_professional(self, professional_id: int, payload: dict) -> None:
@@ -3333,25 +3355,25 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         crm_access_level = str(payload.get("crm_access_level") or "attendant").strip().lower()
         service_sector = str(payload.get("service_sector") or ("CRC" if access_role == "crc" else "")).strip()
         if not name or not email or access_role not in {"owner", "professional", "admin", "crc", "asb"}:
-            return self.send_json({"error": "Dados do acesso inválidos"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Dados do acesso invÃ¡lidos"}, HTTPStatus.BAD_REQUEST)
         if crm_access_level not in {"attendant", "admin"}:
-            return self.send_json({"error": "Grau de acesso do CRM inválido"}, HTTPStatus.BAD_REQUEST)
-        if service_sector not in {"", "CRC", "Recepção"}:
-            return self.send_json({"error": "Setor de atendimento inválido"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Grau de acesso do CRM invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
+        if service_sector not in {"", "CRC", "RecepÃ§Ã£o"}:
+            return self.send_json({"error": "Setor de atendimento invÃ¡lido"}, HTTPStatus.BAD_REQUEST)
         if access_role != "crc":
             service_sector = ""
             crm_access_level = "attendant"
         linked_professional_id = int(payload.get("linked_professional_id") or 0) or None
         if access_role == "asb" and not linked_professional_id:
-            return self.send_json({"error": "Selecione o dentista responsável pela ASB."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o dentista responsÃ¡vel pela ASB."}, HTTPStatus.BAD_REQUEST)
         try:
             with connect() as db:
                 exists = db.execute("SELECT id, is_owner FROM professionals WHERE id = ?", (professional_id,)).fetchone()
                 if not exists:
-                    return self.send_json({"error": "Profissional não encontrado"}, HTTPStatus.NOT_FOUND)
+                    return self.send_json({"error": "Profissional nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
                 email_in_use = db.execute("SELECT professional_id, name FROM users WHERE lower(email) = ?", (email,)).fetchone()
                 if email_in_use and email_in_use["professional_id"] != professional_id:
-                    return self.send_json({"error": f"O e-mail {email} já está vinculado ao acesso de {email_in_use['name']}."}, HTTPStatus.CONFLICT)
+                    return self.send_json({"error": f"O e-mail {email} jÃ¡ estÃ¡ vinculado ao acesso de {email_in_use['name']}."}, HTTPStatus.CONFLICT)
                 active = 1 if exists["is_owner"] else (1 if payload.get("active", True) else 0)
                 db.execute("UPDATE professionals SET name=?, role=?, active=? WHERE id=?", (name, str(payload.get("role") or "").strip(), active, professional_id))
                 user = db.execute("SELECT id FROM users WHERE professional_id = ?", (professional_id,)).fetchone()
@@ -3376,17 +3398,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 if office_id:
                     db.execute("INSERT INTO professional_offices (professional_id, office_id, is_responsible) VALUES (?, ?, ?)", (professional_id, office_id, 1 if payload.get("office_responsible") else 0))
         except (ValueError, TypeError, IntegrityError):
-            return self.send_json({"error": "Não foi possível atualizar. Verifique e-mail, especialidade e consultório."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "NÃ£o foi possÃ­vel atualizar. Verifique e-mail, especialidade e consultÃ³rio."}, HTTPStatus.CONFLICT)
         self.send_json({"updated": True, "id": professional_id})
 
     def reset_professional_password(self, professional_id: int, payload: dict) -> None:
         temporary_password = str(payload.get("temporary_password") or "")
         if len(temporary_password) < 10:
-            return self.send_json({"error": "Defina uma senha temporária com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Defina uma senha temporÃ¡ria com ao menos 10 caracteres"}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             user = db.execute("SELECT id FROM users WHERE professional_id = ?", (professional_id,)).fetchone()
             if not user:
-                return self.send_json({"error": "Este profissional ainda não possui acesso cadastrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Este profissional ainda nÃ£o possui acesso cadastrado"}, HTTPStatus.NOT_FOUND)
             salt = secrets.token_hex(16)
             db.execute("UPDATE users SET password_hash=?, password_salt=?, must_change_password=1 WHERE id=?", (self.password_digest(temporary_password, salt), salt, user["id"]))
             db.execute("DELETE FROM auth_sessions WHERE user_id=?", (user["id"],))
@@ -3401,18 +3423,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with connect() as db:
                 item_id = db.execute("INSERT INTO specialties (code, name) VALUES (?, ?)", (self.normalized_code(name), name)).lastrowid
         except IntegrityError:
-            return self.send_json({"error": "Essa especialidade já está cadastrada"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Essa especialidade jÃ¡ estÃ¡ cadastrada"}, HTTPStatus.CONFLICT)
         self.send_json({"created": True, "id": item_id}, HTTPStatus.CREATED)
 
     def create_admin_office(self, payload: dict) -> None:
         name = str(payload.get("name") or "").strip()
         if not name:
-            return self.send_json({"error": "Informe o nome do consultório"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe o nome do consultÃ³rio"}, HTTPStatus.BAD_REQUEST)
         try:
             with connect() as db:
                 item_id = db.execute("INSERT INTO offices (code, name) VALUES (?, ?)", (self.normalized_code(name), name)).lastrowid
         except IntegrityError:
-            return self.send_json({"error": "Esse consultório já está cadastrado"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Esse consultÃ³rio jÃ¡ estÃ¡ cadastrado"}, HTTPStatus.CONFLICT)
         self.send_json({"created": True, "id": item_id}, HTTPStatus.CREATED)
 
     def update_admin_structure(self, table: str, item_id: int, payload: dict) -> None:
@@ -3424,20 +3446,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with connect() as db:
                 exists = db.execute(f"SELECT id FROM {table} WHERE id=?", (item_id,)).fetchone()
                 if not exists:
-                    return self.send_json({"error": "Item não encontrado"}, HTTPStatus.NOT_FOUND)
+                    return self.send_json({"error": "Item nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
                 db.execute(f"UPDATE {table} SET name=?, code=?, active=? WHERE id=?", (name, self.normalized_code(name), active, item_id))
         except IntegrityError:
-            return self.send_json({"error": "Já existe um item com esse nome"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "JÃ¡ existe um item com esse nome"}, HTTPStatus.CONFLICT)
         self.send_json({"updated": True, "id": item_id})
 
     def delete_admin_structure(self, table: str, link_table: str, link_column: str, item_id: int) -> None:
         with connect() as db:
             linked = db.execute(f"SELECT COUNT(*) FROM {link_table} WHERE {link_column}=?", (item_id,)).fetchone()[0]
             if linked:
-                return self.send_json({"error": f"Não é possível excluir: há {linked} profissional(is) vinculado(s). Remova ou altere os vínculos antes."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": f"NÃ£o Ã© possÃ­vel excluir: hÃ¡ {linked} profissional(is) vinculado(s). Remova ou altere os vÃ­nculos antes."}, HTTPStatus.CONFLICT)
             exists = db.execute(f"SELECT id FROM {table} WHERE id=?", (item_id,)).fetchone()
             if not exists:
-                return self.send_json({"error": "Item não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Item nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             db.execute(f"DELETE FROM {table} WHERE id=?", (item_id,))
         self.send_json({"deleted": True, "id": item_id})
 
@@ -3447,7 +3469,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not isinstance(rows, list) or not rows:
             return self.send_json({"error": "Nenhum registro foi enviado"}, HTTPStatus.BAD_REQUEST)
         if len(rows) > 5000:
-            return self.send_json({"error": "O limite é de 5.000 pacientes por importação"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "O limite Ã© de 5.000 pacientes por importaÃ§Ã£o"}, HTTPStatus.BAD_REQUEST)
         created = duplicates = 0
         errors = []
         with connect() as db:
@@ -3459,10 +3481,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 last_visit = str(item.get("last_visit") or item.get("ultima_consulta") or "").strip()
                 status = str(item.get("status") or "Consulta").strip().title()
                 if not name or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", last_visit):
-                    errors.append({"row": index, "message": "Nome ou última consulta inválida"})
+                    errors.append({"row": index, "message": "Nome ou Ãºltima consulta invÃ¡lida"})
                     continue
                 if status not in {"Consulta", "Controle", "Tratamento", "Inativo"}:
-                    errors.append({"row": index, "message": "Status inválido"})
+                    errors.append({"row": index, "message": "Status invÃ¡lido"})
                     continue
                 duplicate = db.execute("""
                     SELECT p.id FROM patients p JOIN patient_followup f ON f.patient_id=p.id
@@ -3476,7 +3498,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 if professional_email:
                     target = db.execute("SELECT professional_id FROM users WHERE lower(email)=? AND active=1", (professional_email,)).fetchone()
                     if not target:
-                        errors.append({"row": index, "message": "Profissional não encontrado"})
+                        errors.append({"row": index, "message": "Profissional nÃ£o encontrado"})
                         continue
                     professional_id = target[0]
                 created += 1
@@ -3490,7 +3512,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 db.execute("INSERT INTO patient_assignments (patient_id, professional_id, is_primary) VALUES (?, ?, 1)", (patient_id, professional_id))
                 next_appointment = item.get("next_appointment") or item.get("proxima_consulta") or None
                 db.execute("INSERT INTO patient_followup (patient_id, last_visit, next_appointment, next_appointment_type, next_action) VALUES (?, ?, ?, ?, ?)", (patient_id, last_visit, next_appointment, "Agendado" if next_appointment else None, item.get("next_action") or item.get("proxima_acao") or None))
-                db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', 'Paciente importado pelo Painel Administrativo')", (patient_id,))
+                db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ImportaÃ§Ã£o', 'Paciente importado pelo Painel Administrativo')", (patient_id,))
         self.send_json({"dry_run": dry_run, "received": len(rows), "valid": created, "duplicates": duplicates, "errors": errors, "imported": 0 if dry_run else created})
 
     def get_dashboard(self) -> None:
@@ -3511,11 +3533,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 SELECT
                     COUNT(*) AS total,
                     SUM(CASE WHEN p.status != 'Inativo' AND (f.next_appointment IS NULL OR date(f.next_appointment) < date('now', 'localtime')) THEN 1 ELSE 0 END) AS without_schedule,
-                    SUM(CASE WHEN EXISTS (SELECT 1 FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'Concluído') THEN 1 ELSE 0 END) AS open_treatments,
+                    SUM(CASE WHEN EXISTS (SELECT 1 FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'ConcluÃ­do') THEN 1 ELSE 0 END) AS open_treatments,
                     SUM(CASE WHEN p.status = 'Inativo' THEN 1 ELSE 0 END) AS inactive,
                     SUM(CASE WHEN """ + need_contact_condition + """ THEN 1 ELSE 0 END) AS need_contact,
                     SUM(CASE WHEN date(f.resolved_at) = date('now', 'localtime') THEN 1 ELSE 0 END) AS resolved_today
-                    ,COALESCE(SUM((SELECT SUM(GREATEST(px.value_cents - px.discount_cents, 0)) FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'Concluído')), 0) AS potential_value_cents
+                    ,COALESCE(SUM((SELECT SUM(GREATEST(px.value_cents - px.discount_cents, 0)) FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'ConcluÃ­do')), 0) AS potential_value_cents
                 FROM patients p
                 JOIN patient_followup f ON f.patient_id = p.id
                 JOIN patient_assignments pa ON pa.patient_id = p.id AND pa.is_primary = 1
@@ -3566,7 +3588,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "date": row["resolution_date"],
                 "total": row["total"],
                 "patients": [
-                    {"id": parts[0], "name": parts[1] if len(parts) > 1 else "Paciente", "time": parts[2] if len(parts) > 2 else "—"}
+                    {"id": parts[0], "name": parts[1] if len(parts) > 1 else "Paciente", "time": parts[2] if len(parts) > 2 else "â€”"}
                     for parts in (item.split("##", 2) for item in (row["patient_names"].split("||") if row["patient_names"] else []))
                 ],
             })
@@ -3601,7 +3623,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             value = max(0, int(payload.get("default_value_cents") or 0))
         except (TypeError, ValueError):
-            raise ValueError("Valor padrão inválido")
+            raise ValueError("Valor padrÃ£o invÃ¡lido")
         return name, value, 1 if payload.get("active", True) else 0
 
     def create_catalog_procedure(self, payload: dict) -> None:
@@ -3616,7 +3638,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except ValueError as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
         except IntegrityError:
-            return self.send_json({"error": "Já existe um procedimento com esse nome"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "JÃ¡ existe um procedimento com esse nome"}, HTTPStatus.CONFLICT)
         self.send_json(dict(row), HTTPStatus.CREATED)
 
     def update_catalog_procedure(self, procedure_id: int, payload: dict) -> None:
@@ -3625,7 +3647,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with connect() as db:
                 exists = db.execute("SELECT id FROM procedure_catalog WHERE id = ?", (procedure_id,)).fetchone()
                 if not exists:
-                    return self.send_json({"error": "Procedimento não encontrado"}, HTTPStatus.NOT_FOUND)
+                    return self.send_json({"error": "Procedimento nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
                 db.execute(
                     "UPDATE procedure_catalog SET name = ?, default_value_cents = ?, active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (name, value, active, procedure_id),
@@ -3634,7 +3656,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except ValueError as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
         except IntegrityError:
-            return self.send_json({"error": "Já existe um procedimento com esse nome"}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "JÃ¡ existe um procedimento com esse nome"}, HTTPStatus.CONFLICT)
         self.send_json(dict(row))
 
     def get_filters(self) -> None:
@@ -3667,7 +3689,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         channels_by_phone = {self.crm_phone(row["phone"]): [item.strip() for item in str(row["channels"] or "").split(",") if item.strip()] for row in crm_rows}
         internal_by_phone = {self.crm_phone(row["phone"]): bool(row["is_internal"]) for row in crm_rows}
         # A rota de foto faz a consulta sob demanda na Evolution quando ainda
-        # não há cache. Assim o navegador nunca recebe nem armazena a URL
+        # nÃ£o hÃ¡ cache. Assim o navegador nunca recebe nem armazena a URL
         # externa do WhatsApp e o avatar pode aparecer assim que existir.
         photo_by_phone = {self.crm_phone(row["phone"]): f"/api/crm/contacts/{row['id']}/profile-photo" for row in crm_rows if self.crm_phone(row["phone"])}
         for row in crm_rows:
@@ -3712,7 +3734,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({
             "removed": int(removed or 0),
             "eligible": int(removable["total"] or 0) if removable else 0,
-            "preserved": "Pacientes clínicos, contatos internos e conversas com histórico foram preservados.",
+            "preserved": "Pacientes clÃ­nicos, contatos internos e conversas com histÃ³rico foram preservados.",
         })
 
     @staticmethod
@@ -3754,7 +3776,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def reject_crm_contact_owner_conflict(self, owner) -> None:
         self.send_json({
-            "error": f"Este paciente já está em atendimento com {owner['assigned_to'] or 'outra atendente'}. Solicite a transferência antes de acessar.",
+            "error": f"Este paciente jÃ¡ estÃ¡ em atendimento com {owner['assigned_to'] or 'outra atendente'}. Solicite a transferÃªncia antes de acessar.",
             "code": "PATIENT_ASSIGNED_TO_ANOTHER_USER",
             "conversation_id": int(owner["conversation_id"]),
             "assigned_to": owner["assigned_to"],
@@ -3825,13 +3847,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def require_crm_feature(self, feature_key: str) -> bool:
         if self.crm_feature_allowed(feature_key):
             return True
-        self.send_json({"error": "Esta tela nÃ£o estÃ¡ liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
+        self.send_json({"error": "Esta tela nÃƒÂ£o estÃƒÂ¡ liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
         return False
 
     def require_crm_any_feature(self, feature_keys) -> bool:
         if self.crm_any_feature_allowed(feature_keys):
             return True
-        self.send_json({"error": "Esta funcionalidade não está liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
+        self.send_json({"error": "Esta funcionalidade nÃ£o estÃ¡ liberada para o seu acesso."}, HTTPStatus.FORBIDDEN)
         return False
 
     @staticmethod
@@ -3872,10 +3894,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         )
 
     def crm_channel_scope_clause(self, channel_alias: str = "ch", capability: str | None = None) -> tuple[str, list]:
-        """Escopo SQL retrocompatível: usuários antigos continuam vendo todos os canais.
+        """Escopo SQL retrocompatÃ­vel: usuÃ¡rios antigos continuam vendo todos os canais.
 
         Quando o administrador ativa o escopo, somente os canais explicitamente
-        vinculados ao usuário ficam disponíveis. A permissão é aplicada no backend.
+        vinculados ao usuÃ¡rio ficam disponÃ­veis. A permissÃ£o Ã© aplicada no backend.
         """
         return self.crm_channel_id_scope_clause(f"{channel_alias}.id", capability)
 
@@ -3914,8 +3936,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             rows = db.execute(f"""SELECT ch.id,ch.instance_name,ch.display_name,ch.phone,ch.active,ch.sync_enabled,ch.sync_from_date,ch.sla_minutes,
-                                ch.connection_status,ch.last_event_at,
-                                ch.evolution_base_url IS NOT NULL AS configured,
+                                ch.provider,ch.connection_status,ch.last_event_at,
+                                CASE WHEN ch.provider='meta'
+                                     THEN ch.meta_access_token IS NOT NULL OR ch.meta_business_account_id IS NOT NULL
+                                     ELSE ch.evolution_base_url IS NOT NULL
+                                END AS configured,
                                 COALESCE(cuc.can_reply,CASE WHEN u.crm_channel_scope_enabled=0 THEN 1 ELSE 0 END) AS can_reply,
                                 COALESCE(cuc.can_manage_automation,CASE WHEN u.crm_channel_scope_enabled=0 THEN 1 ELSE 0 END) AS can_manage_automation
                                 FROM crm_channels ch
@@ -3933,8 +3958,49 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             if not self.crm_channel_allowed(db, channel_id, "automation"):
-                return self.send_json({"error": "Você não possui permissão para configurar este canal."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui permissÃ£o para configurar este canal."}, HTTPStatus.FORBIDDEN)
         updates, params = [], []
+        if "provider" in payload:
+            provider = str(payload.get("provider") or "").strip().lower()
+            if provider not in {"evolution", "meta"}:
+                return self.send_json({"error": "Provedor de canal invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
+            updates.append("provider= ?")
+            params.append(provider)
+            if provider == "meta":
+                updates.extend([
+                    "meta_phone_number_id=?",
+                    "meta_business_account_id=?",
+                    "meta_access_token=?",
+                    "meta_app_secret=?",
+                    "meta_verify_token=?",
+                    "meta_graph_api_version=?",
+                ])
+                params.extend([
+                    str(payload.get("meta_phone_number_id") or "").strip() or None,
+                    str(payload.get("meta_business_account_id") or "").strip() or None,
+                    encrypt_integration_secret(str(payload.get("meta_access_token") or "").strip()) if str(payload.get("meta_access_token") or "").strip() else "",
+                    encrypt_integration_secret(str(payload.get("meta_app_secret") or "").strip()) if str(payload.get("meta_app_secret") or "").strip() else "",
+                    encrypt_integration_secret(str(payload.get("meta_verify_token") or "").strip()) if str(payload.get("meta_verify_token") or "").strip() else "",
+                    str(payload.get("meta_graph_api_version") or META_GRAPH_API_VERSION).strip() or META_GRAPH_API_VERSION,
+                ])
+                updates.append("evolution_api_key=COALESCE(evolution_api_key,evolution_api_key)")
+                updates.append("evolution_base_url=COALESCE(evolution_base_url,evolution_base_url)")
+            else:
+                if "evolution_base_url" in payload:
+                    updates.append("evolution_base_url=?")
+                    params.append(str(payload.get("evolution_base_url") or "").strip().rstrip("/") or None)
+                if "evolution_api_key" in payload:
+                    api_key = str(payload.get("evolution_api_key") or "").strip()
+                    updates.append("evolution_api_key=?")
+                    params.append(encrypt_integration_secret(api_key) if api_key else "")
+                updates.extend([
+                    "meta_phone_number_id=NULL",
+                    "meta_business_account_id=NULL",
+                    "meta_access_token=NULL",
+                    "meta_app_secret=NULL",
+                    "meta_verify_token=NULL",
+                    "meta_graph_api_version=NULL",
+                ])
         if "sync_enabled" in payload:
             updates.append("sync_enabled=?")
             params.append(1 if payload.get("sync_enabled") else 0)
@@ -3943,9 +4009,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             try:
                 parsed_date = datetime.strptime(sync_from_date, "%Y-%m-%d")
             except ValueError:
-                return self.send_json({"error": "Informe uma data válida para a sincronização."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Informe uma data vÃ¡lida para a sincronizaÃ§Ã£o."}, HTTPStatus.BAD_REQUEST)
             if parsed_date.date() > datetime.now().date():
-                return self.send_json({"error": "A data inicial não pode estar no futuro."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "A data inicial nÃ£o pode estar no futuro."}, HTTPStatus.BAD_REQUEST)
             updates.append("sync_from_date=?")
             params.append(sync_from_date)
         if "sla_minutes" in payload:
@@ -3958,13 +4024,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             updates.append("sla_minutes=?")
             params.append(sla_minutes)
         if not updates:
-            return self.send_json({"error": "Nenhuma configuração de sincronização foi informada."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Nenhuma configuraÃ§Ã£o de sincronizaÃ§Ã£o foi informada."}, HTTPStatus.BAD_REQUEST)
         params.append(channel_id)
         with connect() as db:
             changed = db.execute(f"UPDATE crm_channels SET {','.join(updates)},updated_at=datetime('now','localtime') WHERE id=?", params).rowcount
             if not changed:
-                return self.send_json({"error": "Canal não encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Canal nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
             row = db.execute("""SELECT id,instance_name,display_name,phone,active,sync_enabled,sync_from_date,sla_minutes,
+                                provider,meta_phone_number_id,meta_business_account_id,meta_graph_api_version,
                                 connection_status,last_event_at FROM crm_channels WHERE id=?""", (channel_id,)).fetchone()
         self.send_json(dict(row))
 
@@ -3984,7 +4051,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             api_key = api_key or configured_key
         base_url = base_url.rstrip("/")
         if not base_url or not api_key:
-            raise RuntimeError("A Evolution API ainda não está configurada no servidor.")
+            raise RuntimeError("A Evolution API ainda nÃ£o estÃ¡ configurada no servidor.")
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = Request(f"{base_url}{path}", data=body, method=method,
                           headers={"apikey": api_key, "Content-Type": "application/json"})
@@ -3997,13 +4064,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     return json.loads(raw)
                 except json.JSONDecodeError as error:
                     raise RuntimeError(
-                        "A Evolution retornou uma resposta inválida. Use somente o domínio da API, sem /manager ou outras rotas."
+                        "A Evolution retornou uma resposta invÃ¡lida. Use somente o domÃ­nio da API, sem /manager ou outras rotas."
                     ) from error
         except HTTPError as error:
             detail = error.read().decode(errors="replace")
             raise RuntimeError(f"Evolution respondeu {error.code}: {detail[:300]}") from error
         except (URLError, TimeoutError) as error:
-            raise RuntimeError(f"Não foi possível conectar à Evolution: {error}") from error
+            raise RuntimeError(f"NÃ£o foi possÃ­vel conectar Ã  Evolution: {error}") from error
 
     def crm_evolution_connection_state(self, instance_name: str, base_url: str, api_key: str) -> str:
         instance_path = quote(str(instance_name), safe="")
@@ -4043,7 +4110,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return "outbound" if bool(from_me) else "inbound"
 
     def sync_evolution_chat_state(self) -> dict:
-        """Reconcilia contadores da Evolution sem importar novamente o histórico."""
+        """Reconcilia contadores da Evolution sem importar novamente o histÃ³rico."""
         global EVOLUTION_CHAT_SYNC_STATUS
         with EVOLUTION_CHAT_SYNC_LOCK:
             if EVOLUTION_CHAT_SYNC_STATUS["running"]:
@@ -4082,7 +4149,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         if not channel:
                             continue
                         channel_id = channel["id"]
-                        # A Evolution é a fonte de verdade do contador. Limpa o
+                        # A Evolution Ã© a fonte de verdade do contador. Limpa o
                         # estado antigo somente depois que a consulta do canal funcionou.
                         db.execute("UPDATE crm_conversations SET unread_count=0 WHERE channel_id=?", (channel_id,))
                         for chat in chats:
@@ -4116,8 +4183,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                             inbound_pending = direction == "inbound"
                             if existing_conversation:
                                 # A Evolution pode manter unreadCount > 0 mesmo depois
-                                # de a CRC resolver o atendimento. A conversa só deve
-                                # reabrir se a última entrada for posterior à resolução.
+                                # de a CRC resolver o atendimento. A conversa sÃ³ deve
+                                # reabrir se a Ãºltima entrada for posterior Ã  resoluÃ§Ã£o.
                                 stale_after_resolution = (
                                     existing_conversation["status"] == "Resolvida"
                                     and direction == "inbound"
@@ -4253,7 +4320,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crc_access(): return
         with connect() as db:
             if not self.crm_can_manage_automation(db):
-                return self.send_json({"error": "Somente um responsÃ¡vel autorizado pode alterar a Evolution."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente um responsÃƒÂ¡vel autorizado pode alterar a Evolution."}, HTTPStatus.FORBIDDEN)
         base_url = str(payload.get("api_base_url") or "").strip().rstrip("/")
         api_key = str(payload.get("api_key") or "").strip()
         parsed_base_url = urlparse(base_url)
@@ -4273,7 +4340,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             instances = self.evolution_api_request("/instance/fetchInstances", base_url=base_url, api_key=api_key)
         except RuntimeError as error:
-            return self.send_json({"error": f"A conexão não foi salva: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": f"A conexÃ£o nÃ£o foi salva: {error}"}, HTTPStatus.BAD_GATEWAY)
         items = instances if isinstance(instances, list) else instances.get("instances") or instances.get("data") or []
         with connect() as db:
             db.execute("""INSERT INTO integration_configs(name,api_base_url,api_token,updated_at,updated_by)
@@ -4388,8 +4455,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 if normalized:
                     patient_by_phone[normalized] = (patient["id"], patient["name"])
 
-            # Fase 1: normaliza os registros e descarta os inválidos antes de
-            # tocar o banco (evita 1 SELECT de deduplicação por mensagem).
+            # Fase 1: normaliza os registros e descarta os invÃ¡lidos antes de
+            # tocar o banco (evita 1 SELECT de deduplicaÃ§Ã£o por mensagem).
             parsed = []
             for record in records:
                 if not isinstance(record, dict):
@@ -4545,7 +4612,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     page, seen_page = 1, set()
                     while page <= 1000:
                         with EVOLUTION_HISTORY_SYNC_LOCK:
-                            EVOLUTION_HISTORY_SYNC_STATUS["phase"] = f"Importando mensagens de {instance_name} — página {page}..."
+                            EVOLUTION_HISTORY_SYNC_STATUS["phase"] = f"Importando mensagens de {instance_name} â€” pÃ¡gina {page}..."
                         message_payload = self.evolution_api_request(
                             f"/chat/findMessages/{quote(instance_name, safe='')}", "POST",
                             {"where": {}, "page": page, "offset": 200})
@@ -4592,7 +4659,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         finally:
             with EVOLUTION_HISTORY_SYNC_LOCK:
                 EVOLUTION_HISTORY_SYNC_STATUS["running"] = False
-                EVOLUTION_HISTORY_SYNC_STATUS["phase"] = "Sincronização concluída"
+                EVOLUTION_HISTORY_SYNC_STATUS["phase"] = "SincronizaÃ§Ã£o concluÃ­da"
                 EVOLUTION_HISTORY_SYNC_STATUS["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def start_evolution_history_sync(self) -> None:
@@ -4602,7 +4669,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             if not self.crm_can_manage_automation(db):
-                return self.send_json({"error": "Somente um responsÃ¡vel autorizado pode sincronizar os canais."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente um responsÃƒÂ¡vel autorizado pode sincronizar os canais."}, HTTPStatus.FORBIDDEN)
         with EVOLUTION_HISTORY_SYNC_LOCK:
             if EVOLUTION_HISTORY_SYNC_STATUS["running"]:
                 return self.send_json(dict(EVOLUTION_HISTORY_SYNC_STATUS), HTTPStatus.ACCEPTED)
@@ -4610,7 +4677,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "running": True, "instances_total": 0, "instances_done": 0,
                 "contacts": 0, "conversations": 0, "messages": 0, "older_messages_removed": 0, "errors": [],
                 "since": EVOLUTION_HISTORY_CUTOFF[:10],
-                "phase": "Iniciando sincronização segura...",
+                "phase": "Iniciando sincronizaÃ§Ã£o segura...",
                 "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "finished_at": None,
             }
         threading.Thread(target=self.run_evolution_history_sync, daemon=True).start()
@@ -4629,11 +4696,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crc_access(): return
         with connect() as db:
             if not self.crm_can_manage_automation(db):
-                return self.send_json({"error": "Somente um responsÃ¡vel autorizado pode conectar nÃºmeros."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente um responsÃƒÂ¡vel autorizado pode conectar nÃƒÂºmeros."}, HTTPStatus.FORBIDDEN)
         instance_name = str(payload.get("instance_name") or "Teste-CRM-IEA").strip()
         display_name = str(payload.get("display_name") or instance_name).strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{2,64}", instance_name):
-            return self.send_json({"error": "Use apenas letras, números, hífen ou sublinhado no nome da instância."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Use apenas letras, nÃºmeros, hÃ­fen ou sublinhado no nome da instÃ¢ncia."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             existing_channel = db.execute(
                 "SELECT evolution_base_url,evolution_api_key FROM crm_channels WHERE instance_name=?",
@@ -4688,13 +4755,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crc_access(): return
         with connect() as db:
             if not self.crm_can_manage_automation(db):
-                return self.send_json({"error": "Somente um responsÃ¡vel autorizado pode cadastrar canais."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente um responsÃƒÂ¡vel autorizado pode cadastrar canais."}, HTTPStatus.FORBIDDEN)
         instance = str(payload.get("instance_name") or "").strip()
         display_name = str(payload.get("display_name") or instance).strip()
         base_url = str(payload.get("evolution_base_url") or "").strip().rstrip("/")
         api_key = str(payload.get("evolution_api_key") or "").strip()
         stored_api_key = encrypt_integration_secret(api_key) if api_key else ""
-        if not instance: return self.send_json({"error": "Informe o nome da instância."}, HTTPStatus.BAD_REQUEST)
+        if not instance: return self.send_json({"error": "Informe o nome da instÃ¢ncia."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             db.execute("""INSERT INTO crm_channels(instance_name,display_name,phone,evolution_base_url,evolution_api_key,active)
                           VALUES(?,?,?,?,?,?) ON CONFLICT(instance_name) DO UPDATE SET display_name=excluded.display_name,
@@ -4717,8 +4784,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_activate_due_returns(db) -> int:
-        # A seleção e a reabertura precisam ser uma única operação: dois GETs
-        # simultâneos não podem criar dois eventos nem executar 2N+1 comandos.
+        # A seleÃ§Ã£o e a reabertura precisam ser uma Ãºnica operaÃ§Ã£o: dois GETs
+        # simultÃ¢neos nÃ£o podem criar dois eventos nem executar 2N+1 comandos.
         due = db.execute("""UPDATE crm_conversations
                             SET status='Aberta',pipeline_stage='Novo',queue_name='Retorno programado',
                                 assigned_user_id=NULL,assigned_at=NULL,resolved_at=NULL,resolved_by_user_id=NULL,
@@ -4737,10 +4804,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def crm_ai_handoff_reason(text: str) -> str | None:
         normalized = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode().lower()
         rules = (
-            ("intenção de agendamento", ("agendar", "marcar horario", "marcar consulta", "qual horario", "tem vaga")),
-            ("objeção comercial", ("muito caro", "desconto", "nao consigo pagar", "valor", "preco")),
-            ("dúvida não resolvida", ("nao entendi", "tenho duvida", "pode explicar", "como funciona")),
-            ("frustração detectada", ("reclamacao", "insatisfeito", "pessimo", "absurdo", "nao gostei")),
+            ("intenÃ§Ã£o de agendamento", ("agendar", "marcar horario", "marcar consulta", "qual horario", "tem vaga")),
+            ("objeÃ§Ã£o comercial", ("muito caro", "desconto", "nao consigo pagar", "valor", "preco")),
+            ("dÃºvida nÃ£o resolvida", ("nao entendi", "tenho duvida", "pode explicar", "como funciona")),
+            ("frustraÃ§Ã£o detectada", ("reclamacao", "insatisfeito", "pessimo", "absurdo", "nao gostei")),
             ("humano solicitado", ("atendente", "falar com pessoa", "falar com humano", "recepcao")),
         )
         for reason, needles in rules:
@@ -4765,7 +4832,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         content = str(payload.get("content") or "").strip()[:2000]
         category = str(payload.get("category") or "Geral").strip()[:50] or "Geral"
         if not title or not content:
-            return self.send_json({"error": "Informe o título e o texto da resposta rápida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe o tÃ­tulo e o texto da resposta rÃ¡pida."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             cur = db.execute("""INSERT INTO crm_quick_replies(title,content,category,created_by_user_id)
                                 VALUES(?,?,?,?)""", (title, content, category, self.authenticated_user["id"]))
@@ -4778,12 +4845,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             current = db.execute("SELECT * FROM crm_quick_replies WHERE id=?", (reply_id,)).fetchone()
-            if not current: return self.send_json({"error": "Resposta rápida não encontrada."}, HTTPStatus.NOT_FOUND)
+            if not current: return self.send_json({"error": "Resposta rÃ¡pida nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             title = str(payload.get("title", current["title"]) or "").strip()[:80]
             content = str(payload.get("content", current["content"]) or "").strip()[:2000]
             category = str(payload.get("category", current["category"]) or "Geral").strip()[:50]
             active = 1 if payload.get("active", current["active"]) else 0
-            if not title or not content: return self.send_json({"error": "Título e texto são obrigatórios."}, HTTPStatus.BAD_REQUEST)
+            if not title or not content: return self.send_json({"error": "TÃ­tulo e texto sÃ£o obrigatÃ³rios."}, HTTPStatus.BAD_REQUEST)
             db.execute("""UPDATE crm_quick_replies SET title=?,content=?,category=?,active=?,
                           updated_at=datetime('now','localtime') WHERE id=?""", (title, content, category, active, reply_id))
         self.send_json({"updated": True, "id": reply_id})
@@ -4794,7 +4861,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             changed = db.execute("DELETE FROM crm_quick_replies WHERE id=?", (reply_id,)).rowcount
-        if not changed: return self.send_json({"error": "Resposta rápida não encontrada."}, HTTPStatus.NOT_FOUND)
+        if not changed: return self.send_json({"error": "Resposta rÃ¡pida nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
         self.send_json({"deleted": True, "id": reply_id})
 
     def get_crm_lia_knowledge(self) -> None:
@@ -4813,7 +4880,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                             category COLLATE NOCASE,title COLLATE NOCASE""".format(where=where)
             ).fetchall()
         self.send_json({
-            "assistant": {"name": "Lia Ayub", "mode": "knowledge_only", "message": "A Lia consulta somente conteúdos oficiais aprovados no CRM."},
+            "assistant": {"name": "Lia Ayub", "mode": "knowledge_only", "message": "A Lia consulta somente conteÃºdos oficiais aprovados no CRM."},
             "can_manage": can_manage,
             "categories": list(CRM_LIA_KNOWLEDGE_CATEGORIES),
             "items": [dict(row) for row in rows],
@@ -4838,7 +4905,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_lia_settings(self) -> None:
         if not self.require_crc_access() or not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES): return
         if not self.can_manage_crm(self.authenticated_user):
-            return self.send_json({"error": "Somente administradores podem consultar a configuração da Lia."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente administradores podem consultar a configuraÃ§Ã£o da Lia."}, HTTPStatus.FORBIDDEN)
         with connect() as db:
             settings = self.crm_lia_settings(db)
             month = datetime.now(CLINIC_TIMEZONE).strftime("%Y-%m")
@@ -4861,14 +4928,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             budget = int(payload.get("monthly_budget_cents", 3000))
             output = int(payload.get("max_output_tokens", 450))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Os limites da Lia devem ser números válidos."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Os limites da Lia devem ser nÃºmeros vÃ¡lidos."}, HTTPStatus.BAD_REQUEST)
         if not (1 <= daily <= 500 and 1 <= monthly <= 100000 and 100 <= budget <= 1000000 and 80 <= output <= 1200):
             return self.send_json({"error": "Revise os limites configurados para a Lia."}, HTTPStatus.BAD_REQUEST)
         model = str(payload.get("model") or "gpt-5.6-luna").strip()
         if model not in CRM_LIA_MODELS:
-            return self.send_json({"error": "Modelo da Lia não permitido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Modelo da Lia nÃ£o permitido."}, HTTPStatus.BAD_REQUEST)
         if enabled and not OPENAI_API_KEY:
-            return self.send_json({"error": "A chave da OpenAI ainda não está disponível no servidor."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "A chave da OpenAI ainda nÃ£o estÃ¡ disponÃ­vel no servidor."}, HTTPStatus.CONFLICT)
         with connect() as db:
             db.execute("""INSERT INTO crm_lia_settings(id,enabled,general_assistance,model,daily_limit_per_user,monthly_limit_total,
                           monthly_budget_cents,max_output_tokens,updated_by_user_id,updated_at)
@@ -4896,7 +4963,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"items": [dict(row) for row in rows], "month": month})
 
     def save_crm_lia_knowledge(self, payload: dict) -> None:
-        """Cria ou atualiza conteúdos que poderão ser usados pela assistente interna."""
+        """Cria ou atualiza conteÃºdos que poderÃ£o ser usados pela assistente interna."""
         if not self.require_crc_access():
             return
         if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
@@ -4907,23 +4974,23 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             item_id = int(raw_id) if raw_id not in (None, "") else None
         except (TypeError, ValueError):
-            return self.send_json({"error": "Identificador de conteúdo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Identificador de conteÃºdo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         title = str(payload.get("title") or "").strip()[:140]
         category = str(payload.get("category") or "Geral").strip()
         content = str(payload.get("content") or "").strip()[:12000]
         status = str(payload.get("status") or "draft").strip().lower()
         if not title or not content:
-            return self.send_json({"error": "Informe o título e o conteúdo oficial."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe o tÃ­tulo e o conteÃºdo oficial."}, HTTPStatus.BAD_REQUEST)
         if category not in CRM_LIA_KNOWLEDGE_CATEGORIES:
-            return self.send_json({"error": "Categoria de conteúdo inválida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Categoria de conteÃºdo invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         if status not in {"draft", "active", "archived"}:
-            return self.send_json({"error": "Status de conteúdo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Status de conteÃºdo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         user_id = self.authenticated_user["id"]
         with connect() as db:
             if item_id:
                 current = db.execute("SELECT id FROM crm_lia_knowledge WHERE id=?", (item_id,)).fetchone()
                 if not current:
-                    return self.send_json({"error": "Conteúdo da Lia não encontrado."}, HTTPStatus.NOT_FOUND)
+                    return self.send_json({"error": "ConteÃºdo da Lia nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
                 db.execute("""UPDATE crm_lia_knowledge SET title=?,category=?,content=?,status=?,
                               updated_by_user_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                            (title, category, content, status, user_id, item_id))
@@ -4973,7 +5040,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         general_assistance = bool(settings.get("general_assistance"))
         if not sources and not general_assistance:
             return self.send_json({
-                "answer": "Ainda não encontrei uma orientação oficial para esse tema. Consulte a supervisão ou peça que um administrador cadastre essa resposta na base da Lia.",
+                "answer": "Ainda nÃ£o encontrei uma orientaÃ§Ã£o oficial para esse tema. Consulte a supervisÃ£o ou peÃ§a que um administrador cadastre essa resposta na base da Lia.",
                 "sources": [], "mode": "knowledge_only", "found": False,
             })
         source_payload = [{"id": row["id"], "title": row["title"], "category": row["category"]} for row in sources]
@@ -4985,24 +5052,24 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             monthly = db.execute("SELECT COUNT(*) AS total,COALESCE(SUM(estimated_cost_usd),0) AS cost FROM crm_lia_usage WHERE substr(created_at,1,7)=?", (month,)).fetchone()
         if not settings.get("enabled") or not OPENAI_API_KEY:
             if not sources:
-                return self.send_json({"answer": "A Assistência geral está configurada, mas a IA está pausada no momento. Peça a um administrador para ativá-la nas configurações da Lia.", "sources": [], "mode": "general_paused", "found": False, "ai_enabled": False})
+                return self.send_json({"answer": "A AssistÃªncia geral estÃ¡ configurada, mas a IA estÃ¡ pausada no momento. PeÃ§a a um administrador para ativÃ¡-la nas configuraÃ§Ãµes da Lia.", "sources": [], "mode": "general_paused", "found": False, "ai_enabled": False})
             return self.send_json({"answer": sources[0]["content"], "sources": source_payload, "mode": "knowledge_only", "found": True, "ai_enabled": False})
         if int(per_user["total"] or 0) >= int(settings["daily_limit_per_user"]):
-            return self.send_json({"error": "Você atingiu o limite diário de perguntas para a Lia."}, HTTPStatus.TOO_MANY_REQUESTS)
+            return self.send_json({"error": "VocÃª atingiu o limite diÃ¡rio de perguntas para a Lia."}, HTTPStatus.TOO_MANY_REQUESTS)
         if int(monthly["total"] or 0) >= int(settings["monthly_limit_total"]):
             return self.send_json({"error": "O limite mensal de perguntas da Lia foi atingido."}, HTTPStatus.TOO_MANY_REQUESTS)
         if float(monthly["cost"] or 0) >= float(settings["monthly_budget_cents"]) / 100:
-            return self.send_json({"error": "O orçamento mensal da Lia foi atingido e ela foi pausada."}, HTTPStatus.TOO_MANY_REQUESTS)
+            return self.send_json({"error": "O orÃ§amento mensal da Lia foi atingido e ela foi pausada."}, HTTPStatus.TOO_MANY_REQUESTS)
         context = "\n\n".join("[Fonte %s | %s]\n%s" % (row["title"], row["category"], str(row["content"])[:4000]) for row in sources)
-        instructions = ("Você é Lia, assistente interna da recepção do Instituto Eduardo Ayub. "
-                        "Responda em português do Brasil, de forma objetiva, acolhedora e profissional. "
-                        "Não responda pacientes, não realize ações no CRM e não solicite dados sensíveis. "
-                        "Nunca faça diagnósticos, nem prometa valores, horários, agendamentos ou políticas da clínica. ")
+        instructions = ("VocÃª Ã© Lia, assistente interna da recepÃ§Ã£o do Instituto Eduardo Ayub. "
+                        "Responda em portuguÃªs do Brasil, de forma objetiva, acolhedora e profissional. "
+                        "NÃ£o responda pacientes, nÃ£o realize aÃ§Ãµes no CRM e nÃ£o solicite dados sensÃ­veis. "
+                        "Nunca faÃ§a diagnÃ³sticos, nem prometa valores, horÃ¡rios, agendamentos ou polÃ­ticas da clÃ­nica. ")
         if general_assistance:
-            instructions += ("Priorize as fontes oficiais abaixo. Quando elas não forem suficientes, você pode ajudar a equipe com uma sugestão geral de escrita, script ou organização; "
-                             "deixe claro que isso é uma sugestão da Lia, e não uma regra oficial da clínica.")
+            instructions += ("Priorize as fontes oficiais abaixo. Quando elas nÃ£o forem suficientes, vocÃª pode ajudar a equipe com uma sugestÃ£o geral de escrita, script ou organizaÃ§Ã£o; "
+                             "deixe claro que isso Ã© uma sugestÃ£o da Lia, e nÃ£o uma regra oficial da clÃ­nica.")
         else:
-            instructions += "Use exclusivamente as fontes oficiais. Se elas não bastarem, diga que a supervisão deve orientar."
+            instructions += "Use exclusivamente as fontes oficiais. Se elas nÃ£o bastarem, diga que a supervisÃ£o deve orientar."
         instructions += "\n\nFONTES OFICIAIS:\n" + (context or "Nenhuma fonte oficial encontrada para esta pergunta.")
         body = json.dumps({"model": settings["model"], "instructions": instructions, "input": question,
                            "max_output_tokens": int(settings["max_output_tokens"])}, ensure_ascii=False).encode("utf-8")
@@ -5011,7 +5078,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with urlopen(request, timeout=25) as response:
                 result = json.loads(response.read().decode("utf-8") or "{}")
         except (HTTPError, URLError, TimeoutError, ValueError):
-            return self.send_json({"error": "A Lia está temporariamente indisponível. Tente novamente em instantes."}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": "A Lia estÃ¡ temporariamente indisponÃ­vel. Tente novamente em instantes."}, HTTPStatus.BAD_GATEWAY)
         answer = str(result.get("output_text") or "").strip()
         if not answer:
             for output in result.get("output", []):
@@ -5020,9 +5087,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         answer += str(content.get("text") or "")
         answer = answer.strip()[:6000]
         if not answer:
-            return self.send_json({"error": "A Lia não conseguiu concluir uma resposta agora."}, HTTPStatus.BAD_GATEWAY)
-        if general_assistance and not sources and not answer.lower().startswith("sugestão da lia"):
-            answer = "Sugestão da Lia:\n" + answer
+            return self.send_json({"error": "A Lia nÃ£o conseguiu concluir uma resposta agora."}, HTTPStatus.BAD_GATEWAY)
+        if general_assistance and not sources and not answer.lower().startswith("sugestÃ£o da lia"):
+            answer = "SugestÃ£o da Lia:\n" + answer
         usage = result.get("usage") or {}
         input_tokens, output_tokens = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
         pricing = CRM_LIA_MODELS[settings["model"]]
@@ -5041,9 +5108,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         scope_sql, scope_params = self.crm_channel_scope_clause("ch")
         with connect() as db:
             current = db.execute("SELECT contact_id,channel_id FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
-            if not current: return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
+            if not current: return self.send_json({"error": "Conversa nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not self.crm_channel_allowed(db, current["channel_id"]):
-                return self.send_json({"error": "Você não possui acesso a este canal."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui acesso a este canal."}, HTTPStatus.FORBIDDEN)
             conversations = db.execute("""SELECT cv.id,cv.status,cv.resolution_reason,cv.scheduled_return_at,
                                       cv.created_at,cv.resolved_at,ch.display_name AS channel_name
                                       FROM crm_conversations cv JOIN crm_channels ch ON ch.id=cv.channel_id
@@ -5066,7 +5133,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             if not self.crm_can_manage_automation(db):
                 self.send_json(
-                    {"error": "A supervisão de automações não está liberada para o seu acesso."},
+                    {"error": "A supervisÃ£o de automaÃ§Ãµes nÃ£o estÃ¡ liberada para o seu acesso."},
                     HTTPStatus.FORBIDDEN,
                 )
                 return False
@@ -5079,7 +5146,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchone()
             row = db.execute("""SELECT id,name,description,api_base_url,api_token,active,updated_at
                                 FROM api_integrations
-                                WHERE lower(name) IN ('n8n','n8n crm','n8n · automações e ia')
+                                WHERE lower(name) IN ('n8n','n8n crm','n8n Â· automaÃ§Ãµes e ia')
                                 ORDER BY CASE WHEN lower(name)='n8n' THEN 0 ELSE 1 END,id LIMIT 1""").fetchone()
         if persistent and persistent["api_base_url"] and persistent["api_token"]:
             return {
@@ -5111,7 +5178,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         recovered = {
             "id": config.get("id") if config else None,
             "name": "n8n",
-            "description": "Controla fluxos, execuções e eventos de automação do CRM.",
+            "description": "Controla fluxos, execuÃ§Ãµes e eventos de automaÃ§Ã£o do CRM.",
             "api_base_url": api_base_url,
             "api_token": api_token,
             "active": 1 if stored.get("active", True) else 0,
@@ -5161,7 +5228,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         timeout: int = 12) -> dict:
         config = self.crm_n8n_config()
         if not config or not config.get("active"):
-            raise RuntimeError("A integração n8n ainda não está ativa.")
+            raise RuntimeError("A integraÃ§Ã£o n8n ainda nÃ£o estÃ¡ ativa.")
         base_url = str(config.get("api_base_url") or "").strip().rstrip("/")
         api_key = str(config.get("api_token") or "").strip()
         if not base_url or not api_key:
@@ -5181,7 +5248,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             detail = error.read().decode("utf-8", errors="replace")[:400]
             raise RuntimeError(f"n8n respondeu {error.code}: {detail or error.reason}") from error
         except (URLError, TimeoutError, OSError) as error:
-            raise RuntimeError(f"Não foi possível alcançar o n8n: {error}") from error
+            raise RuntimeError(f"NÃ£o foi possÃ­vel alcanÃ§ar o n8n: {error}") from error
         except json.JSONDecodeError as error:
             raise RuntimeError("O n8n respondeu em um formato inesperado.") from error
 
@@ -5210,7 +5277,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         api_token = str(payload.get("api_token") or "").strip()
         active = 1 if payload.get("active", True) else 0
         if not api_base_url:
-            return self.send_json({"error": "Informe a URL pública da instância n8n."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe a URL pÃºblica da instÃ¢ncia n8n."}, HTTPStatus.BAD_REQUEST)
         current = self.crm_n8n_config()
         token = api_token or (str(current.get("api_token") or "") if current else "")
         if not token:
@@ -5224,38 +5291,38 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 test_payload = json.loads(response.read().decode("utf-8", errors="replace") or "{}")
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")[:300]
-            return self.send_json({"error": f"O n8n recusou a configuração ({error.code}): {detail or error.reason}"}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": f"O n8n recusou a configuraÃ§Ã£o ({error.code}): {detail or error.reason}"}, HTTPStatus.BAD_GATEWAY)
         except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:
-            return self.send_json({"error": f"Não foi possível validar essa instância do n8n: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": f"NÃ£o foi possÃ­vel validar essa instÃ¢ncia do n8n: {error}"}, HTTPStatus.BAD_GATEWAY)
         try:
             self.persist_crm_n8n_config(api_base_url, token, active)
         except OSError as error:
             return self.send_json({
-                "error": f"Não foi possível proteger a configuração persistente do n8n: {error}"
+                "error": f"NÃ£o foi possÃ­vel proteger a configuraÃ§Ã£o persistente do n8n: {error}"
             }, HTTPStatus.INTERNAL_SERVER_ERROR)
         with connect() as db:
             existing = db.execute("""SELECT id FROM api_integrations
-                                     WHERE lower(name) IN ('n8n','n8n crm','n8n · automações e ia')
+                                     WHERE lower(name) IN ('n8n','n8n crm','n8n Â· automaÃ§Ãµes e ia')
                                      ORDER BY id LIMIT 1""").fetchone()
             if existing:
                 db.execute("""UPDATE api_integrations SET name='n8n',description=?,api_base_url=?,
                               api_token=?,active=?,updated_at=datetime('now','localtime'),updated_by=?
                               WHERE id=?""", (
-                    "Controla fluxos, execuções e eventos de automação do CRM.",
+                    "Controla fluxos, execuÃ§Ãµes e eventos de automaÃ§Ã£o do CRM.",
                     api_base_url, encrypt_integration_secret(token), active, self.authenticated_user["id"], existing["id"],
                 ))
             else:
                 db.execute("""INSERT INTO api_integrations
                               (name,description,api_base_url,api_token,active,sync_interval_seconds,updated_by)
                               VALUES('n8n',?,?,?,?,60,?)""", (
-                    "Controla fluxos, execuções e eventos de automação do CRM.",
+                    "Controla fluxos, execuÃ§Ãµes e eventos de automaÃ§Ã£o do CRM.",
                     api_base_url, encrypt_integration_secret(token), active, self.authenticated_user["id"],
                 ))
         self.send_json({
             "saved": True,
             "connected": True,
             "workflows_visible": len(test_payload.get("data") or []),
-            "message": "n8n conectado com segurança.",
+            "message": "n8n conectado com seguranÃ§a.",
         })
 
     def get_crm_n8n_overview(self, query: dict) -> None:
@@ -5266,10 +5333,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except (TypeError, ValueError):
             limit = 50
         force_refresh = str(query.get("refresh", [""])[0]).strip().lower() in {"1", "true", "yes"}
-        # Em navegações entre telas, reaproveita por dois minutos a última
-        # auditoria bem-sucedida. Assim os fluxos não desaparecem se o n8n
-        # estiver momentaneamente lento, e o botão "Atualizar" continua
-        # podendo buscar uma versão nova quando necessário.
+        # Em navegaÃ§Ãµes entre telas, reaproveita por dois minutos a Ãºltima
+        # auditoria bem-sucedida. Assim os fluxos nÃ£o desaparecem se o n8n
+        # estiver momentaneamente lento, e o botÃ£o "Atualizar" continua
+        # podendo buscar uma versÃ£o nova quando necessÃ¡rio.
         with N8N_OVERVIEW_CACHE_LOCK:
             cached_payload = N8N_OVERVIEW_CACHE.get("payload")
             cached_at = float(N8N_OVERVIEW_CACHE.get("updated_at") or 0)
@@ -5278,9 +5345,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             response_payload["cached"] = True
             return self.send_json(response_payload)
         try:
-            # A listagem de execuções do n8n pode ser muito grande mesmo com
-            # paginação. Ela não pode impedir a auditoria dos fluxos de abrir.
-            # Os detalhes de execução são carregados sob demanda em cada fluxo.
+            # A listagem de execuÃ§Ãµes do n8n pode ser muito grande mesmo com
+            # paginaÃ§Ã£o. Ela nÃ£o pode impedir a auditoria dos fluxos de abrir.
+            # Os detalhes de execuÃ§Ã£o sÃ£o carregados sob demanda em cada fluxo.
             workflows_payload = self.crm_n8n_request(f"/api/v1/workflows?limit={limit}")
         except RuntimeError as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
@@ -5363,7 +5430,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 node_type = str(node.get("type") or "").lower()
                 node_name = str(node.get("name") or "")
                 if "scheduletrigger" in node_type:
-                    trigger_names.append("Horário")
+                    trigger_names.append("HorÃ¡rio")
                     frequency = self.describe_crm_n8n_schedule(
                         node.get("parameters") if isinstance(node.get("parameters"), dict) else {}
                     )
@@ -5385,7 +5452,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "last_execution_at": None,
                 "last_execution_status": None,
             }))
-            workflow["trigger_types"] = list(dict.fromkeys(trigger_names)) or ["Automático"]
+            workflow["trigger_types"] = list(dict.fromkeys(trigger_names)) or ["AutomÃ¡tico"]
             workflow["frequency"] = frequency
             workflow["integrations"] = integrations
             workflow["classification"] = classification["kind"]
@@ -5456,7 +5523,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "hours": ("hora", "horas", "hoursInterval"),
             "days": ("dia", "dias", "daysInterval"),
             "weeks": ("semana", "semanas", "weeksInterval"),
-            "months": ("mês", "meses", "monthsInterval"),
+            "months": ("mÃªs", "meses", "monthsInterval"),
         }
         for rule in intervals:
             if not isinstance(rule, dict):
@@ -5471,13 +5538,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             except (TypeError, ValueError):
                 amount = 1
             descriptions.append(f"A cada {amount} {singular if amount == 1 else plural}")
-        return " · ".join(filter(None, descriptions)) or "Agendado no n8n"
+        return " Â· ".join(filter(None, descriptions)) or "Agendado no n8n"
 
     def get_crm_n8n_workflow_detail(self, workflow_id: str) -> None:
         if not self.require_crm_n8n_manager():
             return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", workflow_id):
-            return self.send_json({"error": "Fluxo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Fluxo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         try:
             workflow = self.crm_n8n_request(f"/api/v1/workflows/{quote(workflow_id)}")
             executions_payload = self.crm_n8n_request(
@@ -5493,7 +5560,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             node_type = str(node.get("type") or "")
             parameters = node.get("parameters") if isinstance(node.get("parameters"), dict) else {}
             item = {
-                "name": str(node.get("name") or "Nó"),
+                "name": str(node.get("name") or "NÃ³"),
                 "type": node_type,
                 "disabled": bool(node.get("disabled")),
             }
@@ -5562,7 +5629,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                 continue
                             failed_nodes.append({
                                 "name": str(node_name),
-                                "message": str(error.get("message") or error.get("description") or "Falha no nó"),
+                                "message": str(error.get("message") or error.get("description") or "Falha no nÃ³"),
                                 "execution_id": failed_execution["id"],
                             })
                             break
@@ -5600,25 +5667,25 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_n8n_manager():
             return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", workflow_id):
-            return self.send_json({"error": "Fluxo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Fluxo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         workflow_kind = str(payload.get("workflow_kind") or "automatic").strip().lower()
         if workflow_kind not in {"automatic", "scheduled", "response", "manual", "hybrid", "critical"}:
-            return self.send_json({"error": "Classificação de fluxo inválida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "ClassificaÃ§Ã£o de fluxo invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         webhook_path = str(payload.get("webhook_path") or "").strip().strip("/")
         manual_enabled = 1 if payload.get("manual_enabled") else 0
         if manual_enabled and not webhook_path:
             return self.send_json({"error": "Informe o webhook seguro usado para executar este fluxo."}, HTTPStatus.BAD_REQUEST)
         if webhook_path and not re.fullmatch(r"[A-Za-z0-9_./-]+", webhook_path):
-            return self.send_json({"error": "Caminho de webhook inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Caminho de webhook invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         webhook_method = str(payload.get("webhook_method") or "POST").strip().upper()
         if webhook_method not in {"POST", "GET"}:
-            return self.send_json({"error": "Método de webhook inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "MÃ©todo de webhook invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         source_label = str(payload.get("source_label") or "").strip()[:120]
         channel_label = str(payload.get("channel_label") or "").strip()[:120]
         try:
             max_items = max(1, min(5000, int(payload.get("max_items") or 25)))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Limite de contatos inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Limite de contatos invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         try:
             workflow = self.crm_n8n_request(f"/api/v1/workflows/{quote(workflow_id)}")
         except RuntimeError as error:
@@ -5653,7 +5720,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_n8n_manager():
             return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", workflow_id):
-            return self.send_json({"error": "Fluxo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Fluxo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             setting = db.execute(
                 """SELECT * FROM crm_n8n_workflow_settings WHERE workflow_id=?""",
@@ -5661,18 +5728,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchone()
         if not setting or not setting["manual_enabled"] or not setting["webhook_path"]:
             return self.send_json(
-                {"error": "Este fluxo ainda não foi liberado para execução manual pelo CRM."},
+                {"error": "Este fluxo ainda nÃ£o foi liberado para execuÃ§Ã£o manual pelo CRM."},
                 HTTPStatus.CONFLICT,
             )
         mode = str(payload.get("mode") or ("test" if setting["test_mode"] else "production")).lower()
         if mode not in {"test", "production"}:
-            return self.send_json({"error": "Modo de execução inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Modo de execuÃ§Ã£o invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if mode == "production" and setting["requires_confirmation"] and not payload.get("confirmed"):
-            return self.send_json({"error": "Confirme explicitamente a execução em produção."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Confirme explicitamente a execuÃ§Ã£o em produÃ§Ã£o."}, HTTPStatus.CONFLICT)
         try:
             requested_limit = int(payload.get("limit") or setting["max_items"])
         except (TypeError, ValueError):
-            return self.send_json({"error": "Limite de contatos inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Limite de contatos invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         limit = max(1, min(int(setting["max_items"]), requested_limit))
         request_key = str(payload.get("request_key") or "").strip()
         run_key = request_key if re.fullmatch(r"[A-Za-z0-9_.:-]{12,120}", request_key) else f"crm-{secrets.token_urlsafe(18)}"
@@ -5751,7 +5818,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                        WHERE id=?""",
                     (run_id,),
                 )
-            return self.send_json({"error": f"Não foi possível iniciar o fluxo: {error}", "run_id": run_id}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": f"NÃ£o foi possÃ­vel iniciar o fluxo: {error}", "run_id": run_id}, HTTPStatus.BAD_GATEWAY)
         self.send_json({
             "started": True,
             "run_id": run_id,
@@ -5791,7 +5858,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 (run_id,),
             ).fetchone()
             if not run:
-                return self.send_json({"error": "Execução não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "ExecuÃ§Ã£o nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             events = db.execute(
                 """SELECT id,event_key,execution_id,campaign_id,patient_name,phone,channel_name,
                           event_type,outcome,external_message_id,occurred_at,received_at
@@ -5855,7 +5922,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         raw = str(value or "").strip()
         normalized = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii").lower()
         if "zero carie" in normalized:
-            return "Zero Cárie"
+            return "Zero CÃ¡rie"
         if "julho laranja" in normalized:
             return "Julho Laranja"
         if "aniversar" in normalized:
@@ -5865,8 +5932,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if "sem agendamento" in normalized:
             return "Sem agendamento"
         if "confirmacao" in normalized or "clinicorp" in normalized:
-            return "Confirmação de agenda"
-        return raw or "Automação sem campanha"
+            return "ConfirmaÃ§Ã£o de agenda"
+        return raw or "AutomaÃ§Ã£o sem campanha"
 
     def crm_attach_campaign_to_conversation(
         self, db, conversation_id: int | None, campaign_id: str | None, flow_name: str | None = None
@@ -5878,7 +5945,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not raw_campaign:
             return None
         label = self.crm_campaign_label(raw_campaign)
-        if label == "Automação sem campanha":
+        if label == "AutomaÃ§Ã£o sem campanha":
             return None
         tag_name = f"Campanha: {label}"[:40]
         db.execute("INSERT OR IGNORE INTO crm_tags(name,color) VALUES(?, '#7c3aed')", (tag_name,))
@@ -5898,7 +5965,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return tag_name
 
     def crm_find_campaign_conversation(self, db, instance: str, phone: str):
-        """Localiza a conversa mesmo quando o n8n omite a instância do WhatsApp."""
+        """Localiza a conversa mesmo quando o n8n omite a instÃ¢ncia do WhatsApp."""
         if not phone:
             return None
         if instance:
@@ -5972,8 +6039,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 db, conversation_id, event["campaign_id"], event["flow_name"]
             )
             if event["event_type"] in {"patient.replied", "message.received"}:
-                # Só recoloca na fila quando existe uma mensagem inbound real.
-                # Assim a reconciliação não cria atendimentos fantasmas.
+                # SÃ³ recoloca na fila quando existe uma mensagem inbound real.
+                # Assim a reconciliaÃ§Ã£o nÃ£o cria atendimentos fantasmas.
                 db.execute(
                     """UPDATE crm_conversations SET
                           queue_entered_at=COALESCE(queue_entered_at,?),
@@ -5986,10 +6053,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_appointment_source(payload: dict) -> str | None:
-        """Classifica apenas uma origem explicitamente enviada pela integração.
+        """Classifica apenas uma origem explicitamente enviada pela integraÃ§Ã£o.
 
         Nunca inferimos IA ou humano pelo texto da conversa. Isso evita atribuir
-        agendamentos de forma incorreta quando uma automação só repassou a conversa.
+        agendamentos de forma incorreta quando uma automaÃ§Ã£o sÃ³ repassou a conversa.
         """
         raw = next((payload.get(field) for field in (
             "appointment_source", "scheduled_by", "booking_source",
@@ -6003,7 +6070,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return None
 
     def get_crm_campaigns(self, query: dict) -> None:
-        """Visão operacional, alimentada apenas pelos eventos reais dos workflows."""
+        """VisÃ£o operacional, alimentada apenas pelos eventos reais dos workflows."""
         if not self.require_crc_access():
             return
         if not self.require_crm_feature("campaigns"):
@@ -6016,7 +6083,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             self.crm_reconcile_campaign_links(db, event_scope_sql, event_scope_params)
             rows = db.execute(
-                """SELECT COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'Automação sem campanha') AS campaign,
+                """SELECT COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'AutomaÃ§Ã£o sem campanha') AS campaign,
                           COUNT(DISTINCT COALESCE(NULLIF(phone,''),event_key)) AS patients,
                           SUM(CASE WHEN event_type IN ('message.sent','message.ai.sent') THEN 1 ELSE 0 END) AS sent,
                           SUM(CASE WHEN event_type IN ('message.delivered','message.read') THEN 1 ELSE 0 END) AS delivered,
@@ -6046,7 +6113,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                    FROM crm_n8n_patient_events e
                    WHERE {event_scope_sql}
                      AND datetime(COALESCE(occurred_at,received_at)) >= datetime('now','localtime', ?)
-                   GROUP BY COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'Automação sem campanha')
+                   GROUP BY COALESCE(NULLIF(campaign_id,''),NULLIF(flow_name,''),'AutomaÃ§Ã£o sem campanha')
                    ORDER BY last_event_at DESC""".format(event_scope_sql=event_scope_sql),
                 (*event_scope_params, f"-{days} days"),
             ).fetchall()
@@ -6092,7 +6159,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                      LEFT JOIN crm_contacts ct ON ct.id=COALESCE(e.contact_id,cv.contact_id)
                      LEFT JOIN users u ON u.id=cv.assigned_user_id
                     WHERE {event_scope_sql}
-                      AND COALESCE(NULLIF(e.campaign_id,''),NULLIF(e.flow_name,''),'Automação sem campanha')=?
+                      AND COALESCE(NULLIF(e.campaign_id,''),NULLIF(e.flow_name,''),'AutomaÃ§Ã£o sem campanha')=?
                       AND e.event_type IN ('patient.replied','message.received')
                       AND datetime(COALESCE(e.occurred_at,e.received_at)) >= datetime('now','localtime', ?)
                     ORDER BY datetime(COALESCE(e.occurred_at,e.received_at)) DESC,e.id DESC
@@ -6107,7 +6174,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if patient_key in seen:
                 continue
             seen.add(patient_key)
-            item["name"] = item.get("contact_name") or item.get("patient_name") or "Paciente não identificado"
+            item["name"] = item.get("contact_name") or item.get("patient_name") or "Paciente nÃ£o identificado"
             item["phone"] = self.crm_phone(item.get("phone") or item.get("contact_phone")) or ""
             if item.get("assigned_user_id"):
                 item["inbox_status"] = "Em atendimento"
@@ -6155,7 +6222,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def create_crm_n8n_callback_key(self, payload: dict) -> None:
         if not self.require_crm_n8n_manager():
             return
-        label = str(payload.get("label") or "Workflows automáticos").strip()[:100]
+        label = str(payload.get("label") or "Workflows automÃ¡ticos").strip()[:100]
         token = secrets.token_urlsafe(40)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
         with connect() as db:
@@ -6169,7 +6236,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "id": cursor.lastrowid,
             "label": label,
             "token": token,
-            "warning": "Esta chave será exibida somente agora. Salve-a como credencial protegida no n8n.",
+            "warning": "Esta chave serÃ¡ exibida somente agora. Salve-a como credencial protegida no n8n.",
         })
 
     def revoke_crm_n8n_callback_key(self, key_id: int) -> None:
@@ -6183,14 +6250,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 (key_id,),
             ).rowcount
         if not updated:
-            return self.send_json({"error": "Chave ativa não encontrada."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Chave ativa nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
         self.send_json({"revoked": True, "id": key_id})
 
     def change_crm_n8n_workflow(self, workflow_id: str, action: str) -> None:
         if not self.require_crm_n8n_manager():
             return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", workflow_id):
-            return self.send_json({"error": "Fluxo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Fluxo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         try:
             current_workflow = self.crm_n8n_request(f"/api/v1/workflows/{quote(workflow_id)}")
             with connect() as db:
@@ -6216,7 +6283,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_n8n_manager():
             return
         if not re.fullmatch(r"[A-Za-z0-9_-]+", workflow_id):
-            return self.send_json({"error": "Fluxo inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Fluxo invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             version = db.execute(
                 """SELECT id,workflow_id,workflow_name,workflow_json
@@ -6225,12 +6292,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 (version_id, workflow_id),
             ).fetchone()
         if not version:
-            return self.send_json({"error": "Versão preservada não encontrada."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "VersÃ£o preservada nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
         try:
             saved_workflow = json.loads(version["workflow_json"])
             current_workflow = self.crm_n8n_request(f"/api/v1/workflows/{quote(workflow_id)}")
         except (TypeError, json.JSONDecodeError):
-            return self.send_json({"error": "A cópia preservada está inválida."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "A cÃ³pia preservada estÃ¡ invÃ¡lida."}, HTTPStatus.CONFLICT)
         except RuntimeError as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
         restore_payload = {
@@ -6239,7 +6306,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if key in saved_workflow
         }
         if not restore_payload.get("name") or not isinstance(restore_payload.get("nodes"), list):
-            return self.send_json({"error": "A cópia não contém a estrutura necessária do workflow."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "A cÃ³pia nÃ£o contÃ©m a estrutura necessÃ¡ria do workflow."}, HTTPStatus.CONFLICT)
         with connect() as db:
             safety_cursor = db.execute(
                 """INSERT INTO crm_n8n_workflow_versions
@@ -6278,6 +6345,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_feature("integrations"): return
         with connect() as db:
             channels = db.execute("""SELECT id,display_name,instance_name,connection_status,last_event_at,sync_enabled,
+                                  provider,meta_access_token,meta_phone_number_id,meta_business_account_id,
                                   CASE WHEN last_event_at IS NULL OR datetime(last_event_at)<datetime('now','localtime','-15 minutes')
                                        THEN 1 ELSE 0 END AS stale
                                   FROM crm_channels WHERE active=1 ORDER BY display_name""").fetchall()
@@ -6293,28 +6361,35 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with urlopen(request, timeout=3) as response:
                 n8n_online = 200 <= response.status < 300
                 if n8n_online:
-                    n8n_detail = f"Servidor online · {int(n8n['events_24h'] or 0)} evento(s) nas últimas 24h"
+                    n8n_detail = f"Servidor online Â· {int(n8n['events_24h'] or 0)} evento(s) nas Ãºltimas 24h"
         except (HTTPError, URLError, TimeoutError, OSError):
             pass
         items = []
         for ch in channels:
             connected = str(ch["connection_status"] or "").strip().lower() == "conectado"
             enabled = bool(ch["sync_enabled"])
-            if not connected:
-                status, message = "error", "Número desconectado na Evolution"
+            is_meta = str(ch["provider"] or "").strip().lower() == "meta"
+            meta_configured = bool(str(ch["meta_access_token"] or "").strip() and (str(ch["meta_phone_number_id"] or "").strip() or str(ch["meta_business_account_id"] or "").strip()))
+            if not is_meta and not connected:
+                status, message = "error", "NÃºmero desconectado na Evolution"
+            elif is_meta and not meta_configured:
+                status, message = "error", "Meta sem credenciais configuradas"
+            elif is_meta and not connected:
+                status, message = "warning", "Meta aguardando confirmaÃ§Ã£o de eventos"
             elif not enabled:
                 status, message = "warning", "Canal pausado somente neste CRM"
             elif ch["last_event_at"]:
                 status, message = "online", "Conectado e recebendo eventos"
             else:
-                status, message = "online", "Conectado · aguardando o primeiro evento"
-            items.append({"type": "Evolution", "name": ch["display_name"], "status": status,
+                status, message = "online", "Conectado Â· aguardando o primeiro evento"
+            provider_label = "Meta" if is_meta else "Evolution"
+            items.append({"type": provider_label, "name": ch["display_name"], "status": status,
                           "message": message, "last_event_at": ch["last_event_at"],
                           "idle": bool(ch["stale"] and ch["last_event_at"])})
         items.append({"type": "Webhook", "name": "Webhook Evolution", "status": "online" if not failures["total"] else "error",
-                      "message": "Sem falhas na última hora" if not failures["total"] else f"{failures['total']} falha(s) na última hora",
+                      "message": "Sem falhas na Ãºltima hora" if not failures["total"] else f"{failures['total']} falha(s) na Ãºltima hora",
                       "last_event_at": failures["last_failure"]})
-        items.append({"type": "n8n", "name": "Automações n8n", "status": "online" if n8n_online else "error",
+        items.append({"type": "n8n", "name": "AutomaÃ§Ãµes n8n", "status": "online" if n8n_online else "error",
                       "message": n8n_detail, "last_event_at": n8n["last_event"],
                       "events_24h": int(n8n["events_24h"] or 0)})
         self.send_json({"items": items, "healthy": all(i["status"] == "online" for i in items)})
@@ -6348,10 +6423,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif view == "operational":
             # O funil possui uma coluna "Resolvidos". A consulta anterior
             # eliminava todas as conversas resolvidas antes que o front-end
-            # pudesse colocá-las nessa coluna, por isso um atendimento sumia
-            # imediatamente após a conclusão. Mantemos os ativos e os
+            # pudesse colocÃ¡-las nessa coluna, por isso um atendimento sumia
+            # imediatamente apÃ³s a conclusÃ£o. Mantemos os ativos e os
             # resolvidos de hoje, evitando transformar o quadro operacional
-            # em um histórico ilimitado (o histórico completo fica em
+            # em um histÃ³rico ilimitado (o histÃ³rico completo fica em
             # Controle de pacientes).
             conditions.append("""ct.is_internal=0 AND (
                 (cv.status<>'Resolvida' AND (cv.assigned_user_id IS NOT NULL OR
@@ -6361,8 +6436,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif view == "active":
             conditions.append("cv.status<>'Resolvida'")
         elif view == "internal":
-            # Conversas do time não entram na fila externa, mas precisam
-            # permanecer acessíveis no CRM depois de uma mensagem enviada.
+            # Conversas do time nÃ£o entram na fila externa, mas precisam
+            # permanecer acessÃ­veis no CRM depois de uma mensagem enviada.
             conditions.append("ct.is_internal=1 AND cv.status<>'Resolvida'")
         elif view == "resolved":
             conditions.append("cv.status='Resolvida'")
@@ -6370,9 +6445,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             conditions.append("ct.is_internal=0 AND cv.status<>'Resolvida' AND (cv.assigned_user_id=? OR (cv.assigned_user_id IS NULL AND cv.queue_entered_at IS NOT NULL))")
             params.append(self.authenticated_user["id"])
         if compact_mode == "campaign":
-            # O bridge de campanhas só precisa das conversas que realmente
-            # possuem uma origem de automação. Filtrar no banco evita baixar
-            # centenas de atendimentos sem campanha a cada atualização.
+            # O bridge de campanhas sÃ³ precisa das conversas que realmente
+            # possuem uma origem de automaÃ§Ã£o. Filtrar no banco evita baixar
+            # centenas de atendimentos sem campanha a cada atualizaÃ§Ã£o.
             conditions.append("""(
                 NULLIF(cv.automation_flow,'') IS NOT NULL
                 OR EXISTS (SELECT 1 FROM crm_automation_events origin_event
@@ -6383,12 +6458,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            WHERE origin_link.conversation_id=cv.id
                              AND lower(origin_tag.name) LIKE 'campanha:%')
             )""")
-        # A visão "operational" (funil/pipeline) só usa id, name, channel,
+        # A visÃ£o "operational" (funil/pipeline) sÃ³ usa id, name, channel,
         # pipeline_stage, assigned_to e tag_names no front-end (ver loadPipeline
-        # em crm-whatsapp.html) — as 5 subconsultas correlacionadas abaixo
-        # rodavam para cada uma das até 500 linhas mesmo assim, multiplicando
-        # o custo da tela mais lenta do CRM sem nenhum ganho visível. Elas só
-        # são executadas fora dessa visão, onde o valor é realmente exibido.
+        # em crm-whatsapp.html) â€” as 5 subconsultas correlacionadas abaixo
+        # rodavam para cada uma das atÃ© 500 linhas mesmo assim, multiplicando
+        # o custo da tela mais lenta do CRM sem nenhum ganho visÃ­vel. Elas sÃ³
+        # sÃ£o executadas fora dessa visÃ£o, onde o valor Ã© realmente exibido.
         skip_heavy_fields = view == "operational" or bool(compact_mode)
         journey_count_sql = "0" if skip_heavy_fields else "(SELECT COUNT(*) FROM crm_conversations sibling WHERE sibling.contact_id=cv.contact_id)"
         campaign_name_sql = "cv.automation_flow" if compact_mode not in {"", "campaign"} or view == "operational" else """COALESCE((SELECT NULLIF(ae.campaign_id,'') FROM crm_automation_events ae
@@ -6417,7 +6492,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   AND (julianday('now','localtime')-julianday(cv.queue_entered_at))*1440>ch.sla_minutes THEN 1 ELSE 0 END AS sla_overdue,
                        {journey_count_sql} AS journey_count,
                        u.name AS assigned_to, COALESCE(u.service_sector,'CRC') AS assigned_sector,
-                       CASE WHEN u.id IS NULL THEN NULL ELSE u.name || ' · ' || COALESCE(NULLIF(u.service_sector,''),'CRC') END AS assigned_label,
+                       CASE WHEN u.id IS NULL THEN NULL ELSE u.name || ' Â· ' || COALESCE(NULLIF(u.service_sector,''),'CRC') END AS assigned_label,
                        resolver.name AS resolved_by,
                        {campaign_name_sql} AS campaign_name,
                        {automation_last_event_sql} AS automation_last_event,
@@ -6455,8 +6530,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if phone_key:
                 seen_phones.add(phone_key)
             # Sempre exponha a rota protegida do CRM. Ela devolve a foto que
-            # está em cache ou tenta obtê-la sob demanda na Evolution; quando
-            # o perfil não possui foto, o front preserva as iniciais.
+            # estÃ¡ em cache ou tenta obtÃª-la sob demanda na Evolution; quando
+            # o perfil nÃ£o possui foto, o front preserva as iniciais.
             if not compact_mode and item.get("contact_id") and self.crm_phone(item.get("phone")):
                 item["profile_picture_url"] = f"/api/crm/contacts/{item['contact_id']}/profile-photo"
             if compact_mode:
@@ -6493,9 +6568,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
         except (TypeError, ValueError):
-            return self.send_json({"error": "Colaborador inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Colaborador invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if user_id != int(self.authenticated_user["id"]) and not can_manage:
-            return self.send_json({"error": "Você só pode visualizar o próprio perfil."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "VocÃª sÃ³ pode visualizar o prÃ³prio perfil."}, HTTPStatus.FORBIDDEN)
 
         today = datetime.now(CLINIC_TIMEZONE).date()
         month_start = today.replace(day=1)
@@ -6507,7 +6582,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                   FROM users u LEFT JOIN professionals pr ON pr.id=u.professional_id
                  WHERE u.id=? AND u.access_role='crc' AND u.active=1""", (user_id,)).fetchone()
             if not user:
-                return self.send_json({"error": "Colaborador do CRM não encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Colaborador do CRM nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
             stats = db.execute("""SELECT
                        COUNT(DISTINCT CASE WHEN COALESCE(ct.is_internal,0)=0 AND cv.status<>'Resolvida'
                                                 AND cv.assigned_user_id=? THEN cv.id END) AS active_count,
@@ -6578,19 +6653,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         icon_key = str(payload.get("icon_key") or "trophy").strip().lower()
         accent_color = str(payload.get("accent_color") or "#2563EB").strip().upper()
         if not 2 <= len(title) <= 80:
-            return self.send_json({"error": "Informe um título entre 2 e 80 caracteres."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe um tÃ­tulo entre 2 e 80 caracteres."}, HTTPStatus.BAD_REQUEST)
         if len(description) > 240:
-            return self.send_json({"error": "A descrição deve ter até 240 caracteres."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A descriÃ§Ã£o deve ter atÃ© 240 caracteres."}, HTTPStatus.BAD_REQUEST)
         if icon_key not in CRM_PROFILE_ACHIEVEMENT_ICONS:
-            return self.send_json({"error": "Ícone de conquista inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Ãcone de conquista invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if accent_color not in CRM_PROFILE_ACHIEVEMENT_COLORS:
-            return self.send_json({"error": "Cor de conquista inválida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Cor de conquista invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             target = db.execute(
                 "SELECT id,name FROM users WHERE id=? AND access_role='crc' AND active=1", (user_id,)
             ).fetchone()
             if not target:
-                return self.send_json({"error": "Colaborador do CRM não encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Colaborador do CRM nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
             achievement_id = db.execute("""INSERT INTO crm_profile_achievements(
                     user_id,title,description,icon_key,accent_color,awarded_by_user_id)
                     VALUES(?,?,?,?,?,?)""", (
@@ -6598,7 +6673,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             )).lastrowid
             self.record_security_event(
                 db, "crm_profile_achievement_created", self.request_ip(), self.authenticated_user["id"],
-                f"Conquista '{title}' atribuída a {target['name']} (usuário {user_id}).",
+                f"Conquista '{title}' atribuÃ­da a {target['name']} (usuÃ¡rio {user_id}).",
             )
             row = db.execute("""SELECT a.id,a.user_id,a.title,a.description,a.icon_key,a.accent_color,
                        a.awarded_at,awarder.name AS awarded_by
@@ -6621,7 +6696,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         name = str(payload.get("name") or "").strip()
         color = str(payload.get("color") or "#8696a0").strip()
         if not name or len(name) > 40:
-            return self.send_json({"error": "Informe uma etiqueta com até 40 caracteres."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe uma etiqueta com atÃ© 40 caracteres."}, HTTPStatus.BAD_REQUEST)
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             color = "#8696a0"
         with connect() as db:
@@ -6725,8 +6800,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "month_label": f"{CRM_MONTH_NAMES[month_start.month]} {month_start.year}",
             "user": dict(user) if user else {"id": user_id, "name": "Atendente"},
             "schedule": {
-                "weekdays": "Segunda a sexta, 08h às 18h",
-                "saturday": "Sábado, 08h às 12h",
+                "weekdays": "Segunda a sexta, 08h Ã s 18h",
+                "saturday": "SÃ¡bado, 08h Ã s 12h",
                 "remaining_open_days": remaining_days,
             },
             "items": items,
@@ -6759,7 +6834,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             requested_user_id = int((query.get("user_id") or [self.authenticated_user["id"]])[0])
             crm_goal_month_bounds(month_value)
         except (TypeError, ValueError):
-            return self.send_json({"error": "Informe um mês e uma atendente válidos."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe um mÃªs e uma atendente vÃ¡lidos."}, HTTPStatus.BAD_REQUEST)
         user_id = requested_user_id if can_configure else int(self.authenticated_user["id"])
         with connect() as db:
             agents = db.execute(
@@ -6776,7 +6851,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 "SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1 AND COALESCE(crm_operational_agent,1)=1", (user_id,),
             ).fetchone()
             if not user:
-                return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Atendente do CRC nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             payload = self.crm_goal_dashboard_data(db, user_id, month_value)
         payload["can_configure"] = can_configure
         payload["agents"] = [dict(row) for row in agents]
@@ -6805,10 +6880,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not target or realized < target:
                 return
             label = CRM_GOAL_METRICS.get(metric_key, "Todas as metas")
-            period_label = "diária" if achievement_type == "daily" else "mensal"
+            period_label = "diÃ¡ria" if achievement_type == "daily" else "mensal"
             message = (
                 f"{custom_message.strip()[:140]} Resultado: {realized} de {target}." if custom_message else
-                f"Parabéns, {user_name}! Meta {period_label} de {label} alcançada: {realized} de {target}."
+                f"ParabÃ©ns, {user_name}! Meta {period_label} de {label} alcanÃ§ada: {realized} de {target}."
             )
             cursor = db.execute(
                 """INSERT OR IGNORE INTO crm_goal_achievements(
@@ -6852,7 +6927,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 target_sum = sum(int(goal[target_column] or 0) for goal in enabled_goals)
                 realized_sum = sum(actuals.get(goal["metric_key"], 0) for goal in enabled_goals)
                 record(None, "all_goals", achievement_type, period_key, target_sum, realized_sum,
-                       f"Parabéns, {user_name}! Todas as metas {('do dia' if achievement_type == 'daily' else 'do mês')} foram alcançadas.")
+                       f"ParabÃ©ns, {user_name}! Todas as metas {('do dia' if achievement_type == 'daily' else 'do mÃªs')} foram alcanÃ§adas.")
         return created
 
     def save_crm_goals(self, payload: dict) -> None:
@@ -6869,10 +6944,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             user_id = int(payload.get("user_id") or 0)
             month_start, _ = crm_goal_month_bounds(month_value)
         except (TypeError, ValueError):
-            return self.send_json({"error": "Selecione o mês e a atendente."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o mÃªs e a atendente."}, HTTPStatus.BAD_REQUEST)
         raw_goals = payload.get("goals") or {}
         if not isinstance(raw_goals, dict):
-            return self.send_json({"error": "As metas informadas são inválidas."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "As metas informadas sÃ£o invÃ¡lidas."}, HTTPStatus.BAD_REQUEST)
         normalized = {}
         try:
             for metric_key in CRM_GOAL_METRICS:
@@ -6903,7 +6978,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 }
         except (TypeError, ValueError):
             return self.send_json(
-                {"error": "Use números inteiros positivos e mantenha o mínimo menor ou igual à meta."},
+                {"error": "Use nÃºmeros inteiros positivos e mantenha o mÃ­nimo menor ou igual Ã  meta."},
                 HTTPStatus.BAD_REQUEST,
             )
         with connect() as db:
@@ -6914,7 +6989,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             ).fetchall()
             agent_ids = [int(row["id"]) for row in agents]
             if user_id not in agent_ids:
-                return self.send_json({"error": "Atendente do CRC não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Atendente do CRC nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             target_user_ids = agent_ids if apply_to_all else [user_id]
             achievements = []
             for target_user_id in target_user_ids:
@@ -6971,9 +7046,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 start_date = datetime.strptime(str(query.get("start", [""])[0]), "%Y-%m-%d").date()
                 end_date = datetime.strptime(str(query.get("end", [""])[0]), "%Y-%m-%d").date()
             except ValueError:
-                return self.send_json({"error": "Informe o período personalizado completo."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Informe o perÃ­odo personalizado completo."}, HTTPStatus.BAD_REQUEST)
             if start_date > end_date or (end_date - start_date).days > 366:
-                return self.send_json({"error": "O período informado é inválido ou muito extenso."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "O perÃ­odo informado Ã© invÃ¡lido ou muito extenso."}, HTTPStatus.BAD_REQUEST)
         else:
             period, start_date, end_date = "today", today, today
         try:
@@ -6987,8 +7062,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             current_conditions.append("ch.id=?")
             current_params.append(channel_id)
         current_where = " AND ".join(current_conditions)
-        # Estoque atual precisa incluir todos os abertos, mas não há motivo
-        # para varrer resoluções antigas em cada atualização do dashboard.
+        # Estoque atual precisa incluir todos os abertos, mas nÃ£o hÃ¡ motivo
+        # para varrer resoluÃ§Ãµes antigas em cada atualizaÃ§Ã£o do dashboard.
         current_window_where = (
             f"{current_where} AND (cv.status<>'Resolvida' OR "
             "date(cv.resolved_at) BETWEEN ? AND ?)"
@@ -7081,13 +7156,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             after_id = max(0, int(query.get("after_id", ["0"])[0] or 0))
             limit = max(20, min(300, int(query.get("limit", ["200"])[0] or 200)))
         except (TypeError, ValueError):
-            return self.send_json({"error": "Parâmetros de paginação inválidos."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "ParÃ¢metros de paginaÃ§Ã£o invÃ¡lidos."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             scoped_conversation = db.execute("SELECT channel_id FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
             if not scoped_conversation:
-                return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Conversa nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not self.crm_channel_allowed(db, scoped_conversation["channel_id"]):
-                return self.send_json({"error": "Você não possui acesso a este canal."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui acesso a este canal."}, HTTPStatus.FORBIDDEN)
             if after_id:
                 rows = db.execute("""SELECT id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,
                                           sent_by_user_id,author_type,author_label,source_channel,delivery_status,message_at
@@ -7099,25 +7174,36 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            sent_by_user_id,author_type,author_label,source_channel,delivery_status,message_at
                     FROM crm_messages WHERE conversation_id=? ORDER BY id DESC LIMIT ?
                 ) recent ORDER BY id""", (conversation_id, limit)).fetchall()
-            # A simples pré-visualização não pode retirar um contato da fila.
-            # Só zeramos o não lido quando a conversa já foi assumida pelo usuário atual.
+            # A simples prÃ©-visualizaÃ§Ã£o nÃ£o pode retirar um contato da fila.
+            # SÃ³ zeramos o nÃ£o lido quando a conversa jÃ¡ foi assumida pelo usuÃ¡rio atual.
             # O CRM paralelo utiliza read_only para validar o novo Inbox sem
-            # modificar sequer esse estado secundário da conversa.
+            # modificar sequer esse estado secundÃ¡rio da conversa.
             if not read_only:
                 db.execute("""UPDATE crm_conversations SET unread_count=0
                               WHERE id=? AND assigned_user_id=?""",
                            (conversation_id, self.authenticated_user["id"]))
         items = []
+        last_id = after_id
         for row in rows:
             item = dict(row)
-            # Duração é calculada na ingestão/envio. Um GET de histórico
-            # nunca deve abrir ffprobe e novas conexões para cada áudio antigo;
-            # o próprio player lê os metadados quando o legado ainda está nulo.
+            if item["id"] > last_id:
+                last_id = item["id"]
+            # DuraÃ§Ã£o Ã© calculada na ingestÃ£o/envio. Um GET de histÃ³rico
+            # nunca deve abrir ffprobe e novas conexÃµes para cada Ã¡udio antigo;
+            # o prÃ³prio player lÃª os metadados quando o legado ainda estÃ¡ nulo.
             if item["message_type"] in {"audio", "image", "video", "document", "sticker"} and item["external_message_id"]:
                 if not str(item["media_url"] or "").startswith("/api/crm/media/"):
                     item["media_url"] = f"/api/crm/messages/{item['id']}/media"
             items.append(item)
-        self.send_json({"items": items, "after_id": after_id, "limit": limit})
+        if rows and len(items) >= limit and last_id > 0:
+            with connect() as db:
+                has_more = db.execute(
+                    "SELECT 1 FROM crm_messages WHERE conversation_id=? AND id>? LIMIT 1",
+                    (conversation_id, last_id),
+                ).fetchone() is not None
+        else:
+            has_more = False
+        self.send_json({"items": items, "after_id": last_id, "limit": limit, "has_more": has_more})
 
     @staticmethod
     def crm_media_extension(mime_type: str | None, file_name: str | None = None) -> str:
@@ -7143,7 +7229,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def crm_media_content_valid(mime_type: str, content: bytes) -> bool:
-        """Confere o conteúdo real antes de retransmitir um anexo pelo WhatsApp."""
+        """Confere o conteÃºdo real antes de retransmitir um anexo pelo WhatsApp."""
         if not content:
             return False
         signatures = {
@@ -7195,7 +7281,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             row = db.execute("""SELECT m.id,m.external_message_id,m.media_url,m.mime_type,m.direction,
-                ch.id AS channel_id,ch.instance_name,ct.phone
+                ch.id AS channel_id,ch.provider,ch.instance_name,ct.phone,ch.meta_access_token,ch.meta_graph_api_version
                 FROM crm_messages m
                 JOIN crm_conversations cv ON cv.id=m.conversation_id
                 JOIN crm_contacts ct ON ct.id=cv.contact_id
@@ -7204,14 +7290,51 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 (message_id,),
             ).fetchone()
             if row and not self.crm_channel_allowed(db, row["channel_id"]):
-                return self.send_json({"error": "Você não possui acesso a esta mídia."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui acesso a esta mÃ­dia."}, HTTPStatus.FORBIDDEN)
         if not row or not row["external_message_id"]:
-            return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "MÃ­dia nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
         cached = str(row["media_url"] or "")
-        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", cached)
+        cached_match = re.fullmatch(r"/api/crm/media/([a-f0-9]{32}\.(?:webm|ogg|oga|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin))", cached)
         if cached_match:
             return self.get_crm_media(cached_match.group(1))
         try:
+            media_url = str(row["media_url"] or "").strip()
+            if media_url.startswith("meta:"):
+                if str(row["provider"] or "").lower() != "meta":
+                    return self.send_json({"error": "MÃ­dia nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
+                media_id = media_url.removeprefix("meta:")
+                if not media_id:
+                    return self.send_json({"error": "MÃ­dia nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
+                encrypted_token = row["meta_access_token"] or ""
+                if not encrypted_token:
+                    return self.send_json({"error": "Canal sem token da Meta para baixar mÃ­dia."}, HTTPStatus.SERVICE_UNAVAILABLE)
+                try:
+                    access_token = decrypt_integration_secret(encrypted_token)
+                except RuntimeError as error:
+                    return self.send_json({"error": str(error)}, HTTPStatus.SERVICE_UNAVAILABLE)
+                content, mime_type = self.download_meta_media(
+                    access_token, media_id, row["meta_graph_api_version"]
+                )
+                if not content or not self.crm_media_content_valid(mime_type or str(row["mime_type"] or ""), content):
+                    # Meta pode retornar mÃ­deia com tipos novos. Quando nÃ£o houver
+                    # assinatura de validaÃ§Ã£o robusta, aceitamos o arquivo para
+                    # evitar bloqueio de arquivos legÃ­timos.
+                    if not content or len(content) == 0:
+                        raise RuntimeError("Nenhuma mÃ­dia recebida da Meta.")
+                mime_type = str(mime_type or row["mime_type"] or "application/octet-stream").split(";", 1)[0]
+                extension = self.crm_media_extension(mime_type, None)
+                digest = hashlib.md5(f"{row['external_message_id']}-meta".encode(), usedforsecurity=False).hexdigest()
+                file_name = f"{digest}.{extension}"
+                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+                (CRM_MEDIA_DIR / file_name).write_bytes(content)
+                duration_seconds = crm_audio_duration_seconds(content) if str(mime_type).startswith("audio/") else None
+                with connect() as db:
+                    db.execute(
+                        "UPDATE crm_messages SET media_url=?,mime_type=?,duration_seconds=COALESCE(?,duration_seconds) WHERE id=?",
+                        (f"/api/crm/media/{file_name}", mime_type, duration_seconds, message_id),
+                    )
+                return self.get_crm_media(file_name)
+
             full_message = None
             with connect() as db:
                 event_rows = db.execute("""SELECT payload_json FROM crm_webhook_events
@@ -7256,7 +7379,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 encoded = encoded.split(",", 1)[1]
             content = base64.b64decode(encoded, validate=True)
             if not content or len(content) > 40 * 1024 * 1024:
-                raise ValueError("tamanho de mídia inválido")
+                raise ValueError("tamanho de mÃ­dia invÃ¡lido")
             mime_type = str(payload.get("mimetype") or row["mime_type"] or "application/octet-stream").split(";", 1)[0]
             extension = self.crm_media_extension(mime_type, payload.get("fileName"))
             digest = hashlib.md5(str(row["external_message_id"]).encode(), usedforsecurity=False).hexdigest()
@@ -7269,14 +7392,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                            (f"/api/crm/media/{file_name}", mime_type, duration_seconds, message_id))
             return self.get_crm_media(file_name)
         except (RuntimeError, ValueError, TypeError) as error:
-            # Mídia remota pode expirar ou deixar de existir na Evolution. Registra a
+            # MÃ­dia remota pode expirar ou deixar de existir na Evolution. Registra a
             # causa sem expor URL, telefone ou credenciais no navegador.
             print(
-                f"[crm-media] falha ao obter mídia da mensagem {message_id}: "
+                f"[crm-media] falha ao obter mÃ­dia da mensagem {message_id}: "
                 f"{type(error).__name__}: {error}",
                 flush=True,
             )
-            return self.send_json({"error": f"Não foi possível carregar a mídia: {error}"}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": f"NÃ£o foi possÃ­vel carregar a mÃ­dia: {error}"}, HTTPStatus.BAD_GATEWAY)
 
     def get_crm_media(self, file_name: str) -> None:
         if not self.require_crc_access():
@@ -7284,19 +7407,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crm_any_feature(CRM_WORKSPACE_FEATURES):
             return
         if not re.fullmatch(r"[a-f0-9]{32}\.(?:webm|ogg|oga|mp3|mp4|m4a|jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|txt|zip|bin)", file_name):
-            return self.send_json({"error": "Arquivo de mídia inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Arquivo de mÃ­dia invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             media_channels = db.execute("""SELECT DISTINCT cv.channel_id,m.mime_type,m.message_type
                 FROM crm_messages m
                 JOIN crm_conversations cv ON cv.id=m.conversation_id
                 WHERE m.media_url=?""", (f"/api/crm/media/{file_name}",)).fetchall()
             if not media_channels:
-                return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "MÃ­dia nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not any(self.crm_channel_allowed(db, row["channel_id"]) for row in media_channels):
-                return self.send_json({"error": "Você não possui acesso a esta mídia."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui acesso a esta mÃ­dia."}, HTTPStatus.FORBIDDEN)
         target = (CRM_MEDIA_DIR / file_name).resolve()
         if target.parent != CRM_MEDIA_DIR.resolve() or not target.is_file():
-            return self.send_json({"error": "Mídia não encontrada."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "MÃ­dia nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
         file_size = target.stat().st_size
         start, end = 0, max(0, file_size - 1)
         status = HTTPStatus.OK
@@ -7357,8 +7480,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.wfile.write(content)
 
     def evolution_webhook_authorized(self, query: dict) -> bool:
-        # Algumas instâncias Evolution 2.x persistem a URL antiga usando
-        # `token`, mesmo após receberem a configuração com `webhook_key`.
+        # Algumas instÃ¢ncias Evolution 2.x persistem a URL antiga usando
+        # `token`, mesmo apÃ³s receberem a configuraÃ§Ã£o com `webhook_key`.
         # Aceitamos os dois nomes, mas sempre comparamos exclusivamente com o
         # segredo dedicado EVOLUTION_WEBHOOK_TOKEN.
         candidates = (
@@ -7377,11 +7500,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return bool(INTEGRATION_TOKEN and supplied and hmac.compare_digest(str(supplied), INTEGRATION_TOKEN))
 
     def crm_n8n_run_event_authorized(self, payload: dict) -> bool:
-        """Autoriza callbacks de uma execução iniciada pelo próprio painel.
+        """Autoriza callbacks de uma execuÃ§Ã£o iniciada pelo prÃ³prio painel.
 
-        O segredo é efêmero, enviado apenas ao webhook do n8n e persistido no
-        banco somente como SHA-256. O workflow não recebe o token global das
-        demais integrações da clínica.
+        O segredo Ã© efÃªmero, enviado apenas ao webhook do n8n e persistido no
+        banco somente como SHA-256. O workflow nÃ£o recebe o token global das
+        demais integraÃ§Ãµes da clÃ­nica.
         """
         run_key = str(payload.get("crm_run_key") or payload.get("run_key") or "").strip()
         supplied = str(payload.get("crm_event_token") or "").strip()
@@ -7403,7 +7526,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         return bool(expected and hmac.compare_digest(actual, expected))
 
     def crm_n8n_callback_authorized(self) -> bool:
-        """Valida callbacks automáticos do n8n sem reutilizar segredos globais."""
+        """Valida callbacks automÃ¡ticos do n8n sem reutilizar segredos globais."""
         supplied = str(self.headers.get("X-CRM-N8N-Token") or "").strip()
         if not supplied:
             return False
@@ -7418,14 +7541,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         )
 
     def mark_crm_ai_message(self, payload: dict, query: dict) -> None:
-        """Registra autoria da automação independentemente da ordem dos webhooks.
+        """Registra autoria da automaÃ§Ã£o independentemente da ordem dos webhooks.
 
-        O n8n deve chamar este endpoint após o envio pela Evolution usando o
+        O n8n deve chamar este endpoint apÃ³s o envio pela Evolution usando o
         mesmo ID externo retornado pela API. Se o webhook da mensagem ainda
-        não chegou, a atribuição fica aguardando e será aplicada na importação.
+        nÃ£o chegou, a atribuiÃ§Ã£o fica aguardando e serÃ¡ aplicada na importaÃ§Ã£o.
         """
         if not self.shared_integration_authorized(query):
-            return self.send_json({"error": "Integração não autorizada."}, HTTPStatus.UNAUTHORIZED)
+            return self.send_json({"error": "IntegraÃ§Ã£o nÃ£o autorizada."}, HTTPStatus.UNAUTHORIZED)
         external_id = str(payload.get("external_message_id") or payload.get("message_id") or payload.get("id") or "").strip()
         label = str(payload.get("author_label") or payload.get("agent_name") or "Assistente IA").strip()[:80]
         if not external_id:
@@ -7439,21 +7562,21 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"attributed": True, "message_found": bool(updated), "external_message_id": external_id})
 
     def receive_crm_handoff(self, payload: dict, query: dict) -> None:
-        """Recebe do n8n/IA uma transferência explícita para a fila humana."""
+        """Recebe do n8n/IA uma transferÃªncia explÃ­cita para a fila humana."""
         if not self.shared_integration_authorized(query):
-            return self.send_json({"error": "Integração não autorizada."}, HTTPStatus.UNAUTHORIZED)
+            return self.send_json({"error": "IntegraÃ§Ã£o nÃ£o autorizada."}, HTTPStatus.UNAUTHORIZED)
         instance = str(payload.get("instance") or payload.get("instance_name") or "").strip()
         phone = self.crm_phone(payload.get("phone") or payload.get("number"))
         reason = str(payload.get("reason") or "Transferido pela IA").strip()[:120]
         if not instance or not phone:
-            return self.send_json({"error": "Informe a instância e o telefone."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe a instÃ¢ncia e o telefone."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             row = db.execute("""SELECT cv.id FROM crm_conversations cv
                 JOIN crm_channels ch ON ch.id=cv.channel_id
                 JOIN crm_contacts ct ON ct.id=cv.contact_id
                 WHERE ch.instance_name=? AND ct.phone=?""", (instance, phone)).fetchone()
             if not row:
-                return self.send_json({"error": "Conversa não encontrada para transferência."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Conversa nÃ£o encontrada para transferÃªncia."}, HTTPStatus.NOT_FOUND)
             db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Novo',queue_name=?,
                           assigned_user_id=NULL,assigned_at=NULL,resolved_at=NULL,unread_count=GREATEST(unread_count,1),
                           resolved_by_user_id=NULL,last_direction='inbound',queue_entered_at=datetime('now','localtime'),
@@ -7462,13 +7585,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"queued": True, "conversation_id": row["id"]})
 
     def receive_crm_automation_event(self, payload: dict, query: dict) -> None:
-        """Entrada idempotente para monitorar campanhas e decisões do n8n/IA."""
+        """Entrada idempotente para monitorar campanhas e decisÃµes do n8n/IA."""
         if not (
             self.shared_integration_authorized(query)
             or self.crm_n8n_run_event_authorized(payload)
             or self.crm_n8n_callback_authorized()
         ):
-            return self.send_json({"error":"Integração não autorizada."},HTTPStatus.UNAUTHORIZED)
+            return self.send_json({"error":"IntegraÃ§Ã£o nÃ£o autorizada."},HTTPStatus.UNAUTHORIZED)
         event_type = str(payload.get("event_type") or payload.get("event") or "").strip().lower()
         event_key = str(payload.get("event_id") or payload.get("event_key") or "").strip()
         instance = str(payload.get("instance") or payload.get("instance_name") or "").strip()
@@ -7619,7 +7742,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   automation_turns=automation_turns+CASE WHEN ?='message.ai.sent' THEN 1 ELSE 0 END,
                                   updated_at=datetime('now','localtime') WHERE id=?""",(flow_name,event_type,conversation_id))
                 elif event_type in {"ai.handoff.requested","human.required","opportunity.detected"}:
-                    reason = str(payload.get("reason") or payload.get("outcome") or "Intervenção humana solicitada")[:160]
+                    reason = str(payload.get("reason") or payload.get("outcome") or "IntervenÃ§Ã£o humana solicitada")[:160]
                     db.execute("""UPDATE crm_conversations SET automation_state='handoff',handoff_reason=?,status='Aberta',
                                   pipeline_stage='Novo',assigned_user_id=NULL,assigned_at=NULL,
                                   queue_entered_at=COALESCE(queue_entered_at,datetime('now','localtime')),
@@ -7648,7 +7771,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def receive_evolution_webhook(self, payload: dict, query: dict) -> None:
         if not self.evolution_webhook_authorized(query):
-            return self.send_json({"error": "Webhook não autorizado."}, HTTPStatus.UNAUTHORIZED)
+            return self.send_json({"error": "Webhook nÃ£o autorizado."}, HTTPStatus.UNAUTHORIZED)
         event_type = str(payload.get("event") or payload.get("type") or "evento").lower()
         instance = str(payload.get("instance") or payload.get("instanceName") or "Evolution").strip()
         data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
@@ -7753,8 +7876,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 conversation_id=db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?",(channel_id,contact_id)).fetchone()[0]
                 if not from_me:
                     # O callback do n8n pode chegar antes do webhook da Evolution
-                    # ou sem informar a instância. Vinculamos retroativamente os
-                    # eventos pelo telefone para não perder Inbox nem campanha.
+                    # ou sem informar a instÃ¢ncia. Vinculamos retroativamente os
+                    # eventos pelo telefone para nÃ£o perder Inbox nem campanha.
                     pending_campaign = db.execute(
                         """SELECT campaign_id,flow_name
                              FROM crm_n8n_patient_events
@@ -7820,7 +7943,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                          mime_type: str, duration_seconds: float | None) -> None:
         """Send a recorded audio exclusively through the Meta test channel."""
         if not META_TEST_MODE:
-            return self.send_json({"error": "O canal de teste da Meta nÃ£o estÃ¡ disponÃ­vel neste ambiente."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "O canal de teste da Meta nÃƒÂ£o estÃƒÂ¡ disponÃƒÂ­vel neste ambiente."}, HTTPStatus.CONFLICT)
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
         phone_number_id = str(settings.get("whatsapp_test_phone_number_id") or "").strip()
@@ -7838,12 +7961,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         temporary.replace(target)
         media_url = f"/api/crm/media/{file_name}"
         service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
-        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+        author_label = f"{self.authenticated_user['name']} Ã‚Â· {service_sector}"
         with connect() as db:
             message_row = db.execute(
                 """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,
                                                 sender_name,sent_by_user_id,author_type,author_label,source_channel,delivery_status,message_at)
-                   VALUES(?,?,'outbound','audio','Ãudio',?,?,?,?,?,'human',?,'meta-test','Enviada',datetime('now','localtime'))
+                   VALUES(?,?,'outbound','audio','ÃƒÂudio',?,?,?,?,?,'human',?,'meta-test','Enviada',datetime('now','localtime'))
                    RETURNING id""",
                 (conversation_id, external_id, media_url, mime_type, duration_seconds, self.authenticated_user["name"],
                  self.authenticated_user["id"], author_label),
@@ -7868,7 +7991,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def send_crm_meta_test_text_message(self, conversation_id: int, channel: dict, body: str) -> None:
         """Reply with text through the same isolated Meta test conversation."""
         if not META_TEST_MODE:
-            return self.send_json({"error": "O canal de teste da Meta nÃ£o estÃ¡ disponÃ­vel neste ambiente."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "O canal de teste da Meta nÃƒÂ£o estÃƒÂ¡ disponÃƒÂ­vel neste ambiente."}, HTTPStatus.CONFLICT)
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
         phone_number_id = str(settings.get("whatsapp_test_phone_number_id") or "").strip()
@@ -7878,7 +8001,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except RuntimeError as error:
             return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
         service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
-        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+        author_label = f"{self.authenticated_user['name']} Ã‚Â· {service_sector}"
         with connect() as db:
             message_row = db.execute(
                 """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,sender_name,sent_by_user_id,
@@ -7926,7 +8049,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         temporary.replace(target)
         media_url = f"/api/crm/media/{stored_name}"
         service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
-        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+        author_label = f"{self.authenticated_user['name']} Ã‚Â· {service_sector}"
         with connect() as db:
             message_row = db.execute(
                 """INSERT INTO crm_messages(conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,sender_name,sent_by_user_id,
@@ -7968,18 +8091,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if message_type == "audio":
             audio_base64 = str(payload.get("audio_base64") or "").strip()
             mime_type = str(payload.get("mime_type") or "audio/webm").split(";", 1)[0].strip().lower()
-            allowed_audio_types = {"audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/x-m4a"}
+            allowed_audio_types = {"audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/x-m4a", "audio/m4a", "audio/aac"}
             if mime_type not in allowed_audio_types:
-                return self.send_json({"error": "Formato de áudio não suportado."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Formato de Ã¡udio nÃ£o suportado."}, HTTPStatus.BAD_REQUEST)
             try:
                 audio_bytes = base64.b64decode(audio_base64, validate=True)
             except (ValueError, TypeError):
-                return self.send_json({"error": "A gravação de áudio está corrompida."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "A gravaÃ§Ã£o de Ã¡udio estÃ¡ corrompida."}, HTTPStatus.BAD_REQUEST)
             if not audio_bytes:
-                return self.send_json({"error": "Grave um áudio antes de enviar."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Grave um Ã¡udio antes de enviar."}, HTTPStatus.BAD_REQUEST)
             if len(audio_bytes) > 8 * 1024 * 1024:
-                return self.send_json({"error": "O áudio ultrapassa o limite de 8 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-            body = "Áudio"
+                return self.send_json({"error": "O Ã¡udio ultrapassa o limite de 8 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            body = "Ãudio"
             try:
                 audio_bytes = convert_crm_audio_to_ogg(audio_bytes)
             except RuntimeError as error:
@@ -8004,18 +8127,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 },
             }[message_type]
             if mime_type not in expected_group:
-                return self.send_json({"error": "Formato de arquivo não suportado."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Formato de arquivo nÃ£o suportado."}, HTTPStatus.BAD_REQUEST)
             try:
                 media_bytes = base64.b64decode(encoded_media, validate=True)
             except (ValueError, TypeError):
-                return self.send_json({"error": "O arquivo enviado está corrompido."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "O arquivo enviado estÃ¡ corrompido."}, HTTPStatus.BAD_REQUEST)
             if not media_bytes:
                 return self.send_json({"error": "Selecione um arquivo antes de enviar."}, HTTPStatus.BAD_REQUEST)
             if len(media_bytes) > 12 * 1024 * 1024:
                 return self.send_json({"error": "O arquivo ultrapassa o limite de 12 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             if not self.crm_media_content_valid(mime_type, media_bytes):
                 return self.send_json(
-                    {"error": "O conteúdo do arquivo não corresponde ao formato informado."},
+                    {"error": "O conteÃºdo do arquivo nÃ£o corresponde ao formato informado."},
                     HTTPStatus.BAD_REQUEST,
                 )
             if not original_file_name:
@@ -8033,25 +8156,26 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 }[mime_type]
             body = body or original_file_name
         elif message_type != "text":
-            return self.send_json({"error": "Tipo de mensagem não suportado."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Tipo de mensagem nÃ£o suportado."}, HTTPStatus.BAD_REQUEST)
         elif not body:
             return self.send_json({"error":"Digite uma mensagem."},HTTPStatus.BAD_REQUEST)
         with connect() as db:
             row=db.execute("""SELECT cv.channel_id,ct.id AS contact_id,ct.phone,ct.is_internal,ch.instance_name,ch.display_name,ch.evolution_base_url,ch.evolution_api_key,
+                                      ch.provider,ch.meta_access_token,ch.meta_graph_api_version,ch.meta_phone_number_id,ch.meta_business_account_id,ch.phone AS channel_phone,
                                       cv.assigned_user_id,u.name AS assigned_to
                                FROM crm_conversations cv
                               JOIN crm_contacts ct ON ct.id=cv.contact_id JOIN crm_channels ch ON ch.id=cv.channel_id
                                LEFT JOIN users u ON u.id=cv.assigned_user_id
                                WHERE cv.id=? AND ch.active=1 AND ch.sync_enabled=1""",(conversation_id,)).fetchone()
-            if not row: return self.send_json({"error":"Conversa ou canal não encontrado."},HTTPStatus.NOT_FOUND)
+            if not row: return self.send_json({"error":"Conversa ou canal nÃ£o encontrado."},HTTPStatus.NOT_FOUND)
             if not self.crm_channel_allowed(db, row["channel_id"], "reply"):
-                return self.send_json({"error":"Você não possui permissão para responder por este número."},HTTPStatus.FORBIDDEN)
+                return self.send_json({"error":"VocÃª nÃ£o possui permissÃ£o para responder por este nÃºmero."},HTTPStatus.FORBIDDEN)
             if not row["is_internal"]:
                 active_owner = self.crm_contact_active_owner(db, row["contact_id"])
                 if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
                     return self.reject_crm_contact_owner_conflict(active_owner)
             if row["assigned_user_id"] and row["assigned_user_id"] != self.authenticated_user["id"]:
-                return self.send_json({"error":f"Este atendimento já está atribuído a {row['assigned_to']}. Transfira antes de responder."},HTTPStatus.CONFLICT)
+                return self.send_json({"error":f"Este atendimento jÃ¡ estÃ¡ atribuÃ­do a {row['assigned_to']}. Transfira antes de responder."},HTTPStatus.CONFLICT)
             if not row["assigned_user_id"] and not row["is_internal"]:
                 return self.send_json({"error":"Inicie o atendimento antes de enviar mensagens para um contato externo."},HTTPStatus.CONFLICT)
             row = dict(row)
@@ -8063,7 +8187,97 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if message_type in {"image", "video", "document"}:
                 return self.send_crm_meta_test_media_message(conversation_id, row, media_bytes, message_type,
                                                              mime_type or "application/octet-stream", original_file_name, body)
-            return self.send_json({"error": "Tipo de anexo nÃ£o suportado no laboratÃ³rio da Meta."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Tipo de anexo nÃƒÂ£o suportado no laboratÃƒÂ³rio da Meta."}, HTTPStatus.CONFLICT)
+        if row["provider"] == "meta":
+            if not row["meta_access_token"]:
+                return self.send_json({"error":"Configure o token da Meta para este canal antes de enviar."}, HTTPStatus.CONFLICT)
+            try:
+                access_token = decrypt_integration_secret(row["meta_access_token"])
+            except RuntimeError as error:
+                return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
+            phone_number_id = str(row["meta_phone_number_id"] or "").strip()
+            recipient = self.crm_phone(row["phone"]) or self.crm_phone(row["channel_phone"])
+            if not phone_number_id:
+                return self.send_json({"error":"Informe o Phone Number ID da Meta para este canal antes de enviar."}, HTTPStatus.CONFLICT)
+            if not recipient:
+                return self.send_json({"error":"Contato sem telefone válido para enviar via Meta."}, HTTPStatus.BAD_REQUEST)
+            try:
+                if message_type == "audio":
+                    external_id = self.send_meta_production_message(
+                        phone_number_id, access_token, row["meta_graph_api_version"] or META_GRAPH_API_VERSION,
+                        recipient, message_type="audio", payload={"audio_bytes": audio_bytes, "mime_type": mime_type}
+                    )
+                elif message_type in {"image", "video", "document"}:
+                    external_id = self.send_meta_production_message(
+                        phone_number_id, access_token, row["meta_graph_api_version"] or META_GRAPH_API_VERSION,
+                        recipient, message_type=message_type,
+                        payload={"media_bytes": media_bytes, "mime_type": mime_type, "file_name": original_file_name, "caption": body},
+                    )
+                else:
+                    external_id = self.send_meta_production_message(
+                        phone_number_id, access_token, row["meta_graph_api_version"] or META_GRAPH_API_VERSION,
+                        recipient, message_type="text", payload={"text": body}
+                    )
+            except RuntimeError as error:
+                return self.send_json({"error": str(error)}, HTTPStatus.BAD_GATEWAY)
+            if message_type in {"image", "video", "document"}:
+                extension = self.crm_media_extension(mime_type, original_file_name)
+                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+                file_name = f"{secrets.token_hex(16)}.{extension}"
+                target = CRM_MEDIA_DIR / file_name
+                temporary = target.with_suffix(target.suffix + ".tmp")
+                temporary.write_bytes(media_bytes)
+                temporary.replace(target)
+                media_url = f"/api/crm/media/{file_name}"
+            elif message_type == "audio":
+                extension = {
+                    "audio/webm": "webm",
+                    "audio/ogg": "ogg",
+                    "audio/mp4": "mp4",
+                    "audio/mpeg": "mp3",
+                    "audio/x-m4a": "m4a",
+                }.get(mime_type, "ogg")
+                CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+                file_name = f"{secrets.token_hex(16)}.{extension}"
+                target = CRM_MEDIA_DIR / file_name
+                temporary = target.with_suffix(target.suffix + ".tmp")
+                temporary.write_bytes(audio_bytes)
+                temporary.replace(target)
+                media_url = f"/api/crm/media/{file_name}"
+            else:
+                media_url = None
+            service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
+            author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
+            with connect() as db:
+                message_row=db.execute("""INSERT INTO crm_messages
+                    (conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,sent_by_user_id,
+                     author_type,author_label,source_channel,delivery_status,message_at)
+                    VALUES(?,?,'outbound',?,?,?,?,?,?,?,'human',?,'meta',?,datetime('now','localtime'))
+                    ON CONFLICT(external_message_id) DO UPDATE SET
+                      conversation_id=excluded.conversation_id,direction='outbound',message_type=excluded.message_type,
+                      body=excluded.body,media_url=COALESCE(excluded.media_url,crm_messages.media_url),
+                      mime_type=COALESCE(excluded.mime_type,crm_messages.mime_type),
+                      duration_seconds=COALESCE(excluded.duration_seconds,crm_messages.duration_seconds),
+                      sender_name=excluded.sender_name,sent_by_user_id=excluded.sent_by_user_id,
+                      author_type='human',author_label=excluded.author_label,source_channel='meta',delivery_status='Enviada'
+                    RETURNING id""",
+                    (conversation_id,external_id,message_type,body,media_url,mime_type,duration_seconds,self.authenticated_user["name"],self.authenticated_user["id"],
+                     author_label,"Enviada")).fetchone()
+                message_id = int(message_row["id"] if hasattr(message_row, "keys") else message_row[0])
+                if row["is_internal"]:
+                    db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Novo',
+                                  assigned_user_id=NULL,assigned_at=NULL,queue_entered_at=NULL,first_response_at=NULL,
+                                  unread_count=0,last_direction='outbound',last_message_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
+                                  WHERE id=?""", (conversation_id,))
+                else:
+                    db.execute("""UPDATE crm_conversations SET status='Aberta',pipeline_stage='Em atendimento',
+                                  first_response_at=COALESCE(first_response_at,datetime('now','localtime')),
+                                  automation_state='paused',
+                                  unread_count=0,last_direction='outbound',last_message_at=datetime('now','localtime'),updated_at=datetime('now','localtime')
+                                  WHERE id=? AND status<>'Resolvida'""",(conversation_id,))
+                    self.crm_record_event(db, conversation_id, "message.sent", {"message_type": message_type, "provider": "meta"})
+                result=db.execute("SELECT id,conversation_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,author_type,author_label,source_channel,delivery_status,message_at FROM crm_messages WHERE id=?",(message_id,)).fetchone()
+            return self.send_json(dict(result),HTTPStatus.CREATED)
         configured_url, configured_key = ("", "")
         if not row["evolution_base_url"] or not row["evolution_api_key"]:
             configured_url, configured_key = self.evolution_credentials()  # CRM_OUTBOUND_SHORT_TRANSACTIONS_V1
@@ -8076,12 +8290,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         try:
             connection_state = self.crm_evolution_connection_state(row["instance_name"], base_url, api_key)
         except RuntimeError as error:
-            return self.send_json({"error":f"Não foi possível verificar a conexão do canal {row['display_name']}: {error}"},HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error":f"NÃ£o foi possÃ­vel verificar a conexÃ£o do canal {row['display_name']}: {error}"},HTTPStatus.BAD_GATEWAY)
         if connection_state != "open":
             with connect() as status_db:
                 status_db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
             return self.send_json({
-                "error": f"O WhatsApp do canal {row['display_name']} está desconectado. Reconecte o número por QR Code em Integrações antes de enviar.",
+                "error": f"O WhatsApp do canal {row['display_name']} estÃ¡ desconectado. Reconecte o nÃºmero por QR Code em IntegraÃ§Ãµes antes de enviar.",
                 "code": "WHATSAPP_DISCONNECTED",
             }, HTTPStatus.CONFLICT)
         with connect() as status_db:
@@ -8089,10 +8303,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         instance_path = quote(str(row["instance_name"]), safe="")
         if message_type == "audio":
             evolution_path = f"/message/sendWhatsAppAudio/{instance_path}"
-            # A Evolution 2.3.7 só executa a preparação final da nota de
-            # voz quando `encoding` está ativo. Mesmo com OGG/Opus válido,
-            # pular essa etapa pode gerar uma mídia aceita pela API, mas
-            # indisponível para reprodução no aplicativo do destinatário.
+            # A Evolution 2.3.7 sÃ³ executa a preparaÃ§Ã£o final da nota de
+            # voz quando `encoding` estÃ¡ ativo. Mesmo com OGG/Opus vÃ¡lido,
+            # pular essa etapa pode gerar uma mÃ­dia aceita pela API, mas
+            # indisponÃ­vel para reproduÃ§Ã£o no aplicativo do destinatÃ¡rio.
             evolution_payload = {
                 "number": f"55{row['phone']}",
                 "audio": base64.b64encode(audio_bytes).decode("ascii"),
@@ -8122,14 +8336,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 with connect() as status_db:
                     status_db.execute("UPDATE crm_channels SET connection_status='Desconectado',updated_at=datetime('now','localtime') WHERE id=?", (row["channel_id"],))
                 return self.send_json({
-                    "error": f"O WhatsApp do canal {row['display_name']} foi desconectado. Reconecte o número por QR Code em Integrações e tente novamente.",
+                    "error": f"O WhatsApp do canal {row['display_name']} foi desconectado. Reconecte o nÃºmero por QR Code em IntegraÃ§Ãµes e tente novamente.",
                     "code": "WHATSAPP_DISCONNECTED",
                 }, HTTPStatus.CONFLICT)
             return self.send_json({"error":f"Evolution respondeu {error.code}: {evolution_error}"},HTTPStatus.BAD_GATEWAY)
-        except (URLError,TimeoutError) as error: return self.send_json({"error":f"Não foi possível conectar à Evolution: {error}"},HTTPStatus.BAD_GATEWAY)
+        except (URLError,TimeoutError) as error: return self.send_json({"error":f"NÃ£o foi possÃ­vel conectar Ã  Evolution: {error}"},HTTPStatus.BAD_GATEWAY)
         external_id=str(((response_data.get("key") or {}).get("id")) or response_data.get("id") or secrets.token_hex(12))
         if message_type == "audio":
-            extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "mp4", "audio/mpeg": "m4a", "audio/x-m4a": "m4a"}[mime_type]
+            extension = {
+                "audio/webm": "webm",
+                "audio/ogg": "ogg",
+                "audio/mp4": "mp4",
+                "audio/mpeg": "mp3",
+                "audio/x-m4a": "m4a",
+            }.get(mime_type, "ogg")
             CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
             file_name = f"{secrets.token_hex(16)}.{extension}"
             target = CRM_MEDIA_DIR / file_name
@@ -8147,7 +8367,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             temporary.replace(target)
             media_url = f"/api/crm/media/{file_name}"
         service_sector = str(self.authenticated_user.get("service_sector") or "CRC").strip()
-        author_label = f"{self.authenticated_user['name']} · {service_sector}"
+        author_label = f"{self.authenticated_user['name']} Â· {service_sector}"
         with connect() as db:
             message_row=db.execute("""INSERT INTO crm_messages
                 (conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,sent_by_user_id,
@@ -8199,25 +8419,31 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.send_json({"updated": True, "id": contact_id, "is_internal": bool(is_internal)})
 
     def transcribe_crm_audio(self, payload: dict) -> None:
-        """Transcreve um áudio curto da tela de contatos sem expor a chave da OpenAI."""
+        """Transcreve um Ã¡udio curto da tela de contatos sem expor a chave da OpenAI."""
         if not self.require_crc_access() or not self.require_crm_feature("contacts"):
             return
         if not OPENAI_API_KEY:
-            return self.send_json({"error": "A transcrição ainda não está configurada no servidor."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "A transcriÃ§Ã£o ainda nÃ£o estÃ¡ configurada no servidor."}, HTTPStatus.CONFLICT)
         encoded = str(payload.get("base64") or "").strip()
         mime_type = str(payload.get("mimeType") or "audio/webm").split(";", 1)[0].strip().lower()
         allowed = {"audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/x-m4a"}
         if mime_type not in allowed:
-            return self.send_json({"error": "Formato de áudio não suportado para transcrição."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Formato de Ã¡udio nÃ£o suportado para transcriÃ§Ã£o."}, HTTPStatus.BAD_REQUEST)
         try:
             audio_bytes = base64.b64decode(encoded, validate=True)
         except (ValueError, TypeError):
-            return self.send_json({"error": "A gravação de áudio está corrompida."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A gravaÃ§Ã£o de Ã¡udio estÃ¡ corrompida."}, HTTPStatus.BAD_REQUEST)
         if not audio_bytes:
-            return self.send_json({"error": "Grave um áudio antes de transcrever."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Grave um Ã¡udio antes de transcrever."}, HTTPStatus.BAD_REQUEST)
         if len(audio_bytes) > 8 * 1024 * 1024:
-            return self.send_json({"error": "O áudio ultrapassa o limite de 8 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
-        extension = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "mp4", "audio/mpeg": "mp3", "audio/x-m4a": "m4a"}[mime_type]
+            return self.send_json({"error": "O Ã¡udio ultrapassa o limite de 8 MB."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        extension = {
+            "audio/webm": "webm",
+            "audio/ogg": "ogg",
+            "audio/mp4": "mp4",
+            "audio/mpeg": "mp3",
+            "audio/x-m4a": "m4a",
+        }.get(mime_type, "webm")
         boundary = "----iea-transcription-" + secrets.token_hex(12)
         parts = []
         parts.append((f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n".encode() + b"gpt-4o-mini-transcribe\r\n"))
@@ -8233,12 +8459,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except HTTPError as error:
             detail = error.read().decode(errors="replace")[:300]
             print(f"[crm-transcribe] OpenAI HTTP {error.code}: {detail}", flush=True)
-            return self.send_json({"error": "A transcrição ficou indisponível. Tente novamente ou envie o áudio."}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": "A transcriÃ§Ã£o ficou indisponÃ­vel. Tente novamente ou envie o Ã¡udio."}, HTTPStatus.BAD_GATEWAY)
         except (URLError, TimeoutError, ValueError):
-            return self.send_json({"error": "A transcrição ficou indisponível. Tente novamente."}, HTTPStatus.BAD_GATEWAY)
+            return self.send_json({"error": "A transcriÃ§Ã£o ficou indisponÃ­vel. Tente novamente."}, HTTPStatus.BAD_GATEWAY)
         text = str(result.get("text") or "").strip()[:8000]
         if not text:
-            return self.send_json({"error": "Não foi possível identificar fala nesse áudio."}, HTTPStatus.UNPROCESSABLE_ENTITY)
+            return self.send_json({"error": "NÃ£o foi possÃ­vel identificar fala nesse Ã¡udio."}, HTTPStatus.UNPROCESSABLE_ENTITY)
         self.send_json({"text": text})
 
     def start_crm_conversation(self, payload: dict) -> None:
@@ -8260,35 +8486,35 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not name:
             return self.send_json({"error": "Selecione um contato."}, HTTPStatus.BAD_REQUEST)
         if not phone:
-            return self.send_json({"error": "O contato precisa ter um telefone válido com DDD."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "O contato precisa ter um telefone vÃ¡lido com DDD."}, HTTPStatus.BAD_REQUEST)
         if not channel_id:
-            return self.send_json({"error": "Selecione o número que enviará a mensagem."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Selecione o nÃºmero que enviarÃ¡ a mensagem."}, HTTPStatus.BAD_REQUEST)
         if not open_only and not body and not has_audio:
             return self.send_json({"error": "Digite a primeira mensagem."}, HTTPStatus.BAD_REQUEST)
         if message_type not in {"text", "audio"}:
-            return self.send_json({"error": "A primeira mensagem aceita texto ou áudio."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A primeira mensagem aceita texto ou Ã¡udio."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             channel = db.execute("SELECT id FROM crm_channels WHERE id=? AND active=1 AND sync_enabled=1", (channel_id,)).fetchone()
             if not channel:
-                return self.send_json({"error": "Canal indisponível ou desconectado."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Canal indisponÃ­vel ou desconectado."}, HTTPStatus.CONFLICT)
             if not self.crm_channel_allowed(db, channel_id, "reply"):
-                return self.send_json({"error": "Você não possui permissão para iniciar conversas por este número."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui permissÃ£o para iniciar conversas por este nÃºmero."}, HTTPStatus.FORBIDDEN)
             db.execute("""INSERT INTO crm_contacts(name,phone) VALUES(?,?)
                           ON CONFLICT(phone) DO UPDATE SET name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE crm_contacts.name END,
                           updated_at=datetime('now','localtime')""", (name, phone))
             contact = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (phone,)).fetchone()
             db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (contact["id"],)).fetchone()
-            # Abrir um atendimento manualmente Ã© uma declaraÃ§Ã£o explÃ­cita de
-            # atendimento externo. Isso tambÃ©m corrige contatos que tenham sido
-            # marcados como internos anteriormente; caso contrÃ¡rio, as rotinas
-            # de sincronizaÃ§Ã£o removeriam a atribuiÃ§Ã£o logo depois da abertura.
+            # Abrir um atendimento manualmente ÃƒÂ© uma declaraÃƒÂ§ÃƒÂ£o explÃƒÂ­cita de
+            # atendimento externo. Isso tambÃƒÂ©m corrige contatos que tenham sido
+            # marcados como internos anteriormente; caso contrÃƒÂ¡rio, as rotinas
+            # de sincronizaÃƒÂ§ÃƒÂ£o removeriam a atribuiÃƒÂ§ÃƒÂ£o logo depois da abertura.
             db.execute("""UPDATE crm_contacts SET is_internal=0,
                           updated_at=datetime('now','localtime') WHERE id=?""", (contact["id"],))
             active_owner = self.crm_contact_active_owner(db, contact["id"])
             if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.reject_crm_contact_owner_conflict(active_owner)
             # Nunca reaproveite uma conversa de outro canal: o atendente
-            # escolheu explicitamente o número de saída. Reutilizar somente
+            # escolheu explicitamente o nÃºmero de saÃ­da. Reutilizar somente
             # pelo contato fazia uma conversa Zero Carie receber mensagens que
             # deveriam sair pelo IEA.
             existing = db.execute("""SELECT cv.id,cv.channel_id,cv.assigned_user_id,u.name AS assigned_to
@@ -8301,7 +8527,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if existing:
                 if existing["assigned_user_id"] and existing["assigned_user_id"] != self.authenticated_user["id"]:
                     return self.send_json({
-                        "error": f"Este paciente já está em atendimento com {existing['assigned_to']}. Solicite a transferência antes de acessar.",
+                        "error": f"Este paciente jÃ¡ estÃ¡ em atendimento com {existing['assigned_to']}. Solicite a transferÃªncia antes de acessar.",
                         "code": "CONVERSATION_ASSIGNED_TO_ANOTHER_USER",
                         "conversation_id": int(existing["id"]),
                         "assigned_to": existing["assigned_to"],
@@ -8348,15 +8574,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if not self.require_crc_access(): return
         if not self.require_crm_feature("inbox"):
             return
-        allowed_categories = {"Primeira consulta", "Controle", "Tratamento", "Orçamento"}
+        allowed_categories = {"Primeira consulta", "Controle", "Tratamento", "OrÃ§amento"}
         legacy_outcome_aliases = {
             "Pediu para reagendar": "Retorno",
-            "Data específica": "Retorno",
-            "Não respondeu": "Novo Contato IA",
-            "Não respondeu/atendeu": "Novo Contato IA",
-            "Não quer agendar": "Novo Contato IA",
-            "Está tratando com outro profissional": "Em tratamento externo",
-            "Informação fornecida": "Outros",
+            "Data especÃ­fica": "Retorno",
+            "NÃ£o respondeu": "Novo Contato IA",
+            "NÃ£o respondeu/atendeu": "Novo Contato IA",
+            "NÃ£o quer agendar": "Novo Contato IA",
+            "EstÃ¡ tratando com outro profissional": "Em tratamento externo",
+            "InformaÃ§Ã£o fornecida": "Outros",
             "Contato interno": "Outros",
         }
         allowed_outcomes = {
@@ -8390,32 +8616,32 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if category not in allowed_categories:
             return self.send_json({"error": "Selecione a categoria do atendimento."}, HTTPStatus.BAD_REQUEST)
         if patient_type not in CRM_PATIENT_TYPES:
-            return self.send_json({"error": "Informe se é primeira consulta ou retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe se Ã© primeira consulta ou retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
         if outcome not in allowed_outcomes:
             return self.send_json({"error": "Selecione o resultado do atendimento."}, HTTPStatus.BAD_REQUEST)
         if is_recovery and patient_type != "Retorno s/ Tratamento":
-            return self.send_json({"error": "Recuperação de paciente só pode ser marcada em retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "RecuperaÃ§Ã£o de paciente sÃ³ pode ser marcada em retorno sem tratamento."}, HTTPStatus.BAD_REQUEST)
         if is_recovery and outcome != "Agendou":
-            return self.send_json({"error": "A recuperação entra na meta somente quando o paciente agendou."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "A recuperaÃ§Ã£o entra na meta somente quando o paciente agendou."}, HTTPStatus.BAD_REQUEST)
         if outcome == "Agendou":
             if not scheduled_date or not scheduled_time or not professional:
-                return self.send_json({"error": "Informe data, horário e profissional do agendamento."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error": "Informe data, horÃ¡rio e profissional do agendamento."}, HTTPStatus.BAD_REQUEST)
             if schedule_type not in {"Agendado", "Programado"}:
                 return self.send_json({"error": "Informe se ficou agendado ou programado."}, HTTPStatus.BAD_REQUEST)
         if outcome in {"Quer agendar", "Retorno"} and not next_contact_at:
             return self.send_json({"error": "Informe quando o contato deve retornar."}, HTTPStatus.BAD_REQUEST)
         if outcome in {"Mudou de cidade", "Em tratamento externo", "Desqualificado", "Outros"} and not (loss_reason or notes):
-            return self.send_json({"error": "Informe o motivo ou uma observação."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe o motivo ou uma observaÃ§Ã£o."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             conversation_ref = db.execute(
                 "SELECT contact_id FROM crm_conversations WHERE id=?",
                 (conversation_id,),
             ).fetchone()
             if not conversation_ref:
-                return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
-            # Serializa todas as resoluções do mesmo paciente antes da leitura
-            # definitiva do estado. Sem a releitura após o lock, duas requisições
-            # simultâneas podiam registrar duas finalizações para a mesma etapa.
+                return self.send_json({"error":"Conversa nÃ£o encontrada."},HTTPStatus.NOT_FOUND)
+            # Serializa todas as resoluÃ§Ãµes do mesmo paciente antes da leitura
+            # definitiva do estado. Sem a releitura apÃ³s o lock, duas requisiÃ§Ãµes
+            # simultÃ¢neas podiam registrar duas finalizaÃ§Ãµes para a mesma etapa.
             db.execute(
                 "SELECT id FROM crm_contacts WHERE id=? FOR UPDATE",
                 (conversation_ref["contact_id"],),
@@ -8427,11 +8653,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                   JOIN crm_channels ch ON ch.id=cv.channel_id
                                   LEFT JOIN users u ON u.id=cv.assigned_user_id WHERE cv.id=?""",
                                (conversation_id,)).fetchone()
-            if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
+            if not current: return self.send_json({"error":"Conversa nÃ£o encontrada."},HTTPStatus.NOT_FOUND)
             if current["status"] == "Resolvida":
-                return self.send_json({"error":"Este atendimento já foi resolvido."},HTTPStatus.CONFLICT)
+                return self.send_json({"error":"Este atendimento jÃ¡ foi resolvido."},HTTPStatus.CONFLICT)
             if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
-                return self.send_json({"error":"Você não possui permissão para resolver atendimentos deste número."},HTTPStatus.FORBIDDEN)
+                return self.send_json({"error":"VocÃª nÃ£o possui permissÃ£o para resolver atendimentos deste nÃºmero."},HTTPStatus.FORBIDDEN)
             active_owner = self.crm_contact_active_owner(db, current["contact_id"])
             if active_owner and active_owner["assigned_user_id"] != self.authenticated_user["id"]:
                 return self.reject_crm_contact_owner_conflict(active_owner)
@@ -8496,12 +8722,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         legacy_outcome_aliases = {
             "Pediu para reagendar": "Retorno",
-            "Data específica": "Retorno",
-            "Não respondeu": "Novo Contato IA",
-            "Não respondeu/atendeu": "Novo Contato IA",
-            "Não quer agendar": "Novo Contato IA",
-            "Está tratando com outro profissional": "Em tratamento externo",
-            "Informação fornecida": "Outros",
+            "Data especÃ­fica": "Retorno",
+            "NÃ£o respondeu": "Novo Contato IA",
+            "NÃ£o respondeu/atendeu": "Novo Contato IA",
+            "NÃ£o quer agendar": "Novo Contato IA",
+            "EstÃ¡ tratando com outro profissional": "Em tratamento externo",
+            "InformaÃ§Ã£o fornecida": "Outros",
             "Contato interno": "Outros",
         }
         outcome_members = {
@@ -8574,7 +8800,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     COUNT(*) FILTER (WHERE r.category='Primeira consulta') AS first_consultations,
                     COUNT(*) FILTER (WHERE r.category='Controle') AS controls,
                     COUNT(*) FILTER (WHERE r.category='Tratamento') AS treatments,
-                    COUNT(*) FILTER (WHERE r.category='Orçamento') AS budgets,
+                    COUNT(*) FILTER (WHERE r.category='OrÃ§amento') AS budgets,
                     COUNT(*) FILTER (WHERE r.outcome='Agendou') AS scheduled,
                     COUNT(*) FILTER (WHERE COALESCE(r.ai_involved,0)<>0) AS ai_involved,
                     COUNT(*) FILTER (WHERE r.final_actor='Humano') AS human_finalized
@@ -8582,7 +8808,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
             def grouped_query(expression: str) -> list[dict]:
                 grouped_rows = db.execute(f"""SELECT
-                        COALESCE(NULLIF(TRIM(COALESCE({expression},'')),''),'Não informado') AS label,
+                        COALESCE(NULLIF(TRIM(COALESCE({expression},'')),''),'NÃ£o informado') AS label,
                         COUNT(*) AS total
                       FROM crm_service_resolutions r
                       LEFT JOIN crm_contacts ct ON ct.id=r.contact_id
@@ -8666,18 +8892,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         aliases = {
             "Pediu para reagendar": "Retorno",
-            "Data específica": "Retorno",
             "Data especÃ­fica": "Retorno",
-            "Não respondeu": "Novo Contato IA",
+            "Data especÃƒÂ­fica": "Retorno",
             "NÃ£o respondeu": "Novo Contato IA",
-            "Não respondeu/atendeu": "Novo Contato IA",
+            "NÃƒÂ£o respondeu": "Novo Contato IA",
             "NÃ£o respondeu/atendeu": "Novo Contato IA",
-            "Não quer agendar": "Novo Contato IA",
+            "NÃƒÂ£o respondeu/atendeu": "Novo Contato IA",
             "NÃ£o quer agendar": "Novo Contato IA",
-            "Está tratando com outro profissional": "Em tratamento externo",
+            "NÃƒÂ£o quer agendar": "Novo Contato IA",
             "EstÃ¡ tratando com outro profissional": "Em tratamento externo",
-            "Informação fornecida": "Outros",
+            "EstÃƒÂ¡ tratando com outro profissional": "Em tratamento externo",
             "InformaÃ§Ã£o fornecida": "Outros",
+            "InformaÃƒÂ§ÃƒÂ£o fornecida": "Outros",
             "Contato interno": "Outros",
         }
         period = str((query.get("period") or ["30d"])[0]).strip().lower()
@@ -8853,17 +9079,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         with connect() as db:
             current = db.execute("SELECT * FROM crm_conversations WHERE id=?", (conversation_id,)).fetchone()
-            if not current: return self.send_json({"error":"Conversa não encontrada."},HTTPStatus.NOT_FOUND)
+            if not current: return self.send_json({"error":"Conversa nÃ£o encontrada."},HTTPStatus.NOT_FOUND)
             db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
             if not self.crm_channel_allowed(db, current["channel_id"]):
-                return self.send_json({"error":"Você não possui acesso a este canal."},HTTPStatus.FORBIDDEN)
+                return self.send_json({"error":"VocÃª nÃ£o possui acesso a este canal."},HTTPStatus.FORBIDDEN)
             priority = str(payload.get("priority", current["priority"]) or "Normal").strip().title()
             queue = str(payload.get("queue_name", current["queue_name"]) or "Entrada").strip()
             stage = str(payload.get("pipeline_stage", current["pipeline_stage"]) or "Novo").strip()
             note = str(payload.get("internal_note", current["internal_note"]) or "").strip()
-            if priority not in {"Baixa","Normal","Alta"}: return self.send_json({"error":"Prioridade inválida."},HTTPStatus.BAD_REQUEST)
+            if priority not in {"Baixa","Normal","Alta"}: return self.send_json({"error":"Prioridade invÃ¡lida."},HTTPStatus.BAD_REQUEST)
             if stage not in {"Novo","Em atendimento","Aguardando cliente","Resolvido"}:
-                return self.send_json({"error":"Etapa inválida."}, HTTPStatus.BAD_REQUEST)
+                return self.send_json({"error":"Etapa invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
             assigned_user_id = current["assigned_user_id"]
             transfer_contact_ownership = False
             if "assigned_user_id" in payload:
@@ -8876,9 +9102,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     )
                 if assigned_user_id is not None:
                     assignee = db.execute("SELECT id FROM users WHERE id=? AND access_role='crc' AND active=1", (assigned_user_id,)).fetchone()
-                    if not assignee: return self.send_json({"error":"Atendente inválida ou inativa."},HTTPStatus.BAD_REQUEST)
+                    if not assignee: return self.send_json({"error":"Atendente invÃ¡lida ou inativa."},HTTPStatus.BAD_REQUEST)
                     if not self.crm_channel_allowed(db, current["channel_id"], None, assigned_user_id):
-                        return self.send_json({"error":"A atendente escolhida não possui acesso a este canal."},HTTPStatus.CONFLICT)
+                        return self.send_json({"error":"A atendente escolhida nÃ£o possui acesso a este canal."},HTTPStatus.CONFLICT)
                     active_owner = self.crm_contact_active_owner(db, current["contact_id"])
                     if active_owner and active_owner["assigned_user_id"] != assigned_user_id:
                         if current["assigned_user_id"] == self.authenticated_user["id"] and assigned_user_id != self.authenticated_user["id"]:
@@ -8893,7 +9119,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                     try:
                         parsed_return = datetime.fromisoformat(raw_return.replace("T", " "))
                     except ValueError:
-                        return self.send_json({"error": "Informe data e horário válidos para o retorno."}, HTTPStatus.BAD_REQUEST)
+                        return self.send_json({"error": "Informe data e horÃ¡rio vÃ¡lidos para o retorno."}, HTTPStatus.BAD_REQUEST)
                     if parsed_return <= datetime.now():
                         return self.send_json({"error": "O retorno programado deve estar no futuro."}, HTTPStatus.BAD_REQUEST)
                     scheduled_return_at = parsed_return.strftime("%Y-%m-%d %H:%M:%S")
@@ -8954,10 +9180,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                    LEFT JOIN users u ON u.id=cv.assigned_user_id
                                    WHERE cv.id=?""", (conversation_id,)).fetchone()
             if not current:
-                return self.send_json({"error": "Conversa não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Conversa nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             db.execute("SELECT id FROM crm_contacts WHERE id=? FOR UPDATE", (current["contact_id"],)).fetchone()
             if not self.crm_channel_allowed(db, current["channel_id"], "reply"):
-                return self.send_json({"error": "Você não possui permissão para atender por este canal."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "VocÃª nÃ£o possui permissÃ£o para atender por este canal."}, HTTPStatus.FORBIDDEN)
             if current["is_internal"]:
                 return self.send_json({"claimed": False, "internal": True, "id": conversation_id})
             if current["status"] != "Aberta":
@@ -8969,7 +9195,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return self.send_json({"claimed": True, "already_owned": True, "id": conversation_id})
             if current["assigned_user_id"] is not None:
                 return self.send_json(
-                    {"error": f"Este atendimento já está atribuído a {current['assigned_to'] or 'outra atendente'}."},
+                    {"error": f"Este atendimento jÃ¡ estÃ¡ atribuÃ­do a {current['assigned_to'] or 'outra atendente'}."},
                     HTTPStatus.CONFLICT,
                 )
 
@@ -9086,9 +9312,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                               headers: dict | None = None, timeout: int = 25) -> dict:
         """Call Meta only from the isolated laboratory, without exposing its token."""
         if not META_TEST_MODE:
-            raise RuntimeError("A API da Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio de testes.")
+            raise RuntimeError("A API da Meta estÃƒÂ¡ disponÃƒÂ­vel somente no laboratÃƒÂ³rio de testes.")
         if not META_TEST_ACCESS_TOKEN:
-            raise RuntimeError("O token temporÃ¡rio da Meta nÃ£o estÃ¡ configurado no laboratÃ³rio.")
+            raise RuntimeError("O token temporÃƒÂ¡rio da Meta nÃƒÂ£o estÃƒÂ¡ configurado no laboratÃƒÂ³rio.")
         request_headers = {"Authorization": f"Bearer {META_TEST_ACCESS_TOKEN}"}
         if headers:
             request_headers.update(headers)
@@ -9102,39 +9328,39 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         except HTTPError as error:
             # A resposta pode conter detalhes do provedor, mas nunca a mostramos
             # ao navegador nem registramos headers que possam revelar credenciais.
-            raise RuntimeError(f"Meta respondeu {error.code} ao processar a mÃ­dia de teste.") from error
+            raise RuntimeError(f"Meta respondeu {error.code} ao processar a mÃƒÂ­dia de teste.") from error
         except (URLError, TimeoutError) as error:
-            raise RuntimeError("NÃ£o foi possÃ­vel conectar Ã  Meta no laboratÃ³rio.") from error
+            raise RuntimeError("NÃƒÂ£o foi possÃƒÂ­vel conectar ÃƒÂ  Meta no laboratÃƒÂ³rio.") from error
         if not raw:
             return {}
         try:
             result = json.loads(raw)
         except json.JSONDecodeError as error:
-            raise RuntimeError("A Meta retornou uma resposta invÃ¡lida no laboratÃ³rio.") from error
+            raise RuntimeError("A Meta retornou uma resposta invÃƒÂ¡lida no laboratÃƒÂ³rio.") from error
         return result if isinstance(result, dict) else {}
 
     def download_meta_test_audio(self, media_id: str, mime_hint: str | None = None) -> tuple[str, str, float | None]:
         """Fetch a Cloud API audio once and retain it in the protected CRM media store."""
         safe_media_id = str(media_id or "").strip()
         if not safe_media_id:
-            raise RuntimeError("A Meta nÃ£o informou o identificador do Ã¡udio.")
+            raise RuntimeError("A Meta nÃƒÂ£o informou o identificador do ÃƒÂ¡udio.")
         metadata = self.meta_test_api_request(f"/{quote(safe_media_id, safe='')}")
         download_url = str(metadata.get("url") or "").strip()
         if not download_url.startswith("https://"):
-            raise RuntimeError("A Meta nÃ£o disponibilizou o arquivo de Ã¡udio.")
+            raise RuntimeError("A Meta nÃƒÂ£o disponibilizou o arquivo de ÃƒÂ¡udio.")
         mime_type = str(metadata.get("mime_type") or mime_hint or "audio/ogg").split(";", 1)[0].strip().lower()
         if not mime_type.startswith("audio/"):
-            raise RuntimeError("A mÃ­dia recebida nÃ£o Ã© um Ã¡udio vÃ¡lido.")
+            raise RuntimeError("A mÃƒÂ­dia recebida nÃƒÂ£o ÃƒÂ© um ÃƒÂ¡udio vÃƒÂ¡lido.")
         request = Request(download_url, headers={"Authorization": f"Bearer {META_TEST_ACCESS_TOKEN}"})
         try:
             with urlopen(request, timeout=25) as response:
                 content = response.read(12 * 1024 * 1024 + 1)
         except HTTPError as error:
-            raise RuntimeError(f"Meta respondeu {error.code} ao baixar o Ã¡udio de teste.") from error
+            raise RuntimeError(f"Meta respondeu {error.code} ao baixar o ÃƒÂ¡udio de teste.") from error
         except (URLError, TimeoutError) as error:
-            raise RuntimeError("NÃ£o foi possÃ­vel baixar o Ã¡udio da Meta no laboratÃ³rio.") from error
+            raise RuntimeError("NÃƒÂ£o foi possÃƒÂ­vel baixar o ÃƒÂ¡udio da Meta no laboratÃƒÂ³rio.") from error
         if not content or len(content) > 12 * 1024 * 1024:
-            raise RuntimeError("O Ã¡udio recebido excede o limite seguro de 12 MB.")
+            raise RuntimeError("O ÃƒÂ¡udio recebido excede o limite seguro de 12 MB.")
         extension = self.crm_media_extension(mime_type)
         digest = hashlib.md5(f"meta-test:{safe_media_id}".encode(), usedforsecurity=False).hexdigest()
         file_name = f"{digest}.{extension}"
@@ -9150,7 +9376,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def send_meta_test_audio(self, phone_number_id: str, recipient_phone: str, audio_bytes: bytes) -> str:
         """Upload and send an OGG voice message through the test Cloud API only."""
         if not phone_number_id or not recipient_phone:
-            raise RuntimeError("O nÃºmero de teste da Meta ou o destinatÃ¡rio nÃ£o foi configurado.")
+            raise RuntimeError("O nÃƒÂºmero de teste da Meta ou o destinatÃƒÂ¡rio nÃƒÂ£o foi configurado.")
         boundary = f"----IEAMeta{secrets.token_hex(12)}"
         body = b"".join((
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"messaging_product\"\r\n\r\nwhatsapp\r\n".encode(),
@@ -9158,10 +9384,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             audio_bytes,
             f"\r\n--{boundary}--\r\n".encode(),
         ))
-        # meta_test_api_request serializa JSON por padrÃ£o; para upload binÃ¡rio, a
-        # requisiÃ§Ã£o Ã© formada aqui mantendo a mesma barreira de ambiente e token.
+        # meta_test_api_request serializa JSON por padrÃƒÂ£o; para upload binÃƒÂ¡rio, a
+        # requisiÃƒÂ§ÃƒÂ£o ÃƒÂ© formada aqui mantendo a mesma barreira de ambiente e token.
         if not META_TEST_MODE or not META_TEST_ACCESS_TOKEN:
-            raise RuntimeError("O envio pela Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio configurado.")
+            raise RuntimeError("O envio pela Meta estÃƒÂ¡ disponÃƒÂ­vel somente no laboratÃƒÂ³rio configurado.")
         upload_request = Request(
             f"{META_GRAPH_API_URL}/{quote(str(phone_number_id), safe='')}/media",
             data=body,
@@ -9172,12 +9398,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with urlopen(upload_request, timeout=60) as response:
                 uploaded = json.loads(response.read().decode("utf-8") or "{}")
         except HTTPError as error:
-            raise RuntimeError(f"Meta respondeu {error.code} ao enviar o Ã¡udio de teste.") from error
+            raise RuntimeError(f"Meta respondeu {error.code} ao enviar o ÃƒÂ¡udio de teste.") from error
         except (URLError, TimeoutError, json.JSONDecodeError) as error:
-            raise RuntimeError("NÃ£o foi possÃ­vel enviar o Ã¡udio para a Meta no laboratÃ³rio.") from error
+            raise RuntimeError("NÃƒÂ£o foi possÃƒÂ­vel enviar o ÃƒÂ¡udio para a Meta no laboratÃƒÂ³rio.") from error
         media_id = str(uploaded.get("id") or "").strip() if isinstance(uploaded, dict) else ""
         if not media_id:
-            raise RuntimeError("A Meta nÃ£o confirmou o upload do Ã¡udio.")
+            raise RuntimeError("A Meta nÃƒÂ£o confirmou o upload do ÃƒÂ¡udio.")
         sent = self.meta_test_api_request(
             f"/{quote(str(phone_number_id), safe='')}/messages",
             method="POST",
@@ -9187,15 +9413,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         messages = sent.get("messages") if isinstance(sent.get("messages"), list) else []
         external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
         if not external_id:
-            raise RuntimeError("A Meta nÃ£o confirmou o envio do Ã¡udio.")
+            raise RuntimeError("A Meta nÃƒÂ£o confirmou o envio do ÃƒÂ¡udio.")
         return external_id
 
     def send_meta_test_text(self, phone_number_id: str, recipient_phone: str, body: str) -> str:
         """Send a text reply only after the test recipient opened the conversation."""
         if not phone_number_id or not recipient_phone:
-            raise RuntimeError("O nÃºmero de teste da Meta ou o destinatÃ¡rio nÃ£o foi configurado.")
+            raise RuntimeError("O nÃƒÂºmero de teste da Meta ou o destinatÃƒÂ¡rio nÃƒÂ£o foi configurado.")
         if not META_TEST_MODE:
-            raise RuntimeError("O envio pela Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio configurado.")
+            raise RuntimeError("O envio pela Meta estÃƒÂ¡ disponÃƒÂ­vel somente no laboratÃƒÂ³rio configurado.")
         sent = self.meta_test_api_request(
             f"/{quote(str(phone_number_id), safe='')}/messages",
             method="POST",
@@ -9205,16 +9431,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         messages = sent.get("messages") if isinstance(sent.get("messages"), list) else []
         external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
         if not external_id:
-            raise RuntimeError("A Meta nÃ£o confirmou o envio da mensagem.")
+            raise RuntimeError("A Meta nÃƒÂ£o confirmou o envio da mensagem.")
         return external_id
 
     def send_meta_test_media(self, phone_number_id: str, recipient_phone: str, media_bytes: bytes,
                              message_type: str, mime_type: str, file_name: str, caption: str) -> str:
         """Upload and send a supported attachment through the Meta test API."""
         if message_type not in {"image", "video", "document"} or not media_bytes:
-            raise RuntimeError("Tipo de anexo invÃ¡lido para o laboratÃ³rio Meta.")
+            raise RuntimeError("Tipo de anexo invÃƒÂ¡lido para o laboratÃƒÂ³rio Meta.")
         if not phone_number_id or not recipient_phone:
-            raise RuntimeError("O nÃºmero de teste da Meta ou o destinatÃ¡rio nÃ£o foi configurado.")
+            raise RuntimeError("O nÃƒÂºmero de teste da Meta ou o destinatÃƒÂ¡rio nÃƒÂ£o foi configurado.")
         safe_name = re.sub(r"[\r\n\"]", "_", Path(file_name or "arquivo").name)[:180] or "arquivo"
         boundary = f"----IEAMeta{secrets.token_hex(12)}"
         body = b"".join((
@@ -9224,7 +9450,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             f"\r\n--{boundary}--\r\n".encode(),
         ))
         if not META_TEST_MODE or not META_TEST_ACCESS_TOKEN:
-            raise RuntimeError("O envio pela Meta estÃ¡ disponÃ­vel somente no laboratÃ³rio configurado.")
+            raise RuntimeError("O envio pela Meta estÃƒÂ¡ disponÃƒÂ­vel somente no laboratÃƒÂ³rio configurado.")
         upload_request = Request(
             f"{META_GRAPH_API_URL}/{quote(str(phone_number_id), safe='')}/media",
             data=body,
@@ -9235,10 +9461,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             with urlopen(upload_request, timeout=60) as response:
                 uploaded = json.loads(response.read().decode("utf-8") or "{}")
         except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
-            raise RuntimeError("NÃ£o foi possÃ­vel enviar o anexo para a Meta no laboratÃ³rio.") from error
+            raise RuntimeError("NÃƒÂ£o foi possÃƒÂ­vel enviar o anexo para a Meta no laboratÃƒÂ³rio.") from error
         media_id = str(uploaded.get("id") or "").strip() if isinstance(uploaded, dict) else ""
         if not media_id:
-            raise RuntimeError("A Meta nÃ£o confirmou o upload do anexo.")
+            raise RuntimeError("A Meta nÃƒÂ£o confirmou o upload do anexo.")
         content = {"id": media_id}
         if caption:
             content["caption"] = caption[:1024]
@@ -9253,7 +9479,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         messages = sent.get("messages") if isinstance(sent.get("messages"), list) else []
         external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
         if not external_id:
-            raise RuntimeError("A Meta nÃ£o confirmou o envio do anexo.")
+            raise RuntimeError("A Meta nÃƒÂ£o confirmou o envio do anexo.")
         return external_id
 
     def mirror_meta_test_messages_to_crm(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
@@ -9267,15 +9493,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return 0
         db.execute(
             """INSERT INTO crm_channels(instance_name,display_name,active,sync_enabled,connection_status,last_event_at)
-               VALUES('meta-test-whatsapp','Meta · Teste',1,1,'Laboratório',datetime('now','localtime'))
-               ON CONFLICT(instance_name) DO UPDATE SET display_name='Meta · Teste',active=1,sync_enabled=1,
-                   connection_status='Laboratório',last_event_at=datetime('now','localtime'),updated_at=datetime('now','localtime')"""
+               VALUES('meta-test-whatsapp','Meta Â· Teste',1,1,'LaboratÃ³rio',datetime('now','localtime'))
+               ON CONFLICT(instance_name) DO UPDATE SET display_name='Meta Â· Teste',active=1,sync_enabled=1,
+                   connection_status='LaboratÃ³rio',last_event_at=datetime('now','localtime'),updated_at=datetime('now','localtime')"""
         )
         channel_id = db.execute(
             "SELECT id FROM crm_channels WHERE instance_name='meta-test-whatsapp'"
         ).fetchone()[0]
-        db.execute("INSERT INTO crm_tags(name,color) VALUES('Meta · Teste','#2563eb') ON CONFLICT(name) DO NOTHING")
-        meta_tag_id = db.execute("SELECT id FROM crm_tags WHERE name='Meta · Teste'").fetchone()[0]
+        db.execute("INSERT INTO crm_tags(name,color) VALUES('Meta Â· Teste','#2563eb') ON CONFLICT(name) DO NOTHING")
+        meta_tag_id = db.execute("SELECT id FROM crm_tags WHERE name='Meta Â· Teste'").fetchone()[0]
         mirrored = 0
         for entry in payload.get("entry") or []:
             if not isinstance(entry, dict):
@@ -9311,12 +9537,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                                 str(audio.get("id") or ""),
                                 str(audio.get("mime_type") or "") or None,
                             )
-                            body = "Ãudio"
+                            body = "ÃƒÂudio"
                         except RuntimeError as error:
-                            # MantÃ©m um registro auditÃ¡vel sem exibir player quebrado.
+                            # MantÃƒÂ©m um registro auditÃƒÂ¡vel sem exibir player quebrado.
                             media_error = str(error)
                             message_type = "text"
-                            body = "[Ãudio de teste recebido, mas nÃ£o foi possÃ­vel baixÃ¡-lo.]"
+                            body = "[ÃƒÂudio de teste recebido, mas nÃƒÂ£o foi possÃƒÂ­vel baixÃƒÂ¡-lo.]"
                     db.execute(
                         """INSERT INTO crm_contacts(name,phone) VALUES(?,?)
                            ON CONFLICT(phone) DO UPDATE SET
@@ -9359,49 +9585,536 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         mirrored += 1
                         db.execute(
                             """INSERT INTO crm_conversation_events(conversation_id,event_type,actor_name,details_json)
-                               VALUES(?,'meta.test.received','Meta · Teste',?)""",
+                               VALUES(?,'meta.test.received','Meta Â· Teste',?)""",
                             (conversation_id, json.dumps({"event_key": event_key, "message_id": message_id}, ensure_ascii=False)),
                         )
         return mirrored
 
+    def meta_message_preview(self, message: dict) -> str:
+        """Return a compact preview for any Meta message."""
+        message_type = str(message.get("type") or "unknown").strip()
+        if message_type == "text":
+            value = message.get("text") if isinstance(message.get("text"), dict) else None
+            preview = str((value or {}).get("body") or "").strip()
+            if preview:
+                return preview
+        if message_type == "audio":
+            return "[Ã‚Â¡udio]"
+        if message_type == "image":
+            return "[Imagem]"
+        if message_type == "video":
+            return "[VÃ­deo]"
+        if message_type == "document":
+            doc = message.get("document") if isinstance(message.get("document"), dict) else {}
+            return str((doc or {}).get("filename") or "[Documento]")
+        return f"[Mensagem Meta: {message_type}]"
+
+    @staticmethod
+    def meta_graph_api_url(version: str | None) -> str:
+        return f"https://graph.facebook.com/{str(version or META_GRAPH_API_VERSION).strip() or META_GRAPH_API_VERSION}"
+
+    def meta_api_request(
+        self,
+        access_token: str,
+        path: str,
+        method: str = "GET",
+        payload: dict | None = None,
+        headers: dict | None = None,
+        timeout: int = 25,
+        api_version: str | None = None,
+    ) -> dict:
+        """Call the Meta Graph API through the production channel."""
+        request_headers = {"Authorization": f"Bearer {access_token}"} if access_token else {}
+        if headers:
+            request_headers.update(headers)
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        if payload is not None and "Content-Type" not in request_headers:
+            request_headers["Content-Type"] = "application/json"
+        request = Request(f"{self.meta_graph_api_url(api_version)}{path}", data=body, method=method, headers=request_headers)
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as error:
+            detail = error.read().decode(errors="replace")[:500]
+            raise RuntimeError(f"Meta respondeu {error.code}: {detail[:180]}") from error
+        except (URLError, TimeoutError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel conectar Ã a Meta.") from error
+        if not raw:
+            return {}
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("A Meta retornou resposta invÃ¡lida.") from error
+        return result if isinstance(result, dict) else {}
+
+    def send_meta_media_upload(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        media_bytes: bytes,
+        mime_type: str,
+        file_name: str,
+        api_version: str | None = None,
+    ) -> str:
+        """Upload binary media using multipart form-data and return the Media ID."""
+        safe_name = re.sub(r"[\\r\\n\"]", "_", Path(file_name or "arquivo").name)[:180] or "arquivo"
+        boundary = f"----IEAMeta{secrets.token_hex(12)}"
+        body = b"".join((
+            f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"messaging_product\"\\r\\n\\r\\nwhatsapp\\r\\n".encode(),
+            f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe_name}\"\\r\\nContent-Type: {mime_type}\\r\\n\\r\\n".encode(),
+            media_bytes,
+            f"\\r\\n--{boundary}--\\r\\n".encode(),
+        ))
+        request = Request(
+            f"{self.meta_graph_api_url(api_version)}/{quote(str(phone_number_id), safe='')}/media",
+            data=body,
+            method="POST",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        try:
+            with urlopen(request, timeout=60) as response:
+                raw = response.read().decode("utf-8")
+        except (HTTPError, URLError, TimeoutError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel enviar o anexo para a Meta.") from error
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("A Meta nÃ£o confirmou o envio do anexo.") from error
+        media_id = str(data.get("id") or "").strip() if isinstance(data, dict) else ""
+        if not media_id:
+            raise RuntimeError("A Meta nÃ£o confirmou o envio do anexo.")
+        return media_id
+
+    def send_meta_production_message(
+        self,
+        phone_number_id: str,
+        access_token: str,
+        api_version: str | None,
+        to_phone: str,
+        message_type: str,
+        payload: dict,
+    ) -> str:
+        """Send text/audio/image/video/document to a production Meta channel."""
+        if not phone_number_id or not access_token:
+            raise RuntimeError("Canal Meta sem configuraÃ§Ã£o de nÃºmero ou token.")
+        if message_type == "text":
+            body = str(payload.get("text") or "").strip()
+            if not body:
+                raise RuntimeError("Digite uma mensagem para enviar.")
+            sent = self.meta_api_request(
+                access_token,
+                f"/{quote(str(phone_number_id), safe='')}/messages",
+                method="POST",
+                payload={"messaging_product": "whatsapp", "to": f"55{to_phone}", "type": "text", "text": {"body": body}},
+                timeout=30,
+                api_version=api_version,
+            )
+        elif message_type == "audio":
+            audio_bytes = payload.get("audio_bytes") or b""
+            mime_type = str(payload.get("mime_type") or "audio/ogg").split(";", 1)[0].strip().lower()
+            if not audio_bytes:
+                raise RuntimeError("Ãudio inexistente para envio.")
+            media_id = self.send_meta_media_upload(
+                access_token, phone_number_id, audio_bytes, mime_type, "audio.ogg", api_version,
+            )
+            sent = self.meta_api_request(
+                access_token,
+                f"/{quote(str(phone_number_id), safe='')}/messages",
+                method="POST",
+                payload={"messaging_product": "whatsapp", "to": f"55{to_phone}", "type": "audio", "audio": {"id": media_id}},
+                timeout=60,
+                api_version=api_version,
+            )
+        elif message_type in {"image", "video", "document"}:
+            media_bytes = payload.get("media_bytes") or b""
+            if not media_bytes:
+                raise RuntimeError("Arquivo inexistente para envio.")
+            mime_type = str(payload.get("mime_type") or "application/octet-stream").split(";", 1)[0].strip().lower()
+            file_name = str(payload.get("file_name") or "arquivo").strip()
+            media_id = self.send_meta_media_upload(
+                access_token, phone_number_id, media_bytes, mime_type, file_name, api_version,
+            )
+            message_data = {"id": media_id}
+            caption = str(payload.get("caption") or "").strip()
+            if caption:
+                message_data["caption"] = caption[:1024]
+            if message_type == "document" and file_name:
+                message_data["filename"] = re.sub(r"[\\r\\n\"]", "_", Path(file_name).name)[:180] or "arquivo"
+            sent = self.meta_api_request(
+                access_token,
+                f"/{quote(str(phone_number_id), safe='')}/messages",
+                method="POST",
+                payload={"messaging_product": "whatsapp", "to": f"55{to_phone}", "type": message_type, message_type: message_data},
+                timeout=60,
+                api_version=api_version,
+            )
+        else:
+            raise RuntimeError("Tipo de mensagem nÃ£o suportado pela Meta.")
+        messages = sent.get("messages") if isinstance(sent, dict) else []
+        external_id = str((messages[0] or {}).get("id") or "").strip() if messages else ""
+        if not external_id:
+            raise RuntimeError("A Meta nÃ£o confirmou o envio da mensagem.")
+        return external_id
+
+    def download_meta_media(self, access_token: str, media_id: str, api_version: str | None = None) -> tuple[str, str | None]:
+        if not media_id:
+            raise RuntimeError("Identificador de mÃ­dia indisponÃ­vel.")
+        metadata = self.meta_api_request(access_token, f"/{quote(str(media_id), safe='')}", method="GET", timeout=25, api_version=api_version)
+        download_url = str(metadata.get("url") or "").strip()
+        if not download_url.startswith("https://"):
+            raise RuntimeError("A Meta nÃ£o disponibilizou o arquivo.")
+        mime_type = str(metadata.get("mime_type") or "").split(";", 1)[0].strip().lower() or None
+        request = Request(download_url, headers={"Authorization": f"Bearer {access_token}"})
+        try:
+            with urlopen(request, timeout=30) as response:
+                content = response.read(12 * 1024 * 1024 + 1)
+        except (HTTPError, URLError, TimeoutError) as error:
+            raise RuntimeError("NÃ£o foi possÃ­vel baixar a mídia da Meta.") from error
+        if not content or len(content) > 12 * 1024 * 1024:
+            raise RuntimeError("MÃ­dia da Meta excede o limite de 12 MB.")
+        return content, mime_type
+
+    def verify_meta_webhook(self, query: dict) -> None:
+        mode = (query.get("hub.mode") or [""])[0]
+        token = (query.get("hub.verify_token") or [""])[0]
+        challenge = (query.get("hub.challenge") or [""])[0]
+        if mode != "subscribe" or not challenge:
+            return self.send_json({"error": "Verificacao do webhook invalida."}, HTTPStatus.FORBIDDEN)
+        if META_WEBHOOK_VERIFY_TOKEN and hmac.compare_digest(token, META_WEBHOOK_VERIFY_TOKEN):
+            return self.send_text(challenge)
+        return self.send_json({"error": "Verificacao do webhook invalida."}, HTTPStatus.FORBIDDEN)
+
+    def meta_parse_webhook_signature(self, app_secret: str | None, body: bytes) -> str:
+        if not app_secret:
+            return ""
+        return "sha256=" + hmac.new(app_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+    def get_meta_webhook_candidates(self, db):
+        return list(
+            db.execute(
+                """SELECT id, instance_name, meta_access_token, meta_app_secret, meta_verify_token,
+                          meta_phone_number_id, meta_business_account_id, meta_graph_api_version, phone, connection_status, sync_enabled
+                   FROM crm_channels
+                   WHERE active=1 AND provider='meta'"""
+            ).fetchall()
+        )
+
+    def select_meta_channel(self, db, payload: dict, candidates: list) -> tuple[dict | None, str | None]:
+        entries = payload.get("entry")
+        if not isinstance(entries, list):
+            return None, None
+        metadata_phone = ""
+        metadata_business = ""
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if not metadata_business and entry.get("id"):
+                metadata_business = str(entry.get("id") or "").strip()
+            for change in entry.get("changes", []) or []:
+                if not isinstance(change, dict):
+                    continue
+                value = change.get("value")
+                if not isinstance(value, dict):
+                    continue
+                meta = value.get("metadata")
+                if isinstance(meta, dict):
+                    if not metadata_phone:
+                        metadata_phone = str(meta.get("phone_number_id") or "").strip()
+                    if not metadata_business:
+                        metadata_business = str(meta.get("business_phone_number_id") or "").strip()
+            if metadata_phone or metadata_business:
+                break
+        if metadata_phone or metadata_business:
+            for channel in candidates:
+                if metadata_phone and str(channel["meta_phone_number_id"] or "").strip() == metadata_phone:
+                    return dict(channel), metadata_phone
+                if metadata_business and str(channel["meta_business_account_id"] or "").strip() == metadata_business:
+                    return dict(channel), metadata_phone
+        if len(candidates) == 1:
+            return dict(candidates[0]), metadata_phone or None
+        return None, metadata_phone or None
+
+    def receive_meta_webhook(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self.send_json({"error": "Tamanho do webhook invalido."}, HTTPStatus.BAD_REQUEST)
+        if length < 1 or length > MAX_BODY_BYTES:
+            return self.send_json({"error": "Corpo do webhook invalido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        raw_body = self.rfile.read(length)
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return self.send_json({"error": "Webhook nao contem JSON valido."}, HTTPStatus.BAD_REQUEST)
+        if not isinstance(payload, dict):
+            return self.send_json({"error": "Webhook nao contem objeto valido."}, HTTPStatus.BAD_REQUEST)
+
+        supplied_signature = self.headers.get("X-Hub-Signature-256", "")
+        if not supplied_signature:
+            return self.send_json({"error": "Assinatura do webhook ausente."}, HTTPStatus.FORBIDDEN)
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        event_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+        with connect() as db:
+            candidates = self.get_meta_webhook_candidates(db)
+            if not candidates:
+                return self.send_json({"error": "Nenhuma integracao Meta configurada."}, HTTPStatus.SERVICE_UNAVAILABLE)
+
+            selected_channel, _ = self.select_meta_channel(db, payload, candidates)
+            if not selected_channel:
+                return self.send_json({"error": "Webhook Meta sem identificacao de canal."}, HTTPStatus.BAD_REQUEST)
+
+            channel = selected_channel
+            channel_secret = ""
+            try:
+                channel_secret = decrypt_integration_secret(channel["meta_app_secret"]) or ""
+            except RuntimeError:
+                channel_secret = ""
+
+            signed = False
+            if META_WEBHOOK_VERIFY_TOKEN and hmac.compare_digest(
+                self.meta_parse_webhook_signature(META_WEBHOOK_VERIFY_TOKEN, raw_body), supplied_signature
+            ):
+                signed = True
+            elif channel_secret and hmac.compare_digest(
+                self.meta_parse_webhook_signature(channel_secret, raw_body), supplied_signature
+            ):
+                signed = True
+            else:
+                for candidate in candidates:
+                    secret = ""
+                    try:
+                        secret = decrypt_integration_secret(candidate["meta_app_secret"]) or ""
+                    except RuntimeError:
+                        secret = ""
+                    if secret and hmac.compare_digest(self.meta_parse_webhook_signature(secret, raw_body), supplied_signature):
+                        channel = dict(candidate)
+                        channel_secret = secret
+                        signed = True
+                        break
+            if not signed:
+                return self.send_json({"error": "Assinatura do webhook invalida."}, HTTPStatus.FORBIDDEN)
+
+            channel_id = int(channel["id"])
+            if not channel.get("sync_enabled"):
+                db.execute(
+                    """INSERT INTO crm_webhook_events(event_key,instance_name,event_type,payload_json,processing_status,error_message,processed_at)
+                       VALUES(?,?,?,?,?,?,datetime('now','localtime'))""",
+                    (event_key, channel["instance_name"], "webhook.received", raw, "Ignorado", "Canal Meta pausado"),
+                )
+                return self.send_json({"received": True, "processed": False, "reason": "channel_sync_disabled"})
+
+            event_type = str(payload.get("entry", [{}])[0].get("changes", [{}])[0].get("field") or "messages").strip() if payload.get("entry") else "webhook"
+            try:
+                db.execute("INSERT INTO crm_webhook_events(event_key,instance_name,event_type,payload_json) VALUES(?,?,?,?)", (event_key, channel["instance_name"], event_type, raw))
+            except IntegrityError:
+                return self.send_json({"received": True, "duplicate": True})
+
+            processed_messages = 0
+            processed_statuses = 0
+            for entry in payload.get("entry") or []:
+                if not isinstance(entry, dict):
+                    continue
+                for change in entry.get("changes", []) or []:
+                    if not isinstance(change, dict):
+                        continue
+                    value = change.get("value")
+                    if not isinstance(value, dict):
+                        continue
+
+                    messages = value.get("messages") or []
+                    if isinstance(messages, list):
+                        for message in messages:
+                            if not isinstance(message, dict):
+                                continue
+                            msg_id = str(message.get("id") or "").strip()
+                            if not msg_id:
+                                continue
+                            from_phone = self.crm_phone(message.get("from") or "")
+                            if not from_phone:
+                                continue
+
+                            contact_name = str((message.get("profile") or {}).get("name") or from_phone).strip()[:160]
+                            patient_id = None
+                            for patient in db.execute("SELECT id,name,phone FROM patients WHERE phone IS NOT NULL AND TRIM(phone)<>''").fetchall():
+                                if self.crm_phone(patient["phone"]) == from_phone:
+                                    patient_id = patient["id"]
+                                    contact_name = str(patient["name"] or contact_name)
+                                    break
+                            db.execute(
+                                """INSERT INTO crm_contacts(patient_id,name,phone) VALUES(?,?,?) ON CONFLICT(phone) DO UPDATE SET
+                                   patient_id=COALESCE(excluded.patient_id,crm_contacts.patient_id),
+                                   name=CASE WHEN excluded.patient_id IS NOT NULL THEN excluded.name ELSE crm_contacts.name END,
+                                   updated_at=datetime('now','localtime')""",
+                                (patient_id, contact_name, from_phone),
+                            )
+                            contact_id = db.execute("SELECT id FROM crm_contacts WHERE phone=?", (from_phone,)).fetchone()[0]
+
+                            msg_type = str(message.get("type") or "").strip().lower()
+                            message_type = "text"
+                            body = str((message.get("text") or {}).get("body") or "").strip()
+                            media_id = None
+                            media_mime = None
+                            duration_seconds = None
+                            if msg_type == "audio":
+                                media = message.get("audio") if isinstance(message.get("audio"), dict) else {}
+                                media_id = str(media.get("id") or "").strip() or None
+                                media_mime = str(media.get("mime_type") or "audio/ogg").split(";", 1)[0].strip().lower()
+                                message_type = "audio"
+                                body = "Áudio"
+                                try:
+                                    duration_seconds = float(media.get("seconds") or 0) or None
+                                except (TypeError, ValueError):
+                                    duration_seconds = None
+                            elif msg_type == "image":
+                                media = message.get("image") if isinstance(message.get("image"), dict) else {}
+                                media_id = str(media.get("id") or "").strip() or None
+                                media_mime = str(media.get("mime_type") or "image/jpeg").split(";", 1)[0].strip().lower()
+                                message_type = "image"
+                                body = str(media.get("caption") or "Imagem").strip()[:240] or "Imagem"
+                            elif msg_type == "video":
+                                media = message.get("video") if isinstance(message.get("video"), dict) else {}
+                                media_id = str(media.get("id") or "").strip() or None
+                                media_mime = str(media.get("mime_type") or "video/mp4").split(";", 1)[0].strip().lower()
+                                message_type = "video"
+                                body = str(media.get("caption") or "Vídeo").strip()[:240] or "Vídeo"
+                            elif msg_type == "document":
+                                media = message.get("document") if isinstance(message.get("document"), dict) else {}
+                                media_id = str(media.get("id") or "").strip() or None
+                                media_mime = str(media.get("mime_type") or "application/pdf").split(";", 1)[0].strip().lower()
+                                message_type = "document"
+                                file_name = str(media.get("filename") or "Documento").strip()
+                                body = file_name[:240]
+                            elif msg_type == "sticker":
+                                media = message.get("sticker") if isinstance(message.get("sticker"), dict) else {}
+                                media_id = str(media.get("id") or "").strip() or None
+                                media_mime = str(media.get("mime_type") or "image/webp").split(";", 1)[0].strip().lower()
+                                message_type = "sticker"
+                                body = "Sticker"
+                            elif not body:
+                                body = f"[{msg_type}]"
+
+                            message_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            msg_timestamp = message.get("timestamp")
+                            if msg_timestamp:
+                                try:
+                                    message_at = datetime.fromtimestamp(float(str(msg_timestamp)), tz=timezone.utc).astimezone(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+                                except (TypeError, ValueError, OSError, OverflowError):
+                                    pass
+
+                            db.execute(
+                                """INSERT INTO crm_conversations(channel_id,contact_id,status,last_message_at,last_direction,unread_count,pipeline_stage,queue_entered_at)
+                                   VALUES(?,?,'Aberta',?,'inbound',1,'Novo',?)
+                                   ON CONFLICT(channel_id,contact_id) DO UPDATE SET
+                                     status=CASE WHEN excluded.last_direction='inbound' AND
+                                                    (crm_conversations.status<>'Resolvida' OR crm_conversations.resolved_at IS NULL OR
+                                                     datetime(excluded.last_message_at)>datetime(crm_conversations.resolved_at))
+                                                  THEN 'Aberta' ELSE crm_conversations.status END,
+                                     pipeline_stage=CASE WHEN crm_conversations.status='Resolvida' AND excluded.last_direction='inbound'
+                                                         THEN 'Novo' ELSE crm_conversations.pipeline_stage END,
+                                     resolved_at=CASE WHEN crm_conversations.status='Resolvida' AND excluded.last_direction='inbound'
+                                                         AND (crm_conversations.resolved_at IS NULL OR datetime(excluded.last_message_at)>datetime(crm_conversations.resolved_at))
+                                                       THEN NULL ELSE crm_conversations.resolved_at END,
+                                     resolved_by_user_id=CASE WHEN crm_conversations.status='Resolvida' AND excluded.last_direction='inbound'
+                                                             AND (crm_conversations.resolved_at IS NULL OR datetime(excluded.last_message_at)>datetime(crm_conversations.resolved_at))
+                                                             THEN NULL ELSE crm_conversations.resolved_by_user_id END,
+                                     queue_entered_at=CASE
+                                       WHEN crm_conversations.status='Resolvida' AND excluded.last_direction='inbound'
+                                            AND (crm_conversations.resolved_at IS NULL OR datetime(excluded.last_message_at)>datetime(crm_conversations.resolved_at))
+                                       THEN excluded.last_message_at
+                                       WHEN crm_conversations.queue_entered_at IS NULL AND crm_conversations.assigned_user_id IS NULL
+                                            AND excluded.last_direction='inbound' THEN excluded.last_message_at
+                                       ELSE crm_conversations.queue_entered_at END,
+                                     last_message_at=CASE WHEN crm_conversations.last_message_at IS NULL OR datetime(excluded.last_message_at)>datetime(crm_conversations.last_message_at)
+                                                           THEN excluded.last_message_at ELSE crm_conversations.last_message_at END,
+                                     last_direction=CASE WHEN crm_conversations.last_message_at IS NULL OR datetime(excluded.last_message_at)>datetime(crm_conversations.last_message_at)
+                                                           THEN excluded.last_direction ELSE crm_conversations.last_direction END,
+                                     unread_count=CASE
+                                       WHEN crm_conversations.status='Resolvida' AND crm_conversations.resolved_at IS NOT NULL
+                                            AND datetime(excluded.last_message_at)<=datetime(crm_conversations.resolved_at) THEN 0
+                                       ELSE crm_conversations.unread_count + excluded.unread_count END""",
+                                (channel_id, contact_id, message_at, message_at),
+                            )
+                            conversation_id = db.execute("SELECT id FROM crm_conversations WHERE channel_id=? AND contact_id=?", (channel_id, contact_id)).fetchone()[0]
+                            media_url = f"meta:{media_id}" if media_id else None
+                            db.execute(
+                                """INSERT OR IGNORE INTO crm_messages
+                                   (conversation_id,external_message_id,direction,message_type,body,media_url,mime_type,duration_seconds,sender_name,
+                                    author_type,author_label,source_channel,delivery_status,message_at)
+                                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                (conversation_id, msg_id, "inbound", message_type, body or "Mensagem", media_url, media_mime,
+                                 duration_seconds, contact_name, "patient", contact_name, "meta", "Recebida", message_at),
+                            )
+                            try:
+                                db.execute(
+                                    """INSERT INTO crm_message_stats(conversation_id,event_key,event_type,occurred_at)
+                                       VALUES(?,?,?,datetime('now','localtime'))""",
+                                    (conversation_id, event_key, "message.inbound"),
+                                )
+                            except Exception:
+                                pass
+                            processed_messages += 1
+
+                    statuses = value.get("statuses") or []
+                    if isinstance(statuses, list):
+                        for status in statuses:
+                            if not isinstance(status, dict):
+                                continue
+                            sid = str(status.get("id") or "").strip()
+                            if not sid:
+                                continue
+                            update_status = str(status.get("status") or "").strip().title() or "Atualizada"
+                            db.execute("UPDATE crm_messages SET delivery_status=? WHERE external_message_id=?", (update_status, sid))
+                            if db.total_changes > 0:
+                                processed_statuses += 1
+
+            db.execute(
+                """UPDATE crm_webhook_events SET processing_status='Processado',processed_at=datetime('now','localtime')
+                   WHERE event_key=?""",
+                (event_key,),
+            )
+            if processed_messages == 0 and processed_statuses == 0:
+                return self.send_json({"received": True, "processed": False})
+            return self.send_json({"received": True, "processed": True, "messages": processed_messages, "statuses": processed_statuses})
+
     def verify_meta_test_webhook(self, query: dict) -> None:
         """Handle Meta's public GET verification for the isolated laboratory only."""
         if not META_TEST_MODE:
-            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Endpoint indisponÃ­vel."}, HTTPStatus.NOT_FOUND)
         mode = (query.get("hub.mode") or [""])[0]
         token = (query.get("hub.verify_token") or [""])[0]
         challenge = (query.get("hub.challenge") or [""])[0]
         if mode != "subscribe" or not challenge or not META_TEST_WEBHOOK_VERIFY_TOKEN:
-            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "VerificaÃ§Ã£o do webhook invÃ¡lida."}, HTTPStatus.FORBIDDEN)
         if not hmac.compare_digest(token, META_TEST_WEBHOOK_VERIFY_TOKEN):
-            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "VerificaÃ§Ã£o do webhook invÃ¡lida."}, HTTPStatus.FORBIDDEN)
         return self.send_text(challenge)
 
     def receive_meta_test_webhook(self) -> None:
         """Accept signed Meta test events and mirror only the authorized test number."""
         if not META_TEST_MODE:
-            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+            return self.send_json({"error": "Endpoint indisponÃ­vel."}, HTTPStatus.NOT_FOUND)
         if not META_TEST_APP_SECRET:
-            return self.send_json({"error": "Webhook de teste ainda não foi configurado no servidor."}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return self.send_json({"error": "Webhook de teste ainda nÃ£o foi configurado no servidor."}, HTTPStatus.SERVICE_UNAVAILABLE)
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
-            return self.send_json({"error": "Tamanho do webhook inválido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Tamanho do webhook invÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if length < 1 or length > MAX_BODY_BYTES:
-            return self.send_json({"error": "Corpo do webhook inválido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+            return self.send_json({"error": "Corpo do webhook invÃ¡lido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
         raw_body = self.rfile.read(length)
         supplied_signature = self.headers.get("X-Hub-Signature-256", "")
         expected_signature = "sha256=" + hmac.new(
             META_TEST_APP_SECRET.encode("utf-8"), raw_body, hashlib.sha256
         ).hexdigest()
         if not supplied_signature or not hmac.compare_digest(supplied_signature, expected_signature):
-            return self.send_json({"error": "Assinatura do webhook inválida."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Assinatura do webhook invÃ¡lida."}, HTTPStatus.FORBIDDEN)
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return self.send_json({"error": "Webhook não contém JSON válido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Webhook nÃ£o contÃ©m JSON vÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         if not isinstance(payload, dict):
-            return self.send_json({"error": "Webhook não contém objeto válido."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Webhook nÃ£o contÃ©m objeto vÃ¡lido."}, HTTPStatus.BAD_REQUEST)
         meta_object = str(payload.get("object") or "").strip()
         platform = "instagram" if meta_object == "instagram" else "whatsapp"
         entry_count = len(payload.get("entry") or []) if isinstance(payload.get("entry"), list) else 0
@@ -9410,7 +10123,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "meta_object": meta_object or "unknown",
             "entry_count": entry_count,
             "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "note": "Evento assinado recebido exclusivamente no laboratório Meta.",
+            "note": "Evento assinado recebido exclusivamente no laboratÃ³rio Meta.",
         }
         event_key = hashlib.sha256(raw_body).hexdigest()
         with connect() as db:
@@ -9421,9 +10134,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             event_summary["authorized_message_count"] = authorized_messages
             event_summary["identifiable_message_count"] = identifiable_messages
             if not inbound_messages:
-                processing_status = "Webhook técnico: sem mensagem de entrada"
+                processing_status = "Webhook tÃ©cnico: sem mensagem de entrada"
             elif not authorized_messages:
-                processing_status = "Mensagem de número não autorizado"
+                processing_status = "Mensagem de nÃºmero nÃ£o autorizado"
             elif not identifiable_messages:
                 processing_status = "Mensagem autorizada sem identificador"
             else:
@@ -9451,7 +10164,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_meta_test_status(self) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
         if not self.can_manage_crm(self.authenticated_user):
-            return self.send_json({"error": "Somente administradores podem acessar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente administradores podem acessar o laboratÃƒÂ³rio da Meta."}, HTTPStatus.FORBIDDEN)
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
             total = db.execute("SELECT COUNT(*) AS total FROM crm_meta_test_events").fetchone()
@@ -9472,7 +10185,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def get_crm_meta_test_inbox(self) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
         if not self.can_manage_crm(self.authenticated_user):
-            return self.send_json({"error": "Somente administradores podem acessar o laboratório da Meta."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente administradores podem acessar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
         with connect() as db:
             settings = self.crm_meta_test_settings(db)
             rows = db.execute("""SELECT id,message_type,body_preview,occurred_at,received_at
@@ -9486,7 +10199,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def save_crm_meta_test_config(self, payload: dict) -> None:
         if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
         if not self.can_manage_crm(self.authenticated_user):
-            return self.send_json({"error": "Somente administradores podem configurar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente administradores podem configurar o laboratÃƒÂ³rio da Meta."}, HTTPStatus.FORBIDDEN)
         fields = {
             "app_id": str(payload.get("app_id") or "").strip()[:160],
             "whatsapp_test_phone_number_id": str(payload.get("whatsapp_test_phone_number_id") or "").strip()[:160],
@@ -9494,9 +10207,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             "authorized_test_phone": self.crm_phone(payload.get("authorized_test_phone")),
         }
         if payload.get("authorized_test_phone") and not fields["authorized_test_phone"]:
-            return self.send_json({"error": "Informe um telefone de teste válido para autorizar a caixa de laboratório."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Informe um telefone de teste vÃ¡lido para autorizar a caixa de laboratÃ³rio."}, HTTPStatus.BAD_REQUEST)
         if any("\n" in value or "\r" in value for value in fields.values()):
-            return self.send_json({"error": "Os identificadores de teste da Meta nÃ£o podem conter quebras de linha."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Os identificadores de teste da Meta nÃƒÂ£o podem conter quebras de linha."}, HTTPStatus.BAD_REQUEST)
         enabled = 1 if payload.get("enabled") is True else 0
         with connect() as db:
             db.execute("""INSERT INTO crm_meta_test_settings(id,enabled,test_mode,app_id,whatsapp_test_phone_number_id,
@@ -9570,8 +10283,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 clauses.append(f"pa.professional_id IN ({','.join('?' for _ in professional_ids)})")
                 params.extend(professional_ids)
         if search:
-            # LIKE puro é case-insensitive no SQLite (comportamento herdado do
-            # dev original), mas não no PostgreSQL — sem lower() dos dois
+            # LIKE puro Ã© case-insensitive no SQLite (comportamento herdado do
+            # dev original), mas nÃ£o no PostgreSQL â€” sem lower() dos dois
             # lados, uma busca por "maria" deixa de encontrar "Maria" (bug
             # confirmado em testes).
             clauses.append("(lower(p.name) LIKE ? OR lower(COALESCE(f.procedure_name, '')) LIKE ? OR EXISTS (SELECT 1 FROM procedures ps WHERE ps.patient_id = p.id AND lower(ps.name) LIKE ?) OR EXISTS (SELECT 1 FROM patient_relationships rl WHERE rl.patient_id = p.id AND lower(rl.related_name) LIKE ?))")
@@ -9607,7 +10320,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif attention == "unscheduled":
             clauses.append("p.status != 'Inativo' AND (f.next_appointment IS NULL OR date(f.next_appointment) < date('now', 'localtime'))")
         elif attention == "treatment":
-            clauses.append("EXISTS (SELECT 1 FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'Concluído')")
+            clauses.append("EXISTS (SELECT 1 FROM procedures px WHERE px.patient_id = p.id AND px.stage != 'ConcluÃ­do')")
         elif attention == "inactive":
             clauses.append("p.status = 'Inativo'")
         elif attention == "resolved":
@@ -9641,13 +10354,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             row = db.execute(patient_select() + " WHERE p.id = ?", (patient_id,)).fetchone()
             if not row:
-                return self.send_json({"error": "Paciente não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             history = db.execute(
                 "SELECT event_type, description, created_at FROM patient_events WHERE patient_id = ? ORDER BY created_at DESC, id DESC LIMIT 20",
                 (patient_id,),
             ).fetchall()
             procedures = db.execute(
-                "SELECT id, name, value_cents, discount_cents, stage, notes FROM procedures WHERE patient_id = ? ORDER BY CASE stage WHEN 'Concluído' THEN 1 ELSE 0 END, id",
+                "SELECT id, name, value_cents, discount_cents, stage, notes FROM procedures WHERE patient_id = ? ORDER BY CASE stage WHEN 'ConcluÃ­do' THEN 1 ELSE 0 END, id",
                 (patient_id,),
             ).fetchall()
             clinical = db.execute(
@@ -9731,7 +10444,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         source_professional_id = self.portfolio_professional_id(self.authenticated_user)
         if not source_professional_id:
-            return self.send_json({"error": "Este acesso não possui uma carteira profissional vinculada."}, HTTPStatus.CONFLICT)
+            return self.send_json({"error": "Este acesso nÃ£o possui uma carteira profissional vinculada."}, HTTPStatus.CONFLICT)
         targets = payload.get("professional_ids")
         if isinstance(targets, list):
             targets = list(dict.fromkeys(str(target).strip() for target in targets if str(target).strip()))
@@ -9756,14 +10469,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             """, (target_id,)).fetchone()
             patient = db.execute("SELECT name FROM patients WHERE id=?", (patient_id,)).fetchone()
             if not target or not patient:
-                return self.send_json({"error": "Profissional ou paciente não encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Profissional ou paciente nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
             db.execute("""
                 INSERT INTO patient_assignments (patient_id, professional_id, is_primary, journey_status, origin_professional_id, forward_reason, completed_at)
                 VALUES (?, ?, 0, 'Ativo', ?, ?, NULL)
                 ON CONFLICT(patient_id, professional_id) DO UPDATE SET
                     journey_status='Ativo', origin_professional_id=excluded.origin_professional_id,
                     forward_reason=excluded.forward_reason, assigned_at=CURRENT_TIMESTAMP, completed_at=NULL,
-                    stage_status='Aguardando início', stage_note=NULL, stage_updated_at=NULL
+                    stage_status='Aguardando inÃ­cio', stage_note=NULL, stage_updated_at=NULL
             """, (patient_id, target_id, source_professional_id, reason or None))
             db.execute("UPDATE patient_followup SET crc_status='Jornada compartilhada', crc_started_at=NULL, crc_completed_at=NULL WHERE patient_id=?", (patient_id,))
             description = f"Encaminhado por {self.authenticated_user['name']} para {target['name']}"
@@ -9775,25 +10488,25 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def save_journey_stage(self, patient_id: int, payload: dict) -> None:
         if self.authenticated_user["access_role"] in {"crc", "admin"}:
-            return self.send_json({"error": "Somente o dentista responsável pela etapa pode registrar sua evolução."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente o dentista responsÃ¡vel pela etapa pode registrar sua evoluÃ§Ã£o."}, HTTPStatus.FORBIDDEN)
         if not self.require_patient_access(patient_id, self.authenticated_user):
             return
         professional_id = self.portfolio_professional_id(self.authenticated_user)
         stage_status = str(payload.get("stage_status") or "Em atendimento").strip()
         note = str(payload.get("note") or "").strip()
-        if stage_status not in {"Em atendimento", "Concluído"}:
-            return self.send_json({"error": "Etapa inválida."}, HTTPStatus.BAD_REQUEST)
+        if stage_status not in {"Em atendimento", "ConcluÃ­do"}:
+            return self.send_json({"error": "Etapa invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         if not note:
-            return self.send_json({"error": "Registre a evolução desta etapa."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Registre a evoluÃ§Ã£o desta etapa."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             if self.patient_edit_lock_conflict(db, patient_id):
                 return
             assignment = db.execute("SELECT is_primary FROM patient_assignments WHERE patient_id=? AND professional_id=?", (patient_id, professional_id)).fetchone()
             if not assignment or assignment["is_primary"]:
-                return self.send_json({"error": "Crie uma etapa somente após receber um encaminhamento."}, HTTPStatus.FORBIDDEN)
-            db.execute("UPDATE patient_assignments SET stage_status=?, stage_note=?, stage_updated_at=datetime('now','localtime'), completed_at=CASE WHEN ?='Concluído' THEN datetime('now','localtime') ELSE NULL END WHERE patient_id=? AND professional_id=?", (stage_status, note, stage_status, patient_id, professional_id))
+                return self.send_json({"error": "Crie uma etapa somente apÃ³s receber um encaminhamento."}, HTTPStatus.FORBIDDEN)
+            db.execute("UPDATE patient_assignments SET stage_status=?, stage_note=?, stage_updated_at=datetime('now','localtime'), completed_at=CASE WHEN ?='ConcluÃ­do' THEN datetime('now','localtime') ELSE NULL END WHERE patient_id=? AND professional_id=?", (stage_status, note, stage_status, patient_id, professional_id))
             self.save_visit_observation(db, patient_id, note, self.authenticated_user["name"])
-            remaining = db.execute("SELECT COUNT(*) FROM patient_assignments WHERE patient_id=? AND is_primary=0 AND journey_status='Ativo' AND stage_status!='Concluído'", (patient_id,)).fetchone()[0]
+            remaining = db.execute("SELECT COUNT(*) FROM patient_assignments WHERE patient_id=? AND is_primary=0 AND journey_status='Ativo' AND stage_status!='ConcluÃ­do'", (patient_id,)).fetchone()[0]
             crc_status = "Aguardando contato" if remaining == 0 else "Jornada compartilhada"
             db.execute("UPDATE patient_followup SET crc_status=? WHERE patient_id=?", (crc_status, patient_id))
             db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Etapa da jornada', ?)", (patient_id, f"{self.authenticated_user['name']}: {stage_status}"))
@@ -9820,7 +10533,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return
             assignment = self.journey_assignment_owned_by_current_professional(db, patient_id, professional_id)
             if not assignment:
-                return self.send_json({"error": "Somente quem realizou o encaminhamento pode editá-lo."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente quem realizou o encaminhamento pode editÃ¡-lo."}, HTTPStatus.FORBIDDEN)
             db.execute("UPDATE patient_assignments SET forward_reason=? WHERE patient_id=? AND professional_id=?", (reason or None, patient_id, professional_id))
             description = f"Encaminhamento para {assignment['target_name']} editado por {self.authenticated_user['name']}"
             if reason:
@@ -9836,7 +10549,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return
             assignment = self.journey_assignment_owned_by_current_professional(db, patient_id, professional_id)
             if not assignment:
-                return self.send_json({"error": "Somente quem realizou o encaminhamento pode excluí-lo."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente quem realizou o encaminhamento pode excluÃ­-lo."}, HTTPStatus.FORBIDDEN)
             db.execute("""
                 UPDATE patient_assignments
                 SET journey_status='Cancelado', completed_at=datetime('now','localtime'), stage_status='Cancelado'
@@ -9845,7 +10558,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             remaining = db.execute("SELECT COUNT(*) FROM patient_assignments WHERE patient_id=? AND is_primary=0 AND journey_status='Ativo'", (patient_id,)).fetchone()[0]
             if remaining == 0:
                 db.execute("UPDATE patient_followup SET crc_status='Aguardando contato' WHERE patient_id=? AND crc_status='Jornada compartilhada'", (patient_id,))
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Encaminhamento excluído', ?)", (patient_id, f"Encaminhamento para {assignment['target_name']} excluído por {self.authenticated_user['name']}"))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Encaminhamento excluÃ­do', ?)", (patient_id, f"Encaminhamento para {assignment['target_name']} excluÃ­do por {self.authenticated_user['name']}"))
         self.get_patient(patient_id)
 
     def resolve_patient(self, patient_id: int, payload: dict) -> None:
@@ -9853,13 +10566,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         resolved = bool(payload.get("resolved", True))
         if not resolved:
-            return self.send_json({"error": "A liberação para edição é feita somente pela área Verificados."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A liberaÃ§Ã£o para ediÃ§Ã£o Ã© feita somente pela Ã¡rea Verificados."}, HTTPStatus.FORBIDDEN)
         with connect() as db:
             if self.patient_edit_lock_conflict(db, patient_id):
                 return
             exists = db.execute("SELECT id FROM patients WHERE id = ?", (patient_id,)).fetchone()
             if not exists:
-                return self.send_json({"error": "Paciente não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             db.execute(
                 """UPDATE patient_followup
                    SET resolved_at = datetime('now', 'localtime'),
@@ -9885,7 +10598,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 """, (patient_id,))
             db.execute(
                 "INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, ?, ?)",
-                (patient_id, "Resolvido" if resolved else "Reaberto", "Acompanhamento concluído no dia" if resolved else "Paciente retornou à fila de acompanhamento"),
+                (patient_id, "Resolvido" if resolved else "Reaberto", "Acompanhamento concluÃ­do no dia" if resolved else "Paciente retornou Ã  fila de acompanhamento"),
             )
             db.execute(
                 "DELETE FROM patient_edit_locks WHERE patient_id=? AND user_id=?",
@@ -9896,7 +10609,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def integration_authorized(self) -> bool:
         supplied = self.headers.get("X-Integration-Key", "")
         if not INTEGRATION_TOKEN or not supplied or not hmac.compare_digest(supplied, INTEGRATION_TOKEN):
-            self.send_json({"error": "Integração não autorizada"}, HTTPStatus.UNAUTHORIZED)
+            self.send_json({"error": "IntegraÃ§Ã£o nÃ£o autorizada"}, HTTPStatus.UNAUTHORIZED)
             return False
         return True
 
@@ -9927,15 +10640,15 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         limit = min(100, max(1, int(payload.get("limit") or 25)))
         claim_token = secrets.token_urlsafe(24)
         with connect() as db:
-            # "BEGIN IMMEDIATE" é sintaxe exclusiva do SQLite (lock antecipado de
+            # "BEGIN IMMEDIATE" Ã© sintaxe exclusiva do SQLite (lock antecipado de
             # escrita); no PostgreSQL o equivalente para evitar que dois
-            # workers reivindiquem o mesmo item é "FOR UPDATE SKIP LOCKED" na
-            # seleção abaixo — mais seguro sob concorrência que o original.
+            # workers reivindiquem o mesmo item Ã© "FOR UPDATE SKIP LOCKED" na
+            # seleÃ§Ã£o abaixo â€” mais seguro sob concorrÃªncia que o original.
             ids = [row[0] for row in db.execute("SELECT id FROM crc_export_queue WHERE status IN ('Pendente','Falhou') ORDER BY id LIMIT ? FOR UPDATE SKIP LOCKED", (limit,)).fetchall()]
             if ids:
                 placeholders = ",".join("?" for _ in ids)
                 db.execute(f"UPDATE crc_export_queue SET status='Em processamento', claim_token=?, claimed_at=datetime('now','localtime'), attempts=attempts+1, last_error=NULL WHERE id IN ({placeholders})", [claim_token, *ids])
-            rows = db.execute("""SELECT export_key, patient_name AS "Nome", phone AS "telefone", last_visit AS "Data da ultima consulta", professional_name AS "Profissional", observation_text AS "Observação do Retorno", status AS "Enviado", message_created AS "Mensagem Criada", claim_token FROM crc_export_queue WHERE claim_token=? ORDER BY id""", (claim_token,)).fetchall()
+            rows = db.execute("""SELECT export_key, patient_name AS "Nome", phone AS "telefone", last_visit AS "Data da ultima consulta", professional_name AS "Profissional", observation_text AS "ObservaÃ§Ã£o do Retorno", status AS "Enviado", message_created AS "Mensagem Criada", claim_token FROM crc_export_queue WHERE claim_token=? ORDER BY id""", (claim_token,)).fetchall()
         self.send_json({"items": [dict(row) for row in rows]})
 
     def ack_crc_export(self, payload: dict) -> None:
@@ -9946,20 +10659,20 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         success = bool(payload.get("success"))
         message_created = str(payload.get("message_created") or "").strip()
         if not export_key or not claim_token:
-            return self.send_json({"error": "export_key e claim_token são obrigatórios"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "export_key e claim_token sÃ£o obrigatÃ³rios"}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             row = db.execute("SELECT id FROM crc_export_queue WHERE export_key=? AND claim_token=? AND status='Em processamento'", (export_key, claim_token)).fetchone()
             if not row:
-                return self.send_json({"error": "Item não encontrado ou já confirmado"}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Item nÃ£o encontrado ou jÃ¡ confirmado"}, HTTPStatus.CONFLICT)
             if success:
                 db.execute("UPDATE crc_export_queue SET status='Exportado', exported_at=datetime('now','localtime'), message_created=?, message_created_at=CASE WHEN ?<>'' THEN datetime('now','localtime') ELSE NULL END WHERE id=?", (message_created, message_created, row[0]))
             else:
-                db.execute("UPDATE crc_export_queue SET status='Falhou', last_error=?, claim_token=NULL WHERE id=?", (str(payload.get("error") or "Falha não informada")[:500], row[0]))
+                db.execute("UPDATE crc_export_queue SET status='Falhou', last_error=?, claim_token=NULL WHERE id=?", (str(payload.get("error") or "Falha nÃ£o informada")[:500], row[0]))
         self.send_json({"acknowledged": True, "export_key": export_key})
 
     def reopen_patient_with_password(self, patient_id: int, payload: dict) -> None:
         if self.authenticated_user["access_role"] not in {"owner", "professional"}:
-            return self.send_json({"error": "Somente o dentista responsável pode liberar alterações."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Somente o dentista responsÃ¡vel pode liberar alteraÃ§Ãµes."}, HTTPStatus.FORBIDDEN)
         if not self.require_patient_access(patient_id, self.authenticated_user):
             return
         password = str(payload.get("password") or "")
@@ -9968,13 +10681,13 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             password_valid = user and user["password_hash"] and user["password_salt"] and hmac.compare_digest(self.password_digest(password, user["password_salt"]), user["password_hash"])
             if not password_valid:
                 self.record_security_event(db, "patient_reopen_denied", self.request_ip(), self.authenticated_user["id"], f"Paciente {patient_id}")
-                return self.send_json({"error": "Senha inválida."}, HTTPStatus.UNAUTHORIZED)
+                return self.send_json({"error": "Senha invÃ¡lida."}, HTTPStatus.UNAUTHORIZED)
             locked = db.execute("SELECT 1 FROM patient_followup WHERE patient_id = ? AND date(resolved_at) = date('now', 'localtime')", (patient_id,)).fetchone()
             if not locked:
-                return self.send_json({"error": "Este paciente não está bloqueado na área Verificados de hoje."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Este paciente nÃ£o estÃ¡ bloqueado na Ã¡rea Verificados de hoje."}, HTTPStatus.CONFLICT)
             db.execute("UPDATE patient_followup SET resolved_at = NULL WHERE patient_id = ?", (patient_id,))
             db.execute("UPDATE daily_resolutions SET reopened_at = datetime('now', 'localtime') WHERE patient_id = ? AND resolution_date = CAST(date('now', 'localtime') AS TEXT)", (patient_id,))
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Liberado', 'Ficha liberada pelo dentista na área Verificados')", (patient_id,))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Liberado', 'Ficha liberada pelo dentista na Ã¡rea Verificados')", (patient_id,))
             self.record_security_event(db, "patient_reopened", self.request_ip(), self.authenticated_user["id"], f"Paciente {patient_id}")
         self.send_json({"released": True, "patient_id": patient_id})
 
@@ -9983,7 +10696,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return
         note = str(payload.get("note") or "").strip()
         if not note:
-            return self.send_json({"error": "Escreva uma observação antes de salvar."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Escreva uma observaÃ§Ã£o antes de salvar."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             if self.patient_edit_lock_conflict(db, patient_id):
                 return
@@ -9992,11 +10705,11 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 FROM patients p JOIN patient_followup f ON f.patient_id = p.id WHERE p.id = ?
             """, (patient_id,)).fetchone()
             if not patient:
-                return self.send_json({"error": "Paciente não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             if patient["locked"]:
-                return self.send_json({"error": "Paciente verificado está bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Paciente verificado estÃ¡ bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
             self.save_visit_observation(db, patient_id, note, self.authenticated_user["name"])
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Observação', 'Observação da última consulta registrada')", (patient_id,))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ObservaÃ§Ã£o', 'ObservaÃ§Ã£o da Ãºltima consulta registrada')", (patient_id,))
         self.get_patient(patient_id)
 
     def can_manage_visit_observation(self, note) -> bool:
@@ -10004,30 +10717,30 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def update_visit_observation(self, patient_id: int, observation_id: int, payload: dict) -> None:
         if self.authenticated_user["access_role"] == "crc":
-            return self.send_json({"error": "A CRC não pode alterar observações clínicas."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A CRC nÃ£o pode alterar observaÃ§Ãµes clÃ­nicas."}, HTTPStatus.FORBIDDEN)
         if not self.require_patient_access(patient_id, self.authenticated_user):
             return
         note_text = str(payload.get("note") or "").strip()
         if not note_text:
-            return self.send_json({"error": "Escreva uma observação antes de salvar."}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Escreva uma observaÃ§Ã£o antes de salvar."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             if self.patient_edit_lock_conflict(db, patient_id):
                 return
             note = db.execute("SELECT id, patient_id, author_name FROM patient_visit_notes WHERE id=? AND patient_id=?", (observation_id, patient_id)).fetchone()
             if not note:
-                return self.send_json({"error": "Observação não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "ObservaÃ§Ã£o nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not self.can_manage_visit_observation(note):
-                return self.send_json({"error": "Somente quem registrou esta observação pode alterá-la."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente quem registrou esta observaÃ§Ã£o pode alterÃ¡-la."}, HTTPStatus.FORBIDDEN)
             locked = db.execute("SELECT 1 FROM patient_followup WHERE patient_id=? AND date(resolved_at)=date('now','localtime')", (patient_id,)).fetchone()
             if locked:
-                return self.send_json({"error": "Paciente verificado está bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Paciente verificado estÃ¡ bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
             db.execute("UPDATE patient_visit_notes SET note=?, updated_at=datetime('now','localtime') WHERE id=?", (note_text, observation_id))
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Observação editada', 'Observação de retorno atualizada')", (patient_id,))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ObservaÃ§Ã£o editada', 'ObservaÃ§Ã£o de retorno atualizada')", (patient_id,))
         self.get_patient(patient_id)
 
     def delete_visit_observation(self, patient_id: int, observation_id: int) -> None:
         if self.authenticated_user["access_role"] == "crc":
-            return self.send_json({"error": "A CRC não pode excluir observações clínicas."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "A CRC nÃ£o pode excluir observaÃ§Ãµes clÃ­nicas."}, HTTPStatus.FORBIDDEN)
         if not self.require_patient_access(patient_id, self.authenticated_user):
             return
         with connect() as db:
@@ -10035,14 +10748,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 return
             note = db.execute("SELECT id, patient_id, author_name FROM patient_visit_notes WHERE id=? AND patient_id=?", (observation_id, patient_id)).fetchone()
             if not note:
-                return self.send_json({"error": "Observação não encontrada."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "ObservaÃ§Ã£o nÃ£o encontrada."}, HTTPStatus.NOT_FOUND)
             if not self.can_manage_visit_observation(note):
-                return self.send_json({"error": "Somente quem registrou esta observação pode excluí-la."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "Somente quem registrou esta observaÃ§Ã£o pode excluÃ­-la."}, HTTPStatus.FORBIDDEN)
             locked = db.execute("SELECT 1 FROM patient_followup WHERE patient_id=? AND date(resolved_at)=date('now','localtime')", (patient_id,)).fetchone()
             if locked:
-                return self.send_json({"error": "Paciente verificado está bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Paciente verificado estÃ¡ bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
             db.execute("DELETE FROM patient_visit_notes WHERE id=?", (observation_id,))
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Observação excluída', 'Observação de retorno removida')", (patient_id,))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'ObservaÃ§Ã£o excluÃ­da', 'ObservaÃ§Ã£o de retorno removida')", (patient_id,))
         self.get_patient(patient_id)
 
     @staticmethod
@@ -10060,7 +10773,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return None, None
         appointment_type = str(payload.get("next_appointment_type") or "").strip()
         if appointment_type not in {"Agendado", "Programado"}:
-            raise ValueError("Informe se a próxima consulta está agendada ou programada")
+            raise ValueError("Informe se a prÃ³xima consulta estÃ¡ agendada ou programada")
         return next_appointment, appointment_type
 
     @staticmethod
@@ -10086,7 +10799,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif previous_type == "Programado" and next_appointment_type == "Agendado":
             db.execute(
                 """UPDATE patient_followup
-                   SET crc_status='Retorno concluído',
+                   SET crc_status='Retorno concluÃ­do',
                        crc_completed_at=datetime('now', 'localtime')
                    WHERE patient_id=?""",
                 (patient_id,),
@@ -10107,7 +10820,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def normalized_procedures(self, payload: dict) -> list[dict]:
         result = []
-        allowed_stages = {"Indicado", "Aprovado", "Agendado", "Em andamento", "Concluído"}
+        allowed_stages = {"Indicado", "Aprovado", "Agendado", "Em andamento", "ConcluÃ­do"}
         for item in payload.get("procedures", []):
             name = str(item.get("name", "")).strip()
             if not name:
@@ -10116,12 +10829,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 value_cents = max(0, int(item.get("value_cents") or 0))
                 discount_cents = max(0, int(item.get("discount_cents") or 0))
             except (TypeError, ValueError):
-                raise ValueError("Valor ou desconto do procedimento inválido")
+                raise ValueError("Valor ou desconto do procedimento invÃ¡lido")
             if discount_cents > value_cents:
-                raise ValueError("O desconto não pode ser maior que o valor do procedimento")
+                raise ValueError("O desconto nÃ£o pode ser maior que o valor do procedimento")
             stage = item.get("stage") or "Indicado"
             if stage not in allowed_stages:
-                raise ValueError("Etapa de procedimento inválida")
+                raise ValueError("Etapa de procedimento invÃ¡lida")
             result.append({"name": name, "value_cents": value_cents, "discount_cents": discount_cents, "stage": stage, "notes": item.get("notes") or None})
         return result
 
@@ -10141,7 +10854,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             if not relationship_type and not related_name:
                 continue
             if not relationship_type or not related_name:
-                raise ValueError("Informe o vínculo e o nome da pessoa relacionada")
+                raise ValueError("Informe o vÃ­nculo e o nome da pessoa relacionada")
             result.append({"relationship_type": relationship_type, "related_name": related_name, "connection": connection})
         return result
 
@@ -10186,7 +10899,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         name = str(payload.get("name", "")).strip()
         last_visit = payload.get("last_visit")
         if not name or not last_visit:
-            return self.send_json({"error": "Nome e última consulta são obrigatórios"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Nome e Ãºltima consulta sÃ£o obrigatÃ³rios"}, HTTPStatus.BAD_REQUEST)
         try:
             procedures = self.normalized_procedures(payload)
             relationships = self.normalized_relationships(payload)
@@ -10219,7 +10932,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             self.replace_relationships(db, patient_id, relationships)
             self.remember_action(db, payload.get("next_action"))
             self.save_visit_observation(db, patient_id, payload.get("observation"), self.authenticated_user["name"])
-            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Cadastro', 'Paciente incluído na carteira da Dra. Dulce')", (patient_id,))
+            db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Cadastro', 'Paciente incluÃ­do na carteira da Dra. Dulce')", (patient_id,))
         self.get_patient(patient_id)
 
     def update_patient(self, patient_id: int, payload: dict) -> None:
@@ -10229,7 +10942,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         base_status, custom_status = self.patient_status_values(status)
         name = str(payload.get("name", "")).strip()
         if not name or not payload.get("last_visit"):
-            return self.send_json({"error": "Nome e última consulta são obrigatórios"}, HTTPStatus.BAD_REQUEST)
+            return self.send_json({"error": "Nome e Ãºltima consulta sÃ£o obrigatÃ³rios"}, HTTPStatus.BAD_REQUEST)
         try:
             procedures = self.normalized_procedures(payload)
             relationships = self.normalized_relationships(payload)
@@ -10245,19 +10958,19 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 FROM patients p JOIN patient_followup f ON f.patient_id = p.id WHERE p.id = ?
             """, (patient_id,)).fetchone()
             if not exists:
-                return self.send_json({"error": "Paciente não encontrado"}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado"}, HTTPStatus.NOT_FOUND)
             if exists["locked"]:
-                return self.send_json({"error": "Paciente verificado está bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
+                return self.send_json({"error": "Paciente verificado estÃ¡ bloqueado. Reabra o acompanhamento para editar."}, HTTPStatus.CONFLICT)
             if name != exists["name"]:
-                return self.send_json({"error": "O nome do paciente não pode ser alterado."}, HTTPStatus.FORBIDDEN)
+                return self.send_json({"error": "O nome do paciente nÃ£o pode ser alterado."}, HTTPStatus.FORBIDDEN)
             if not self.can_manage_crc_fields(self.authenticated_user):
                 protected = db.execute("SELECT p.phone, p.reference, f.last_contact FROM patients p JOIN patient_followup f ON f.patient_id=p.id WHERE p.id=?", (patient_id,)).fetchone()
                 if ((payload.get("phone") or None) != protected["phone"] or (payload.get("reference") or None) != protected["reference"] or (payload.get("last_contact") or None) != protected["last_contact"]):
-                    return self.send_json({"error": "Contato e referência são controlados pela CRC"}, HTTPStatus.FORBIDDEN)
+                    return self.send_json({"error": "Contato e referÃªncia sÃ£o controlados pela CRC"}, HTTPStatus.FORBIDDEN)
                 saved_procedures = [dict(row) for row in db.execute("SELECT name, value_cents, discount_cents, stage, notes FROM procedures WHERE patient_id=? ORDER BY id", (patient_id,)).fetchall()]
                 requested_procedures = [{key: item[key] for key in ("name", "value_cents", "discount_cents", "stage", "notes")} for item in procedures]
                 if saved_procedures != requested_procedures:
-                    return self.send_json({"error": "Procedimentos são controlados pela CRC"}, HTTPStatus.FORBIDDEN)
+                    return self.send_json({"error": "Procedimentos sÃ£o controlados pela CRC"}, HTTPStatus.FORBIDDEN)
             db.execute(
                 """UPDATE patients SET name=?, phone=?, reference=?, status=?, notes=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (
@@ -10286,14 +10999,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             self.remember_action(db, payload.get("next_action"))
             self.save_visit_observation(db, patient_id, payload.get("observation"), self.authenticated_user["name"])
             db.execute(
-                "INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Atualização', ?)",
+                "INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'AtualizaÃ§Ã£o', ?)",
                 (patient_id, "Ficha de acompanhamento atualizada pela Dra. Dulce"),
             )
         self.get_patient(patient_id)
 
     def update_crc_patient(self, patient_id: int, payload: dict) -> None:
         if self.authenticated_user["access_role"] != "crc":
-            return self.send_json({"error": "Acesso CRC necessário."}, HTTPStatus.FORBIDDEN)
+            return self.send_json({"error": "Acesso CRC necessÃ¡rio."}, HTTPStatus.FORBIDDEN)
         if not self.require_patient_access(patient_id, self.authenticated_user):
             return
         try:
@@ -10304,8 +11017,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         if next_appointment_type == "Agendado" and not next_appointment:
             return self.send_json({"error": "Informe a data confirmada do agendamento."}, HTTPStatus.BAD_REQUEST)
         crc_status = str(payload.get("crc_status") or "Aguardando contato").strip()
-        if crc_status not in {"Aguardando contato", "Em atendimento", "Jornada compartilhada", "Retorno concluído"}:
-            return self.send_json({"error": "Etapa CRC inválida."}, HTTPStatus.BAD_REQUEST)
+        if crc_status not in {"Aguardando contato", "Em atendimento", "Jornada compartilhada", "Retorno concluÃ­do"}:
+            return self.send_json({"error": "Etapa CRC invÃ¡lida."}, HTTPStatus.BAD_REQUEST)
         with connect() as db:
             exists = db.execute(
                 """SELECT p.id, f.next_appointment_type
@@ -10315,7 +11028,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 (patient_id,),
             ).fetchone()
             if not exists:
-                return self.send_json({"error": "Paciente não encontrado."}, HTTPStatus.NOT_FOUND)
+                return self.send_json({"error": "Paciente nÃ£o encontrado."}, HTTPStatus.NOT_FOUND)
             db.execute(
                 "UPDATE patients SET phone=?, reference=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (str(payload.get("phone") or "").strip() or None, str(payload.get("reference") or "").strip() or None, patient_id),
@@ -10330,7 +11043,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                         WHEN ? = 'Em atendimento' THEN COALESCE(crc_started_at, datetime('now', 'localtime'))
                         ELSE crc_started_at END,
                     crc_completed_at = CASE
-                        WHEN ? = 'Retorno concluído' THEN datetime('now', 'localtime')
+                        WHEN ? = 'Retorno concluÃ­do' THEN datetime('now', 'localtime')
                         ELSE NULL END
                 WHERE patient_id = ?
             """, (
@@ -10343,10 +11056,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 patient_id,
             ))
             if next_appointment_type == "Agendado":
-                crc_status = "Retorno concluído"
+                crc_status = "Retorno concluÃ­do"
                 db.execute(
                     """UPDATE patient_followup
-                       SET crc_status='Retorno concluído',
+                       SET crc_status='Retorno concluÃ­do',
                            crc_completed_at=datetime('now', 'localtime')
                        WHERE patient_id=?""",
                     (patient_id,),
@@ -10379,14 +11092,14 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         elif request_path in (CRC_ROUTE, f"{CRC_ROUTE}/"):
             relative = "crc.html"
         elif request_path in (CRM_NEXT_ROUTE, f"{CRM_NEXT_ROUTE}/"):
-            # A homologação Meta abre o CRM operacional completo. A tela
-            # /crm é um protótipo paralelo e não possui as ações reais do
-            # Inbox; a operação oficial continua inalterada.
+            # A homologaÃ§Ã£o Meta abre o CRM operacional completo. A tela
+            # /crm Ã© um protÃ³tipo paralelo e nÃ£o possui as aÃ§Ãµes reais do
+            # Inbox; a operaÃ§Ã£o oficial continua inalterada.
             relative = "crm-whatsapp.html" if META_TEST_MODE else "crm-next.html"
         elif request_path in (f"{CRM_NEXT_ROUTE}/operacional", f"{CRM_NEXT_ROUTE}/operacional/"):
-            # Corte seguro: o CRM completo passa a ter uma rota própria,
-            # fora da Central, preservando todas as regras operacionais já
-            # validadas (mídias, trava, transferência e resolução).
+            # Corte seguro: o CRM completo passa a ter uma rota prÃ³pria,
+            # fora da Central, preservando todas as regras operacionais jÃ¡
+            # validadas (mÃ­dias, trava, transferÃªncia e resoluÃ§Ã£o).
             relative = "crm-whatsapp.html"
         elif request_path in (f"{CRC_ROUTE}/whatsapp", f"{CRC_ROUTE}/whatsapp/"):
             relative = "crm-whatsapp.html"
@@ -10412,7 +11125,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         content = target.read_bytes()
         bundled_ui_nonce = None
         if relative == "crm-whatsapp.html":
-            # SEC-008: nonce por requisição, injetado nos <script> inline do
+            # SEC-008: nonce por requisiÃ§Ã£o, injetado nos <script> inline do
             # bundle para permitir remover 'unsafe-inline' da CSP.
             bundled_ui_nonce = secrets.token_urlsafe(16)
             content = content.replace(b"__CSP_NONCE__", bundled_ui_nonce.encode("ascii"))
@@ -10432,13 +11145,12 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-
 class ClinicServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
 
 def run_evolution_chat_sync_loop() -> None:
-    # Webhooks mantêm a operação em tempo real. Esta reconciliação periódica
+    # Webhooks mantÃªm a operaÃ§Ã£o em tempo real. Esta reconciliaÃ§Ã£o periÃ³dica
     # recupera eventos perdidos e alinha os contadores exibidos pelo WhatsApp.
     time.sleep(5)
     while True:
@@ -10456,5 +11168,5 @@ if __name__ == "__main__":
     threading.Thread(target=run_evolution_chat_sync_loop, daemon=True, name="evolution-chat-state-sync").start()
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "8000"))
-    print(f"Instituto Eduardo Ayub — piloto em http://{host}:{port}")
+    print(f"Instituto Eduardo Ayub â€” piloto em http://{host}:{port}")
     ClinicServer((host, port), ClinicHandler).serve_forever()

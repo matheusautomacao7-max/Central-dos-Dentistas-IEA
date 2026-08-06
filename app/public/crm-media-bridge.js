@@ -357,7 +357,15 @@
     if (bubble.querySelector("[data-iea-inline-media-control]")) return true;
     var control = mediaElement(item);
     control.setAttribute("data-iea-inline-media-control", id);
-    bubble.insertBefore(control, insertionReference);
+    if (
+      insertionReference &&
+      insertionReference.isConnected &&
+      insertionReference.parentElement === bubble
+    ) {
+      bubble.insertBefore(control, insertionReference);
+    } else {
+      bubble.appendChild(control);
+    }
     bubble.setAttribute("data-iea-inline-media-message", id);
     Object.assign(bubble.style, {
       minWidth: "220px",
@@ -401,12 +409,12 @@
         }
       });
 
-      orderedItems.forEach(function (item, index) {
-        var id = itemId(item, index);
-        var existing = timeline.querySelector(
-          '[data-iea-inline-media-message="' + CSS.escape(id) + '"]'
-        );
-        if (existing && existing.querySelector("[data-iea-inline-media-control]")) return;
+    orderedItems.forEach(function (item, index) {
+      var id = itemId(item, index);
+      var existing = timeline.querySelector(
+        '[data-iea-inline-media-message="' + CSS.escape(id) + '"]'
+      );
+      if (existing && existing.querySelector("[data-iea-inline-media-control]")) return;
 
         var match = matchingEmptyBubble(timeline, item);
         if (match && hydrateBubble(match, item, id)) {

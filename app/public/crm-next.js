@@ -1,5 +1,16 @@
-(() => {
-  const state = { items: [], selectedId: null, selected: null, user: null, funnelLoaded: false, busy: false };
+﻿(() => {
+  const state = {
+    items: [],
+    selectedId: null,
+    selected: null,
+    user: null,
+    funnelLoaded: false,
+    busy: false,
+    messagesAfterId: 0,
+    pollTimer: null,
+    refreshMessages: null,
+  };
+  const POLL_INTERVAL_MS = 2500;
   const byId = (id) => document.getElementById(id);
   const list = byId("conversations");
   const messages = byId("messages");
@@ -72,6 +83,31 @@
     return `<a class="media-link" href="${url}" target="_blank" rel="noopener">Abrir arquivo</a>`;
   }
 
+  function messageRow(message) {
+    const outgoing = ["out", "outbound", "sent"].includes(String(message.direction || "").toLowerCase());
+    const body = message.body || (message.media_url ? "Mídia anexada" : "Mensagem sem conteúdo textual");
+    return `<article class="message ${outgoing ? "outbound" : "inbound"}" data-message-id="${escape(message.id)}"><div class="message-meta"><span>${escape(message.author_label || (outgoing ? "Enviada" : "Recebida"))}</span><time>${escape(date(message.message_at || message.created_at))}</time></div>${mediaMarkup(message)}<p class="message-body">${escape(body)}</p></article>`;
+  }
+
+  function renderMessages(items, append = false) {
+    if (!items.length) {
+      if (!append) {
+        messages.innerHTML = '<div class="empty-state"><strong>Sem mensagens para exibir.</strong><span>Este histórico foi carregado sem alterações no atendimento.</span></div>';
+      }
+      return;
+    }
+    const html = items.map((item) => messageRow(item)).join("");
+    if (!append) {
+      messages.innerHTML = html;
+      return;
+    }
+    const seen = new Set(Array.from(messages.querySelectorAll("[data-message-id]")).map((node) => node.getAttribute("data-message-id")));
+    const toAppend = items.filter((item) => !seen.has(String(item.id)));
+    if (toAppend.length) {
+      messages.insertAdjacentHTML("beforeend", toAppend.map((item) => messageRow(item)).join(""));
+    }
+  }
+
   function stageLabel(stage, status) {
     const value = String(stage || status || "").trim().toLowerCase();
     if (value.includes("resolv")) return "Resolvidos";
@@ -121,6 +157,10 @@
 
   function showScreen(screen) {
     const isInbox = screen === "inbox";
+    if (!isInbox && state.pollTimer) {
+      clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
     inboxScreen.hidden = !isInbox;
     funnelScreen.hidden = isInbox;
     document.querySelectorAll(".module-tab").forEach((tab) => tab.setAttribute("aria-current", tab.dataset.screen === screen ? "page" : "false"));
@@ -137,24 +177,39 @@
   async function selectConversation(id) {
     const item = state.items.find((conversation) => String(conversation.id) === String(id));
     if (!item) return;
+    if (state.pollTimer) clearInterval(state.pollTimer);
     state.selectedId = item.id;
     state.selected = item;
+    state.messagesAfterId = 0;
     renderList();
     updateAccess();
     byId("thread-title").textContent = displayName(item);
     byId("thread-subtitle").textContent = `${item.phone || "Sem telefone"} · ${item.channel_name || "Canal não identificado"}`;
     messages.innerHTML = '<div class="empty-state"><strong>Carregando mensagens…</strong></div>';
+    const loadMessages = async () => {
+      try {
+        const query = state.messagesAfterId > 0 ? `?after_id=${encodeURIComponent(String(state.messagesAfterId))}&read_only=1` : "?read_only=1";
+        const response = await fetch(`/api/crm/conversations/${encodeURIComponent(item.id)}/messages${query}`);
+        if (!response.ok) throw new Error("Não foi possível carregar as mensagens.");
+        const payload = await response.json();
+        const nextItems = Array.isArray(payload.items) ? payload.items : [];
+        const shouldAppend = state.messagesAfterId > 0;
+        renderMessages(nextItems, shouldAppend);
+        if (nextItems.length) {
+          const ids = nextItems.map((message) => Number(message.id) || 0).filter(Boolean);
+          const lastId = ids.length ? Math.max(...ids) : state.messagesAfterId;
+          if (lastId > state.messagesAfterId) state.messagesAfterId = lastId;
+        }
+        const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 120;
+        if (nearBottom) messages.scrollTop = messages.scrollHeight;
+      } catch (error) {
+        messages.innerHTML = `<div class="empty-state error"><strong>Não foi possível abrir esta conversa.</strong><span>${escape(error.message)}</span></div>`;
+      }
+    };
+    state.refreshMessages = loadMessages;
     try {
-      const response = await fetch(`/api/crm/conversations/${encodeURIComponent(item.id)}/messages`);
-      if (!response.ok) throw new Error("Não foi possível carregar as mensagens.");
-      const payload = await response.json();
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      messages.innerHTML = items.length ? items.map((message) => {
-        const outgoing = ["out", "outbound", "sent"].includes(String(message.direction || "").toLowerCase());
-        const body = message.body || (message.media_url ? "Mídia anexada" : "Mensagem sem conteúdo textual");
-        return `<article class="message ${outgoing ? "outbound" : "inbound"}"><div class="message-meta"><span>${escape(message.author_label || (outgoing ? "Enviada" : "Recebida"))}</span><time>${escape(date(message.message_at || message.created_at))}</time></div>${mediaMarkup(message)}<p class="message-body">${escape(body)}</p></article>`;
-      }).join("") : '<div class="empty-state"><strong>Sem mensagens para exibir.</strong><span>Este histórico foi carregado sem alterações no atendimento.</span></div>';
-      messages.scrollTop = messages.scrollHeight;
+      await loadMessages();
+      state.pollTimer = setInterval(loadMessages, POLL_INTERVAL_MS);
     } catch (error) {
       messages.innerHTML = `<div class="empty-state error"><strong>Não foi possível abrir esta conversa.</strong><span>${escape(error.message)}</span></div>`;
     }
@@ -197,7 +252,11 @@
     try {
       await api(`/api/crm/conversations/${state.selected.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       messageInput.value = "";
-      await selectConversation(state.selected.id);
+      if (state.refreshMessages) {
+        await state.refreshMessages();
+      } else {
+        await selectConversation(state.selected.id);
+      }
       setBusy(false, "Mensagem enviada.");
     } catch (error) { setBusy(false, error.message); }
   }
@@ -213,10 +272,35 @@
 
   async function sendAttachment(file) {
     if (!file) return;
-    const type = file.type.startsWith("image/") ? "image" : file.type === "video/mp4" ? "video" : "document";
+    const filename = String(file.name || "").toLowerCase();
+    const extension = filename.includes(".") ? filename.split(".").pop() : "";
+    const extensionMime = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      mp4: "video/mp4",
+      pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      txt: "text/plain",
+      zip: "application/zip",
+    }[extension];
+    const mimeType = file.type || extensionMime || "application/octet-stream";
+    const type = mimeType.startsWith("image/") ? "image" : mimeType === "video/mp4" ? "video" : "document";
     try {
       const media = await fileAsBase64(file);
-      await sendPayload({ message_type: type, media_base64: media, mime_type: file.type || "application/octet-stream", file_name: file.name, text: file.name }, "Enviando arquivo…");
+      await sendPayload({
+        message_type: type,
+        media_base64: media,
+        mime_type: mimeType,
+        file_name: file.name,
+        text: file.name,
+      }, "Enviando arquivo…");
     } catch (error) { setBusy(false, error.message); }
     attachmentInput.value = "";
   }
