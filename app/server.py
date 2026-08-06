@@ -567,6 +567,16 @@ def initialize_database() -> None:
             db.execute("ALTER TABLE crm_n8n_patient_events ADD COLUMN flow_name TEXT")
         if "appointment_source" not in crm_n8n_event_columns:
             db.execute("ALTER TABLE crm_n8n_patient_events ADD COLUMN appointment_source TEXT")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_n8n_events_date
+                      ON crm_n8n_patient_events(event_type, occurred_at, received_at)""")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_n8n_events_campaign_lookup
+                      ON crm_n8n_patient_events(campaign_id, flow_name, event_type, conversation_id)""")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_n8n_events_channel_lookup
+                      ON crm_n8n_patient_events(channel_name, conversation_id, event_type)""")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_n8n_events_run
+                      ON crm_n8n_patient_events(run_id, event_type, id DESC)""")
+        db.execute("""CREATE INDEX IF NOT EXISTS idx_crm_n8n_events_phone
+                      ON crm_n8n_patient_events(phone, event_type, received_at)""")
         db.execute("""UPDATE crm_messages SET author_type=CASE
                       WHEN direction='inbound' THEN 'patient'
                       WHEN sent_by_user_id IS NOT NULL THEN 'human'

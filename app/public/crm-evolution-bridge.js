@@ -1153,27 +1153,109 @@
 
   let enhancementScheduled = false;
   let lastEnhancementScreen = "";
-  function scheduleEnhancements() {
+  let lastCampaignRender = 0;
+  let lastIntegrationRender = 0;
+  let lastConversationOriginRun = 0;
+  let pendingEnhancementMutations = 0;
+  const ENHANCE_THROTTLE_MS = 900;
+  const CAMPAIGN_REFRESH_MS = 7000;
+  const INTEGRATION_REFRESH_MS = 12000;
+  const CONVERSATION_ORIGIN_MS = 1800;
+
+  function getActiveScreen() {
+    const firstTitle = document.querySelector("h1");
+    if (firstTitle) {
+      const value = text(firstTitle);
+      if (value) return value;
+    }
+    const heading = document.querySelector("h1, h2");
+    return heading ? text(heading) : "";
+  }
+
+  function requestEnhancements() {
     if (enhancementScheduled || document.hidden) return;
     enhancementScheduled = true;
     window.requestAnimationFrame(() => {
       enhancementScheduled = false;
-      const title = [...document.querySelectorAll("h1")].find(element => text(element).trim().length > 0);
-      const activeScreen = text(title || "").trim();
-      if (activeScreen === lastEnhancementScreen) return;
-      lastEnhancementScreen = activeScreen;
-      if (activeScreen === "IntegraÃ§Ãµes & Canais") enhanceIntegrationScreen();
-      else if (activeScreen.startsWith("Campanhas &")) enhanceCampaignScreen();
-      if (location.pathname.includes("whatsapp")) scheduleConversationOrigin();
-      const modal = findModal();
-      if (!modal || modal.dataset.evolutionReady) return;
-      modal.dataset.evolutionReady = "1";
-      const input = modal.querySelector("input");
-      if (input) { input.value = "Teste-CRM-IEA"; input.readOnly = true; }
-      generateQr();
+      if (pendingEnhancementMutations > 0) {
+        setTimeout(() => { pendingEnhancementMutations = 0; runEnhancements(); }, 80);
+      } else {
+        runEnhancements();
+      }
     });
   }
-  const observer = new MutationObserver(scheduleEnhancements);
+
+  function runEnhancements() {
+    if (document.hidden) return;
+    const activeScreen = getActiveScreen();
+    const isCampaignScreen = activeScreen.startsWith("Campanhas &");
+    const isIntegrationScreen = activeScreen === "IntegraÃ§Ãµes & Canais";
+    const now = Date.now();
+    if (activeScreen !== lastEnhancementScreen) {
+      lastEnhancementScreen = activeScreen;
+      if (isCampaignScreen) {
+        enhanceCampaignScreen();
+        lastCampaignRender = now;
+      }
+      if (isIntegrationScreen) {
+        enhanceIntegrationScreen();
+        lastIntegrationRender = now;
+      }
+    } else {
+      if (isCampaignScreen && now - lastCampaignRender > CAMPAIGN_REFRESH_MS) {
+        enhanceCampaignScreen();
+        lastCampaignRender = now;
+      }
+      if (isIntegrationScreen && now - lastIntegrationRender > INTEGRATION_REFRESH_MS) {
+        enhanceIntegrationScreen();
+        lastIntegrationRender = now;
+      }
+    }
+    if (location.pathname.includes("whatsapp") && now - lastConversationOriginRun > CONVERSATION_ORIGIN_MS) {
+      scheduleConversationOrigin();
+      lastConversationOriginRun = now;
+    }
+    const modal = findModal();
+    if (!modal || modal.dataset.evolutionReady) return;
+    modal.dataset.evolutionReady = "1";
+    const input = modal.querySelector("input");
+    if (input) { input.value = "Teste-CRM-IEA"; input.readOnly = true; }
+    generateQr();
+  }
+
+  function scheduleEnhancements() {
+    pendingEnhancementMutations += 1;
+    const now = Date.now();
+    const shouldThrottle = (pendingEnhancementMutations > 0 && now - lastCampaignRender < ENHANCE_THROTTLE_MS && now - lastIntegrationRender < ENHANCE_THROTTLE_MS);
+    if (!shouldThrottle) {
+      requestEnhancements();
+    } else {
+      window.clearTimeout(window.__ieaEnhancedBridgeTimer);
+      window.__ieaEnhancedBridgeTimer = setTimeout(() => {
+        requestEnhancements();
+      }, ENHANCE_THROTTLE_MS);
+    }
+  }
+  const observer = new MutationObserver(mutations => {
+    for (const mutation of mutations) {
+      if (mutation.type !== "childList") continue;
+      if (mutation.addedNodes.length || mutation.removedNodes.length) {
+        for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
+          const element = node;
+          if (element.matches && (element.matches("h1") || element.matches("h2") || element.matches("aside") || element.matches("main") || element.matches("section"))) {
+            scheduleEnhancements();
+            return;
+          }
+          if (element.querySelector && element.querySelector("h1,h2,aside,main,section")) {
+            scheduleEnhancements();
+            return;
+          }
+        }
+      }
+    }
+    scheduleEnhancements();
+  });
   observer.observe(document.body || document.documentElement, {childList: true, subtree: true});
   scheduleEnhancements();
   document.addEventListener("visibilitychange", () => {
