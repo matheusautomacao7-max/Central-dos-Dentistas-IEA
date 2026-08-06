@@ -65,6 +65,9 @@ EVOLUTION_API_URL = os.environ.get("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.environ.get("EVOLUTION_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+META_TEST_MODE = os.environ.get("META_TEST_MODE") == "1"
+META_TEST_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_TEST_WEBHOOK_VERIFY_TOKEN", "").strip()
+META_TEST_APP_SECRET = os.environ.get("META_TEST_APP_SECRET", "").strip()
 N8N_INTERNAL_URL = os.environ.get("N8N_INTERNAL_URL", "http://n8n-czmx-n8n-1:5678").rstrip("/")
 PUBLIC_APP_URL = os.environ.get("PUBLIC_APP_URL", "https://dentistas.automacaocentraliea.me").rstrip("/")
 CLINIC_UTC_OFFSET_HOURS = int(os.environ.get("CLINIC_UTC_OFFSET_HOURS", "-4"))
@@ -406,6 +409,18 @@ def cleanup_retention_data(db) -> None:
     )
 
 
+def ensure_meta_test_crc_user(db, professional_id: int | None) -> None:
+    """Create a non-production CRC record only for the isolated Meta lab."""
+    if os.environ.get("META_TEST_MODE") != "1" or not professional_id:
+        return
+    db.execute(
+        """INSERT INTO users (professional_id, name, email, access_role, crm_access_level, service_sector)
+           VALUES (?, ?, ?, 'crc', 'admin', 'CRC')
+           ON CONFLICT(email) DO UPDATE SET active=1, crm_access_level='admin', service_sector='CRC'""",
+        (professional_id, "CRC de teste", "crc-teste@instituto.local"),
+    )
+
+
 def initialize_database() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     CRM_MEDIA_DIR.mkdir(parents=True, exist_ok=True)
@@ -481,6 +496,9 @@ def initialize_database() -> None:
         lia_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_lia_settings)").fetchall()}
         if lia_settings_columns and "general_assistance" not in lia_settings_columns:
             db.execute("ALTER TABLE crm_lia_settings ADD COLUMN general_assistance INTEGER NOT NULL DEFAULT 0")
+        meta_test_settings_columns = {row[1] for row in db.execute("PRAGMA table_info(crm_meta_test_settings)").fetchall()}
+        if meta_test_settings_columns and "authorized_test_phone" not in meta_test_settings_columns:
+            db.execute("ALTER TABLE crm_meta_test_settings ADD COLUMN authorized_test_phone TEXT")
         crm_resolution_columns = {
             row[1] for row in db.execute("PRAGMA table_info(crm_service_resolutions)").fetchall()
         }
@@ -765,6 +783,11 @@ def initialize_database() -> None:
         count = db.execute("SELECT COUNT(*) FROM patients").fetchone()[0]
         if count:
             return
+        # A seedless homologation may be restarted after its owner account has
+        # already been created. There is no patient seed left to process.
+        if owner and not SEED_PATH.exists():
+            ensure_meta_test_crc_user(db, int(owner[0]))
+            return
         professional_id = db.execute(
             "INSERT INTO professionals (name, role, is_owner) VALUES (?, ?, ?)",
             ("Dra. Dulce", "Cirurgiã-dentista", 1),
@@ -778,7 +801,10 @@ def initialize_database() -> None:
             "INSERT INTO users (professional_id, name, email, access_role) VALUES (?, ?, ?, ?)",
             (professional_id, "Dra. Dulce", "dulce@instituto.local", "owner"),
         )
-        seed = json.loads(SEED_PATH.read_text(encoding="utf-8"))
+        ensure_meta_test_crc_user(db, professional_id)
+        # Homologation can start without patient seed data. Production keeps its
+        # existing initial-load behavior whenever the example file is present.
+        seed = json.loads(SEED_PATH.read_text(encoding="utf-8")) if SEED_PATH.exists() else []
         for patient in seed:
             patient_id = db.execute(
                 """
@@ -916,6 +942,17 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_security_headers()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_text(self, value: str, status=HTTPStatus.OK) -> None:
+        """Return the Meta webhook challenge without treating it as a JSON API response."""
+        body = value.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_security_headers()
@@ -1328,6 +1365,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             return self.get_health()
+        if parsed.path == "/api/integrations/meta/test/webhook":
+            return self.verify_meta_test_webhook(parse_qs(parsed.query))
         if parsed.path == "/api/release":
             return self.send_json({"release": RELEASE_ID})
         if parsed.path == "/api/auth/status":
@@ -1416,6 +1455,10 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.get_crm_lia_usage()
         if parsed.path == "/api/crm/integrations/health":
             return self.get_crm_integration_health()
+        if parsed.path == "/api/crm/meta/test/status":
+            return self.get_crm_meta_test_status()
+        if parsed.path == "/api/crm/meta/test/inbox":
+            return self.get_crm_meta_test_inbox()
         if parsed.path == "/api/crm/n8n/config":
             return self.get_crm_n8n_config()
         if parsed.path == "/api/crm/n8n/overview":
@@ -1499,7 +1542,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 self.send_header("Location", "/")
                 self.end_headers()
                 return
-            if parsed.path.startswith(CRM_NEXT_ROUTE) and user["access_role"] != "crc":
+            if parsed.path.startswith(CRM_NEXT_ROUTE) and user["access_role"] != "crc" and os.environ.get("META_TEST_MODE") != "1":
                 self.send_response(HTTPStatus.FOUND)
                 self.send_header("Location", "/")
                 self.end_headers()
@@ -1510,6 +1553,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/integrations/evolution/webhook":
             return self.receive_evolution_webhook(self.read_json(), parse_qs(parsed.query))
+        if parsed.path == "/api/integrations/meta/test/webhook":
+            return self.receive_meta_test_webhook()
         if parsed.path == "/api/integrations/crm/handoff":
             return self.receive_crm_handoff(self.read_json(), parse_qs(parsed.query))
         if parsed.path == "/api/integrations/crm/automation-event":
@@ -1567,6 +1612,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return self.save_crm_lia_settings(self.read_json())
         if parsed.path == "/api/crm/lia/ask":
             return self.ask_crm_lia(self.read_json())
+        if parsed.path == "/api/crm/meta/test/config":
+            return self.save_crm_meta_test_config(self.read_json())
         if parsed.path == "/api/crm/goals":
             return self.save_crm_goals(self.read_json())
         if parsed.path == "/api/crm/profile/achievements":
@@ -3063,22 +3110,31 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         with connect() as db:
             professionals = {self.import_key(row["name"]): row["id"] for row in db.execute("SELECT id, name FROM professionals WHERE active=1").fetchall()}
         missing = sorted({item["professional"] for item in items if self.import_key(item["professional"]) not in professionals})
-        self.send_json({"valid": len(items) - (len(items) if missing else 0), "total": len(items), "missing_professionals": missing, "can_confirm": not missing, "preview": items[:10]})
+        valid = sum(1 for item in items if self.import_key(item["professional"]) in professionals)
+        self.send_json({"valid": valid, "total": len(items), "missing_professionals": missing, "can_confirm": not missing and bool(items), "can_confirm_partial": bool(missing) and valid > 0, "preview": items[:10]})
 
     def appointment_confirm(self, payload: dict) -> None:
         token = str(payload.get("token") or "")
         items = self.get_import_batch(token)
         if items is None:
             return self.send_json({"error": "Auditoria expirada. Rode a auditoria novamente."}, HTTPStatus.GONE)
-        imported = updated = unchanged = 0
+        allow_partial = payload.get("allow_partial") is True
+        imported = updated = scheduled = unchanged = skipped = 0
+        today = datetime.now().date().isoformat()
         with connect() as db:
             professionals = {self.import_key(row["name"]): row["id"] for row in db.execute("SELECT id, name FROM professionals WHERE active=1").fetchall()}
             missing = sorted({item["professional"] for item in items if self.import_key(item["professional"]) not in professionals})
-            if missing:
+            if missing and not allow_partial:
                 return self.send_json({"error": "Cadastre primeiro: " + ", ".join(missing)}, HTTPStatus.CONFLICT)
+            if missing:
+                importable_items = [item for item in items if self.import_key(item["professional"]) in professionals]
+                skipped = len(items) - len(importable_items)
+                if not importable_items:
+                    return self.send_json({"error": "Nenhuma carteira pertence a um profissional cadastrado."}, HTTPStatus.CONFLICT)
+                items = importable_items
             assignments = {}
             for row in db.execute("""
-                SELECT p.id, p.name, pa.professional_id, f.last_visit
+                SELECT p.id, p.name, pa.professional_id, f.last_visit, f.next_appointment
                 FROM patients p
                 JOIN patient_assignments pa ON pa.patient_id=p.id AND pa.is_primary=1
                 JOIN patient_followup f ON f.patient_id=p.id
@@ -3086,7 +3142,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 key = (self.import_key(row["name"]), row["professional_id"])
                 current = assignments.get(key)
                 if not current or (row["last_visit"] or "") > (current["last_visit"] or ""):
-                    assignments[key] = {"id": row["id"], "last_visit": row["last_visit"]}
+                    assignments[key] = {"id": row["id"], "last_visit": row["last_visit"], "next_appointment": row["next_appointment"]}
             for item in items:
                 professional_id = professionals[self.import_key(item["professional"])]
                 key = (self.import_key(item["patient"]), professional_id)
@@ -3095,8 +3151,16 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 status = requested_status or ("Tratamento" if "TRATAMENTO" in self.import_key(item["category"]) else "Consulta")
                 base_status, custom_status = self.patient_status_values(status)
                 self.ensure_patient_status(db, status)
+                is_future_appointment = item["date"] > today
                 if existing:
                     patient_id = existing["id"]
+                    if is_future_appointment:
+                        db.execute("UPDATE patients SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (base_status, patient_id))
+                        db.execute("UPDATE patient_followup SET next_appointment=?, next_appointment_type='Programado', custom_status=? WHERE patient_id=?", (item["date"], custom_status, patient_id))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        existing["next_appointment"] = item["date"]
+                        scheduled += 1
+                        continue
                     if existing["last_visit"] and item["date"] <= existing["last_visit"]:
                         unchanged += 1
                         continue
@@ -3108,12 +3172,18 @@ class ClinicHandler(SimpleHTTPRequestHandler):
                 else:
                     patient_id = db.execute("INSERT INTO patients (name, status) VALUES (?, ?)", (item["patient"], base_status)).lastrowid
                     db.execute("INSERT INTO patient_assignments (patient_id, professional_id, is_primary) VALUES (?, ?, 1)", (patient_id, professional_id))
-                    db.execute("INSERT INTO patient_followup (patient_id, last_visit, custom_status) VALUES (?, ?, ?)", (patient_id, item["date"], custom_status))
-                    db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
-                    assignments[key] = {"id": patient_id, "last_visit": item["date"]}
+                    if is_future_appointment:
+                        db.execute("INSERT INTO patient_followup (patient_id, next_appointment, next_appointment_type, custom_status) VALUES (?, ?, 'Programado', ?)", (patient_id, item["date"], custom_status))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Próxima consulta programada pela planilha: {item['source']}"))
+                        assignments[key] = {"id": patient_id, "last_visit": None, "next_appointment": item["date"]}
+                        scheduled += 1
+                    else:
+                        db.execute("INSERT INTO patient_followup (patient_id, last_visit, custom_status) VALUES (?, ?, ?)", (patient_id, item["date"], custom_status))
+                        db.execute("INSERT INTO patient_events (patient_id, event_type, description) VALUES (?, 'Importação', ?)", (patient_id, f"Importado da planilha: {item['source']}"))
+                        assignments[key] = {"id": patient_id, "last_visit": item["date"], "next_appointment": None}
                     imported += 1
             db.execute("DELETE FROM import_batches WHERE token_hash=?", (hashlib.sha256(token.encode()).hexdigest(),))
-        self.send_json({"imported": imported, "updated": updated, "unchanged": unchanged, "total": len(items)})
+        self.send_json({"imported": imported, "updated": updated, "scheduled": scheduled, "unchanged": unchanged, "skipped": skipped, "skipped_professionals": missing if skipped else [], "total": len(items)})
 
     def update_professional_photo(self, professional_id: int, payload: dict, audit_event: str | None = None) -> None:
         image = str(payload.get("image") or "")
@@ -3672,6 +3742,8 @@ class ClinicHandler(SimpleHTTPRequestHandler):
 
     def require_crc_access(self) -> bool:
         if self.authenticated_user and self.authenticated_user["access_role"] == "crc":
+            return True
+        if self.authenticated_user and os.environ.get("META_TEST_MODE") == "1" and self.can_manage_crm(self.authenticated_user):
             return True
         self.send_json({"error": "Acesso exclusivo da Central CRC."}, HTTPStatus.FORBIDDEN)
         return False
@@ -8709,6 +8781,190 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             )
         self.send_json({"claimed": True, "id": conversation_id})
 
+    def crm_meta_test_settings(self, db) -> dict:
+        row = db.execute("SELECT * FROM crm_meta_test_settings WHERE id=1").fetchone()
+        if row:
+            return dict(row)
+        db.execute("INSERT INTO crm_meta_test_settings(id,enabled,test_mode) VALUES(1,0,1)")
+        return {"id": 1, "enabled": 0, "test_mode": 1, "app_id": None,
+                "whatsapp_test_phone_number_id": None, "instagram_test_account_id": None,
+                "authorized_test_phone": None}
+
+    @staticmethod
+    def meta_test_message_preview(message: dict) -> str:
+        """Return a bounded, text-only preview for the opt-in laboratory inbox."""
+        message_type = str(message.get("type") or "unknown")
+        if message_type == "text":
+            raw = str((message.get("text") or {}).get("body") or "")
+        elif message_type == "button":
+            raw = str((message.get("button") or {}).get("text") or "")
+        elif message_type == "interactive":
+            interactive = message.get("interactive") or {}
+            raw = str(((interactive.get("button_reply") or interactive.get("list_reply") or {}).get("title")) or "")
+        else:
+            raw = f"[Mensagem de teste: {message_type}]"
+        return re.sub(r"\s+", " ", raw).strip()[:500]
+
+    def record_meta_test_messages(self, db, event_key: str, payload: dict, authorized_phone: str) -> int:
+        """Persist only inbound messages from the administrator-approved test number."""
+        if not authorized_phone:
+            return 0
+        recorded = 0
+        for entry in payload.get("entry") or []:
+            if not isinstance(entry, dict):
+                continue
+            for change in entry.get("changes") or []:
+                value = change.get("value") if isinstance(change, dict) else None
+                if not isinstance(value, dict):
+                    continue
+                for message in value.get("messages") or []:
+                    if not isinstance(message, dict) or self.crm_phone(message.get("from")) != authorized_phone:
+                        continue
+                    message_id = str(message.get("id") or "").strip()
+                    if not message_id:
+                        continue
+                    try:
+                        timestamp = int(message.get("timestamp") or 0)
+                        occurred_at = datetime.fromtimestamp(timestamp, timezone.utc).astimezone(CLINIC_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S") if timestamp else None
+                    except (TypeError, ValueError, OSError):
+                        occurred_at = None
+                    try:
+                        db.execute(
+                            """INSERT INTO crm_meta_test_messages(event_key,meta_message_id,message_type,body_preview,occurred_at)
+                               VALUES(?,?,?,?,?)""",
+                            (event_key, message_id, str(message.get("type") or "unknown")[:40], self.meta_test_message_preview(message), occurred_at),
+                        )
+                        recorded += 1
+                    except IntegrityError:
+                        pass
+        return recorded
+
+    def verify_meta_test_webhook(self, query: dict) -> None:
+        """Handle Meta's public GET verification for the isolated laboratory only."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+        mode = (query.get("hub.mode") or [""])[0]
+        token = (query.get("hub.verify_token") or [""])[0]
+        challenge = (query.get("hub.challenge") or [""])[0]
+        if mode != "subscribe" or not challenge or not META_TEST_WEBHOOK_VERIFY_TOKEN:
+            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        if not hmac.compare_digest(token, META_TEST_WEBHOOK_VERIFY_TOKEN):
+            return self.send_json({"error": "Verificação do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        return self.send_text(challenge)
+
+    def receive_meta_test_webhook(self) -> None:
+        """Accept signed Meta test events without ever creating CRM data or sending messages."""
+        if not META_TEST_MODE:
+            return self.send_json({"error": "Endpoint indisponível."}, HTTPStatus.NOT_FOUND)
+        if not META_TEST_APP_SECRET:
+            return self.send_json({"error": "Webhook de teste ainda não foi configurado no servidor."}, HTTPStatus.SERVICE_UNAVAILABLE)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self.send_json({"error": "Tamanho do webhook inválido."}, HTTPStatus.BAD_REQUEST)
+        if length < 1 or length > MAX_BODY_BYTES:
+            return self.send_json({"error": "Corpo do webhook inválido."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+        raw_body = self.rfile.read(length)
+        supplied_signature = self.headers.get("X-Hub-Signature-256", "")
+        expected_signature = "sha256=" + hmac.new(
+            META_TEST_APP_SECRET.encode("utf-8"), raw_body, hashlib.sha256
+        ).hexdigest()
+        if not supplied_signature or not hmac.compare_digest(supplied_signature, expected_signature):
+            return self.send_json({"error": "Assinatura do webhook inválida."}, HTTPStatus.FORBIDDEN)
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return self.send_json({"error": "Webhook não contém JSON válido."}, HTTPStatus.BAD_REQUEST)
+        if not isinstance(payload, dict):
+            return self.send_json({"error": "Webhook não contém objeto válido."}, HTTPStatus.BAD_REQUEST)
+        meta_object = str(payload.get("object") or "").strip()
+        platform = "instagram" if meta_object == "instagram" else "whatsapp"
+        entry_count = len(payload.get("entry") or []) if isinstance(payload.get("entry"), list) else 0
+        event_summary = {
+            "mode": "test_only",
+            "meta_object": meta_object or "unknown",
+            "entry_count": entry_count,
+            "received_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "note": "Evento assinado registrado sem criar conversa, contato, mensagem ou atendimento.",
+        }
+        event_key = hashlib.sha256(raw_body).hexdigest()
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+            try:
+                db.execute(
+                    """INSERT INTO crm_meta_test_events(event_key,platform,event_type,payload_json,processing_status)
+                       VALUES(?,?,?,?,?)""",
+                    (event_key, platform, "webhook.received", json.dumps(event_summary, ensure_ascii=False), "Recebido somente em teste"),
+                )
+                duplicate = False
+            except IntegrityError:
+                duplicate = True
+            recorded_messages = 0 if duplicate else self.record_meta_test_messages(
+                db, event_key, payload, self.crm_phone(settings.get("authorized_test_phone"))
+            )
+        self.send_json({"received": True, "test_mode": True, "duplicate": duplicate, "laboratory_messages": recorded_messages})
+
+    def get_crm_meta_test_status(self) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem acessar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+            total = db.execute("SELECT COUNT(*) AS total FROM crm_meta_test_events").fetchone()
+        self.send_json({
+            "settings": {key: settings.get(key) for key in ("enabled", "test_mode", "app_id", "whatsapp_test_phone_number_id", "instagram_test_account_id", "authorized_test_phone", "updated_at")},
+            "event_count": int(total["total"] or 0),
+            "status": "laboratory",
+            "webhook": {
+                "url": f"{PUBLIC_APP_URL}/api/integrations/meta/test/webhook",
+                "ready": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET),
+                "accepts_signed_events_only": True,
+            },
+            "safety": {"production_writes": False, "patient_messages": False, "webhook_enabled": bool(META_TEST_MODE and META_TEST_WEBHOOK_VERIFY_TOKEN and META_TEST_APP_SECRET)},
+        })
+
+    def get_crm_meta_test_inbox(self) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem acessar o laboratório da Meta."}, HTTPStatus.FORBIDDEN)
+        with connect() as db:
+            settings = self.crm_meta_test_settings(db)
+            rows = db.execute("""SELECT id,message_type,body_preview,occurred_at,received_at
+                               FROM crm_meta_test_messages ORDER BY id DESC LIMIT 50""").fetchall()
+        self.send_json({
+            "authorized": bool(self.crm_phone(settings.get("authorized_test_phone"))),
+            "items": [dict(row) for row in rows],
+            "read_only": True,
+        })
+
+    def save_crm_meta_test_config(self, payload: dict) -> None:
+        if not self.require_crm_feature("integrations") or not self.require_crc_access(): return
+        if not self.can_manage_crm(self.authenticated_user):
+            return self.send_json({"error": "Somente administradores podem configurar o laboratÃ³rio da Meta."}, HTTPStatus.FORBIDDEN)
+        fields = {
+            "app_id": str(payload.get("app_id") or "").strip()[:160],
+            "whatsapp_test_phone_number_id": str(payload.get("whatsapp_test_phone_number_id") or "").strip()[:160],
+            "instagram_test_account_id": str(payload.get("instagram_test_account_id") or "").strip()[:160],
+            "authorized_test_phone": self.crm_phone(payload.get("authorized_test_phone")),
+        }
+        if payload.get("authorized_test_phone") and not fields["authorized_test_phone"]:
+            return self.send_json({"error": "Informe um telefone de teste válido para autorizar a caixa de laboratório."}, HTTPStatus.BAD_REQUEST)
+        if any("\n" in value or "\r" in value for value in fields.values()):
+            return self.send_json({"error": "Os identificadores de teste da Meta nÃ£o podem conter quebras de linha."}, HTTPStatus.BAD_REQUEST)
+        enabled = 1 if payload.get("enabled") is True else 0
+        with connect() as db:
+            db.execute("""INSERT INTO crm_meta_test_settings(id,enabled,test_mode,app_id,whatsapp_test_phone_number_id,
+                          instagram_test_account_id,authorized_test_phone,updated_by_user_id,updated_at) VALUES(1,?,1,?,?,?,?,?,CURRENT_TIMESTAMP)
+                          ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled,test_mode=1,app_id=excluded.app_id,
+                          whatsapp_test_phone_number_id=excluded.whatsapp_test_phone_number_id,
+                          instagram_test_account_id=excluded.instagram_test_account_id,
+                          authorized_test_phone=excluded.authorized_test_phone,
+                          updated_by_user_id=excluded.updated_by_user_id,updated_at=CURRENT_TIMESTAMP""",
+                       (enabled, fields["app_id"] or None, fields["whatsapp_test_phone_number_id"] or None,
+                        fields["instagram_test_account_id"] or None, fields["authorized_test_phone"] or None,
+                        self.authenticated_user["id"]))
+        self.get_crm_meta_test_status()
+
     def get_crm_webhook_events(self) -> None:
         if not self.require_crm_feature("integrations"): return
         if not self.require_crc_access(): return
@@ -9617,7 +9873,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
         # The bundled CRM is generated as one large JSON payload. Serving a
         # stale HTML or bridge file makes browsers execute a mismatched
         # version, so always revalidate these operational screens.
-        if target.suffix == ".html" or target.name == "crm-evolution-bridge.js":
+        if target.suffix == ".html" or target.name in {"crm-evolution-bridge.js", "crm-meta-test.js"}:
             self.send_header("Cache-Control", "no-store, max-age=0")
         self.send_security_headers(
             allow_bundled_ui=relative == "crm-whatsapp.html",
