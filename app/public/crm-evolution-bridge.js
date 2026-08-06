@@ -1152,14 +1152,19 @@
   }, true);
 
   let enhancementScheduled = false;
+  let lastEnhancementScreen = "";
   function scheduleEnhancements() {
     if (enhancementScheduled || document.hidden) return;
     enhancementScheduled = true;
     window.requestAnimationFrame(() => {
       enhancementScheduled = false;
-      enhanceIntegrationScreen();
-      scheduleConversationOrigin();
-      enhanceCampaignScreen();
+      const title = [...document.querySelectorAll("h1")].find(element => text(element).trim().length > 0);
+      const activeScreen = text(title || "").trim();
+      if (activeScreen === lastEnhancementScreen) return;
+      lastEnhancementScreen = activeScreen;
+      if (activeScreen === "IntegraÃ§Ãµes & Canais") enhanceIntegrationScreen();
+      else if (activeScreen.startsWith("Campanhas &")) enhanceCampaignScreen();
+      if (location.pathname.includes("whatsapp")) scheduleConversationOrigin();
       const modal = findModal();
       if (!modal || modal.dataset.evolutionReady) return;
       modal.dataset.evolutionReady = "1";
@@ -1169,7 +1174,7 @@
     });
   }
   const observer = new MutationObserver(scheduleEnhancements);
-  observer.observe(document.documentElement, {childList: true, subtree: true});
+  observer.observe(document.body || document.documentElement, {childList: true, subtree: true});
   scheduleEnhancements();
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) scheduleEnhancements();

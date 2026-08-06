@@ -5921,6 +5921,7 @@ class ClinicHandler(SimpleHTTPRequestHandler):
     def crm_campaign_label(value: str | None) -> str:
         raw = str(value or "").strip()
         normalized = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii").lower()
+        normalized = re.sub(r"\s+", " ", normalized)
         if "zero carie" in normalized:
             return "Zero CÃ¡rie"
         if "julho laranja" in normalized:
@@ -5931,7 +5932,9 @@ class ClinicHandler(SimpleHTTPRequestHandler):
             return "Primeira consulta"
         if "sem agendamento" in normalized:
             return "Sem agendamento"
-        if "confirmacao" in normalized or "clinicorp" in normalized:
+        if re.search(r"\bconfirmacao\s+de\s+agenda\b", normalized) is not None:
+            return "ConfirmaÃ§Ã£o de agenda"
+        if normalized == "clinicorp" or normalized.startswith("clinicorp "):
             return "ConfirmaÃ§Ã£o de agenda"
         return raw or "AutomaÃ§Ã£o sem campanha"
 
