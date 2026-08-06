@@ -54,6 +54,7 @@ jobs:
       - name: Executar regressões do CRM no navegador
         run: |
           node ops/test_crm_audio_playback.mjs
+          node ops/test_admin_appointment_import.mjs
           node ops/test_crm_collaborator_profile.mjs
           node ops/test_crm_composer_tools.mjs
           node ops/test_crm_contact_photos_disabled.mjs
